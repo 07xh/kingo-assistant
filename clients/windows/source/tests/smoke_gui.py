@@ -47,12 +47,25 @@ def main():
             editor.update()
             editor.semester.set('2026-2027-2')
             editor.courses[0]['course_id'] = 'LOCAL_TEST_101'
+            assert editor.interval_preset.get() == '最快（60 秒）'
+            editor.interval_preset.set('均衡（120 秒）')
+            editor._apply_interval_preset()
+            assert (editor.interval_low.get(), editor.interval_high.get()) == ('120', '120')
+            editor.interval_low.set('75')
+            editor.interval_high.set('135')
+            assert editor.interval_preset.get() == '自定义区间'
+            with patch('desktop_editor.messagebox.showerror') as showerror:
+                editor.interval_low.set('59')
+                editor.save()
+                showerror.assert_called_once()
+            editor.interval_low.set('75')
             with patch('desktop_editor.messagebox.showinfo'):
                 editor.save()
             app.update()
             config = load_config(Path(app.path.get()))
             assert config['xnxq'] == '2026-2027-2'
             assert config['courses'][0]['course_id'] == 'LOCAL_TEST_101'
+            assert config['strategy']['interval_range'] == [75, 135]
             assert app.table.set('A', 'course') == 'LOCAL_TEST_101'
             app.close()
             print('PASS: Tk init + 3-step offline fictional demo + user config restore + school browser link + editor + atomic save + close')

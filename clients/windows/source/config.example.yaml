@@ -8,7 +8,7 @@ auth:
 strategy:
   mode: monitor       # monitor or burst; burst means ONE scheduled read-only check
   target_time: "2026-12-21 08:00:00" # timezone: Asia/Shanghai; confirm official announcement
-  interval_range: [60, 90]     # default conservative min 60 s; ONE catalog read per cycle
+  interval_range: [60, 60]     # fastest local default; NOT a verified school frequency limit
   max_cycles: 20              # 0 = no cycle-count limit; duration ALWAYS applies
   max_duration_minutes: 480   # 1–1440 minutes; protects unattended runs
   # Lower intervals require manually checking the school's published permission.
