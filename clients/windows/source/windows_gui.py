@@ -1,8 +1,8 @@
-"""Standalone Windows desktop UI for the existing read-only Kingosoft assistant.
+"""Standalone Windows desktop UI for KingoAssistant V5.1.
 
-This window does NOT perform enrollment, CAPTCHA processing or concurrency bursts.
-The same core.client/core.scheduler are shared with the CLI, with strictly
-bounded read-only behavior and fail-closed protocol verification.
+The current NCWU client remains read-only. The automatic-enrollment state
+machine is offline-tested but has no verified school-specific adapter yet.
+No CAPTCHA processing, rate-limit evasion or concurrent write bursts.
 """
 from __future__ import annotations
 
@@ -36,7 +36,7 @@ from core.offline_benchmark import format_benchmark, run_offline_benchmark
 from core.time_sync import TimeSync
 from main import _read_local_html, validate
 
-APP_TITLE = "青果选课辅助 · Windows V4.9（只读）"
+APP_TITLE = "青果选课辅助 · Windows V5.1（自动执行核心待接入官方接口）"
 OFFICIAL_PORTAL = "https://jwmis.ncwu.edu.cn"  # Confirmed by school notices; NOT an API endpoint.
 
 
@@ -205,8 +205,8 @@ class Application(tk.Tk):
     def _build(self) -> None:
         top = ttk.Frame(self, padding=(16, 14))
         top.pack(fill="x")
-        ttk.Label(top, text="青果选课辅助 · Windows V4.9", font=("Microsoft YaHei UI", 16, "bold")).pack(anchor="w")
-        ttk.Label(top, text="本机独立运行｜只读课程余量和提醒｜不代表选课成功", foreground="#666").pack(anchor="w", pady=(4, 0))
+        ttk.Label(top, text="青果选课辅助 · Windows V5.1", font=("Microsoft YaHei UI", 16, "bold")).pack(anchor="w")
+        ttk.Label(top, text="本机独立运行｜当前只读监测｜自动执行核心已加入，官方接口待验收", foreground="#666").pack(anchor="w", pady=(4, 0))
 
         cfg = ttk.Frame(self, padding=(16, 6))
         cfg.pack(fill="x")

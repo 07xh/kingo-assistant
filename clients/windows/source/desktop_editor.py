@@ -125,21 +125,33 @@ class SettingsEditor(tk.Toplevel):
 
         wrapper = ttk.LabelFrame(outer, text="目标课程（离线草稿允许 0–30 门）", padding=8)
         wrapper.pack(fill="both", expand=True, pady=(12, 6))
-        self.table = ttk.Treeview(wrapper, columns=("key", "code", "class", "name", "teacher"), show="headings", height=8)
-        for name, label, width in (("key", "志愿", 80), ("code", "课程代码", 140),
-                                    ("class", "教学班", 110), ("name", "课程名称", 190),
-                                    ("teacher", "教师", 110)):
+        self.table = ttk.Treeview(
+            wrapper,
+            columns=("priority", "key", "code", "class", "group", "name", "teacher"),
+            show="headings", height=8,
+        )
+        for name, label, width in (("priority", "顺序", 55), ("key", "志愿", 70),
+                                    ("code", "课程代码", 125), ("class", "教学班", 95),
+                                    ("group", "备选组", 90), ("name", "课程名称", 170),
+                                    ("teacher", "教师", 95)):
             self.table.heading(name, text=label)
-            self.table.column(name, width=width)
+            self.table.column(name, width=width, stretch=True)
         bar = ttk.Scrollbar(wrapper, orient="vertical", command=self.table.yview)
         self.table.configure(yscrollcommand=bar.set)
         bar.pack(side="right", fill="y")
         self.table.pack(fill="both", expand=True)
+        ttk.Label(
+            wrapper,
+            text="优先级按表格从上到下；同一非空备选组只需成功选择其中一门。保存方案会保留此顺序。",
+            foreground="#666", wraplength=800,
+        ).pack(anchor="w", pady=(5, 0))
         buttons = ttk.Frame(outer)
         buttons.pack(fill="x", pady=(0, 10))
         ttk.Button(buttons, text="新增课程", command=self.add_course).pack(side="left", padx=(0, 7))
         ttk.Button(buttons, text="编辑所选", command=self.edit_course).pack(side="left", padx=(0, 7))
         ttk.Button(buttons, text="删除所选", command=self.remove_course).pack(side="left")
+        ttk.Button(buttons, text="↑ 上移", command=lambda: self.move_course(-1)).pack(side="left", padx=(10, 4))
+        ttk.Button(buttons, text="↓ 下移", command=lambda: self.move_course(1)).pack(side="left", padx=4)
         ttk.Button(buttons, text="检查节次冲突", command=self.check_conflicts).pack(side="left", padx=10)
         ttk.Button(buttons, text="取消", command=self.destroy).pack(side="right")
         ttk.Button(buttons, text="保存到配置文件", command=self.save).pack(side="right", padx=8)
@@ -162,7 +174,8 @@ class SettingsEditor(tk.Toplevel):
         self.table.delete(*self.table.get_children())
         for i, course in enumerate(self.courses):
             self.table.insert("", "end", iid=str(i), values=(
-                course.get("key", ""), course.get("course_id", ""), course.get("class_id", ""),
+                i + 1, course.get("key", ""), course.get("course_id", ""),
+                course.get("class_id", ""), course.get("group", ""),
                 course.get("course_name", ""), course.get("teacher", "")))
 
     def selection(self) -> int | None:
@@ -193,6 +206,30 @@ class SettingsEditor(tk.Toplevel):
         if i is not None:
             self.courses.pop(i)
             self.refresh_table()
+            if self.courses:
+                selected = min(i, len(self.courses) - 1)
+                self.table.selection_set(str(selected))
+                self.table.focus(str(selected))
+
+    def move_course(self, offset: int):
+        """Move the selected course in the persisted top-to-bottom priority order."""
+        if offset not in (-1, 1):
+            raise ValueError("志愿移动方向只能是上移或下移")
+        index = self.selection()
+        if index is None:
+            messagebox.showinfo("请选择课程", "先选择要调整优先级的课程。", parent=self)
+            return
+        destination = index + offset
+        if destination < 0 or destination >= len(self.courses):
+            self.bell()
+            return
+        self.courses[index], self.courses[destination] = (
+            self.courses[destination], self.courses[index]
+        )
+        self.refresh_table()
+        self.table.selection_set(str(destination))
+        self.table.focus(str(destination))
+        self.table.see(str(destination))
 
     def check_conflicts(self):
         try:
