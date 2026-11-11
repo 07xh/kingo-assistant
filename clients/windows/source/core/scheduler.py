@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import os
 import random
+import time
 from collections import defaultdict
 
 import httpx
@@ -15,6 +16,7 @@ from loguru import logger
 
 from .client import AuthenticationError, ProtocolError, RateLimitError, Status
 from .monitor_state import MonitorStateStore
+from .monitor_policy import validate_limits
 
 
 class Scheduler:
@@ -162,13 +164,20 @@ class Scheduler:
                 if not self.client.stop.is_set():
                     await self.cycle()
                 return
-            limit = int(self.strategy["max_cycles"])
-            low, high = map(float, self.strategy["interval_range"])
-            for i in range(limit):
-                if self.client.stop.is_set():
+            limits = validate_limits(self.strategy)
+            deadline = time.monotonic() + limits.max_duration_minutes * 60
+            while not self.client.stop.is_set():
+                # A zero cycle limit permits long monitoring, but never an
+                # unbounded unattended session: deadline ALWAYS applies.
+                if (limits.max_cycles and self.cycles >= limits.max_cycles) or time.monotonic() >= deadline:
                     break
                 await self.cycle()
-                if i + 1 < limit and not await self._sleep_or_stop(random.uniform(low, high)):
+                if limits.max_cycles and self.cycles >= limits.max_cycles:
+                    break
+                seconds_left = max(0.0, deadline - time.monotonic())
+                if seconds_left <= 0:
+                    break
+                if not await self._sleep_or_stop(min(random.uniform(limits.low, limits.high), seconds_left)):
                     break
         except AuthenticationError:
             self.last_error = "本人会话无效或登录已过期；请在官方页面重新登录并核验授权"
