@@ -10,6 +10,7 @@ from core.desktop_settings import (COURSE_FIELDS, INTERVAL_CUSTOM, INTERVAL_PRES
                                    interval_preset_for, parse_interval_range,
                                    load_config, normalize_course, save_config_atomic,
                                    update_config)
+from core.conflicts import find_conflicts
 from main import validate
 
 
@@ -23,9 +24,10 @@ class CourseDialog(simpledialog.Dialog):
     def body(self, frame):
         labels = {"key": "志愿标识 *", "course_id": "课程代码",
                   "class_id": "教学班编号", "course_name": "课程名称",
-                  "teacher": "任课教师"}
+                  "teacher": "任课教师", "group": "备选组（可选）",
+                  "time_slots": "上课节次（可选）"}
         first = None
-        for index, name in enumerate(COURSE_FIELDS):
+        for index, name in enumerate((*COURSE_FIELDS, "group", "time_slots")):
             ttk.Label(frame, text=labels[name]).grid(row=index, column=0, sticky="w", padx=(8, 6), pady=7)
             value = tk.StringVar(value=str(self.existing.get(name) or ""))
             entry = ttk.Entry(frame, textvariable=value, width=42)
@@ -33,8 +35,8 @@ class CourseDialog(simpledialog.Dialog):
             self.values[name] = value
             if first is None:
                 first = entry
-        ttk.Label(frame, text="至少提供课程代码、课程名称或教师；相同课程可用教学班编号区分。",
-                  foreground="#666", wraplength=360).grid(row=len(COURSE_FIELDS), column=0,
+        ttk.Label(frame, text="节次示例：1:1-2;3:5-6（周一第1–2节，周三第5–6节）。\n同组仅表示候选备选关系；冲突检查只是人工录入的初筛。",
+                  foreground="#666", wraplength=370).grid(row=len(COURSE_FIELDS)+2, column=0,
                                                         columnspan=2, sticky="w", padx=8, pady=(6, 10))
         return first
 
@@ -56,7 +58,7 @@ class SettingsEditor(tk.Toplevel):
         validate(config, check_only=True)
         super().__init__(parent)
         self.title("编辑课程与监测设置（仅本机）")
-        self.geometry("800x590")
+        self.geometry("900x630")
         self.minsize(690, 510)
         self.transient(parent)
         self.path = path
@@ -74,6 +76,7 @@ class SettingsEditor(tk.Toplevel):
         self.interval_low.trace_add("write", self._on_interval_edited)
         self.interval_high.trace_add("write", self._on_interval_edited)
         self.max_cycles = tk.StringVar(value=str(strategy["max_cycles"]))
+        self.max_duration_minutes = tk.StringVar(value=str(strategy.get("max_duration_minutes", 480)))
         self._build()
         self.refresh_table()
         self.grab_set()
@@ -94,7 +97,8 @@ class SettingsEditor(tk.Toplevel):
             ("计划检查时间", self.target_time, 0, 2),
             ("间隔下限（秒）", self.interval_low, 3, 0),
             ("间隔上限（秒）", self.interval_high, 3, 2),
-            ("最多查询次数", self.max_cycles, 4, 0),
+            ("最多查询次数（0=持续）", self.max_cycles, 4, 0),
+            ("最长监测分钟", self.max_duration_minutes, 4, 2),
         ]
         ttk.Label(settings, text="查询模式").grid(row=1, column=0, sticky="w", pady=5)
         ttk.Combobox(settings, textvariable=self.mode,
@@ -119,7 +123,7 @@ class SettingsEditor(tk.Toplevel):
                   foreground="#666", wraplength=720).grid(
                       row=5, column=0, columnspan=4, sticky="w", pady=(7, 2))
 
-        wrapper = ttk.LabelFrame(outer, text="目标课程（1–30 门）", padding=8)
+        wrapper = ttk.LabelFrame(outer, text="目标课程（离线草稿允许 0–30 门）", padding=8)
         wrapper.pack(fill="both", expand=True, pady=(12, 6))
         self.table = ttk.Treeview(wrapper, columns=("key", "code", "class", "name", "teacher"), show="headings", height=8)
         for name, label, width in (("key", "志愿", 80), ("code", "课程代码", 140),
@@ -136,6 +140,7 @@ class SettingsEditor(tk.Toplevel):
         ttk.Button(buttons, text="新增课程", command=self.add_course).pack(side="left", padx=(0, 7))
         ttk.Button(buttons, text="编辑所选", command=self.edit_course).pack(side="left", padx=(0, 7))
         ttk.Button(buttons, text="删除所选", command=self.remove_course).pack(side="left")
+        ttk.Button(buttons, text="检查节次冲突", command=self.check_conflicts).pack(side="left", padx=10)
         ttk.Button(buttons, text="取消", command=self.destroy).pack(side="right")
         ttk.Button(buttons, text="保存到配置文件", command=self.save).pack(side="right", padx=8)
         ttk.Label(outer, text="保存时会清除 YAML 中的 Cookie 和推送令牌。若需使用，应通过环境变量提供。",
@@ -186,11 +191,27 @@ class SettingsEditor(tk.Toplevel):
     def remove_course(self):
         i = self.selection()
         if i is not None:
-            if len(self.courses) == 1:
-                messagebox.showwarning("至少保留一门", "请至少配置一门目标课程。", parent=self)
-                return
             self.courses.pop(i)
             self.refresh_table()
+
+    def check_conflicts(self):
+        try:
+            collisions, missing = find_conflicts(self.courses)
+        except ValueError as exc:
+            messagebox.showerror("节次录入错误", str(exc), parent=self)
+            return
+        lines = []
+        if collisions:
+            for clash in collisions[:10]:
+                lines.append(f"{clash.first_key} 与 {clash.second_key}：周{clash.day}第{clash.first_period}-{clash.last_period}节")
+            if len(collisions) > 10:
+                lines.append(f"另有 {len(collisions) - 10} 项未展示")
+        else:
+            lines.append("已录入的不同备选组课程之间未发现节次重叠。")
+        if missing:
+            lines.append("未录入节次（未检查）：" + "、".join(missing[:15]))
+        lines.append("仅依据本机手动填写的节次，不涵盖单双周、调课和学校规则。")
+        messagebox.showinfo("本地课程冲突初筛", "\n".join(lines), parent=self)
 
     def save(self):
         try:
@@ -200,7 +221,8 @@ class SettingsEditor(tk.Toplevel):
                 self.config_data, courses=self.courses, semester=self.semester.get(),
                 mode=self.mode.get(), target_time=self.target_time.get(),
                 interval_low=interval_low, interval_high=interval_high,
-                max_cycles=int(self.max_cycles.get()))
+                max_cycles=int(self.max_cycles.get()),
+                max_duration_minutes=int(self.max_duration_minutes.get()))
             redacted = save_config_atomic(self.path, revised)
         except (ValueError, OSError, KeyError) as exc:
             messagebox.showerror("无法保存", str(exc), parent=self)

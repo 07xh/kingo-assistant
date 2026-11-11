@@ -10,9 +10,9 @@ from unittest.mock import patch
 from core.desktop_settings import (INTERVAL_CUSTOM, INTERVAL_PRESETS,
                                    interval_preset_for, parse_interval_range,
                                    quick_copy_value,
-                                   load_config, normalize_course, resolve_state_file,
-                                   save_config_atomic, scrub_secrets,
-                                   status_changes, update_config)
+                                   load_config, normalize_course,
+                                   resolve_state_file, save_config_atomic,
+                                   scrub_secrets, status_changes, update_config)
 from windows_gui import bundled_config
 
 
@@ -41,13 +41,13 @@ class DesktopSettingsTest(unittest.TestCase):
 
     def test_invalid_courses_and_limits_rejected(self):
         bad_cases = (
-            {'courses': []},
+            {'courses': [{'key':'A'}]},
             {'courses': [{'key': 'x'}]},
             {'courses': [{'key': 'x', 'course_id': 'A'}, {'key': 'x', 'course_id': 'B'}]},
             {'courses': [{'key': 'A\nB', 'course_id': 'TEST'}]},
             {'interval_low': 1},
             {'interval_low': 120, 'interval_high': 60},
-            {'max_cycles': 101},
+            {'max_cycles': 10001},
             {'mode': 'invented'},
             {'semester': ''},
             {'target_time': 'invalid', 'mode': 'burst'},

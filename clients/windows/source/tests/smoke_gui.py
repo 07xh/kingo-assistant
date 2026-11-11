@@ -31,6 +31,16 @@ def main():
                 app.demo_next()  # Replays from snapshot 1, not a fourth fake sample.
                 assert app.table.set('target-B', 'status') == '虚构样例：已满'
             app.check_config()  # Restores user's configured table, not fictional data.
+            with patch('windows_gui.messagebox.showinfo') as preflight_dialog:
+                app.preflight()
+            assert '阻止启动' in preflight_dialog.call_args.args[1]
+            with patch('windows_gui.messagebox.showwarning') as warning, \
+                 patch('windows_gui.MonitorWorker', side_effect=AssertionError('network worker started')):
+                app.start_monitor()
+            warning.assert_called_once()
+            assert app.worker is None
+            assert '无法启动' in app.status.get()
+            app.check_config()
             assert len(app.table.get_children()) == 2
             assert app.table.set('A', 'course') == 'FILL_FROM_OFFICIAL_PAGE'
             app.table.selection_set('A')
