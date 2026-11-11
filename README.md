@@ -49,6 +49,13 @@ Windows V5.2 adds an **official-site appointment**: after you enter a personally
 - `docs/acceptance/` — evidence and acceptance gates.
 - `.github/workflows/windows-build.yml` — native Windows build and packaged-EXE verification.
 
+## Windows desktop behavior (tray / simplified UI)
+
+- Closing the main window **minimizes to the Windows system tray** if the native tray backend is available. The running read-only monitor and one-shot official-browser appointment are not canceled by that action.
+- Use the tray menu **显示主窗口** to restore the UI and **完全退出** to stop tasks and exit. If the tray backend cannot initialize, the application minimizes to the normal taskbar instead of becoming invisible.
+- The main screen separates course plans and **只读监测** from the **手动辅助** menu (official-site opening / copied course codes) and **离线工具**. Advanced YAML controls are hidden under **程序 → 显示/隐藏高级配置**; read-only polling knobs are collapsed by default in the course editor.
+- These UI improvements **do not enable automated school enrollment**. The NCWU live submission adapter is still unverified and disabled. Tray background operation also requires Windows to stay awake; it is not a background service or a reboot-persistent appointment.
+
 ## Windows build
 
 1. Open the **Actions** tab.
