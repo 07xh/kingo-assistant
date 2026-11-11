@@ -33,10 +33,11 @@ from core.scheduler import Scheduler
 from core.preflight import inspect_readiness, split_checks, format_checks
 from core.offline_selftest import run_selftest
 from core.offline_benchmark import format_benchmark, run_offline_benchmark
+from core.official_portal_schedule import OfficialPortalAppointment, prepare_appointment, format_countdown
 from core.time_sync import TimeSync
 from main import _read_local_html, validate
 
-APP_TITLE = "青果选课辅助 · Windows V5.1（自动执行核心待接入官方接口）"
+APP_TITLE = "青果选课辅助 · Windows V5.2（官网备战辅助版）"
 OFFICIAL_PORTAL = "https://jwmis.ncwu.edu.cn"  # Confirmed by school notices; NOT an API endpoint.
 
 
@@ -188,6 +189,8 @@ class Application(tk.Tk):
         self._demo_index = 0
         self._closing = False
         self._benchmark_in_progress = False
+        self._official_portal_appointment: OfficialPortalAppointment | None = None
+        self.portal_appointment_status = tk.StringVar(value="官网预约未启动（与自动提交无关）")
         self.path = tk.StringVar(value=str(ensure_config()))
         self.status = tk.StringVar(value="未启动｜本机离线检查可直接使用")
         self._build()
@@ -205,7 +208,7 @@ class Application(tk.Tk):
     def _build(self) -> None:
         top = ttk.Frame(self, padding=(16, 14))
         top.pack(fill="x")
-        ttk.Label(top, text="青果选课辅助 · Windows V5.1", font=("Microsoft YaHei UI", 16, "bold")).pack(anchor="w")
+        ttk.Label(top, text="青果选课辅助 · Windows V5.2", font=("Microsoft YaHei UI", 16, "bold")).pack(anchor="w")
         ttk.Label(top, text="本机独立运行｜当前只读监测｜自动执行核心已加入，官方接口待验收", foreground="#666").pack(anchor="w", pady=(4, 0))
 
         cfg = ttk.Frame(self, padding=(16, 6))
@@ -234,6 +237,18 @@ class Application(tk.Tk):
         self.stop_button = ttk.Button(actions, text="停止", command=self.stop_monitor, state="disabled")
         self.stop_button.pack(side="left")
         ttk.Button(actions, text="浏览器打开官方教务", command=self.open_official_portal).pack(side="right")
+
+        portal_row = ttk.Frame(self, padding=(16, 0))
+        portal_row.pack(fill="x")
+        self.portal_appointment_button = ttk.Button(
+            portal_row, text="预约按时打开官网（辅助）",
+            command=self.toggle_portal_appointment,
+        )
+        self.portal_appointment_button.pack(side="left", padx=(0, 8))
+        ttk.Label(
+            portal_row, textvariable=self.portal_appointment_status,
+            foreground="#666", wraplength=650,
+        ).pack(side="left", fill="x", expand=True)
 
         ttk.Label(self, textvariable=self.status, padding=(16, 6)).pack(fill="x")
         frame = ttk.LabelFrame(self, text="目标课程（必须根据官方页面核对；以下数据不代表实时）", padding=8)
@@ -349,6 +364,61 @@ class Application(tk.Tk):
         """One deliberate action: copy exact course ID and launch official login page."""
         if self.copy_selected_field("course_id"):
             self.open_official_portal()
+
+    def toggle_portal_appointment(self) -> None:
+        """Schedule the official browser page only; never submit enrollment."""
+        if self._official_portal_appointment is not None:
+            self._official_portal_appointment = None
+            self.portal_appointment_button.configure(text="预约按时打开官网（辅助）")
+            self.portal_appointment_status.set("官网预约已取消")
+            self.log("已取消本机官网预约；不会打开任何学校页面。")
+            return
+        try:
+            config = read_config(Path(self.path.get()), offline=True)
+            appointment = prepare_appointment(config, now_epoch=time.time())
+        except (ValueError, KeyError, OSError) as exc:
+            self.portal_appointment_status.set("官网预约未启动｜需补齐时间和真实课程")
+            messagebox.showwarning("官网预约条件不满足", str(exc))
+            return
+        if not messagebox.askyesno(
+            "确认预约官方入口（不是自动提交）",
+            f"预约时间（北京时间）：{appointment.local_start}\n"
+            f"已填写的真实课程志愿：{appointment.target_count} 门。\n\n"
+            "注意：配置模板中的日期和时刻不是官方确认的开放时刻。"
+            "请先核对学校针对本人年级及校区的最新专项通知。\n\n"
+            "软件必须保持运行，届时只会打开华水教务官网。"
+            "登录、查找教学班、提交和最终核验仍须在官方页面完成。\n\n"
+            "确认你已核对准确时间并开始预约？",
+        ):
+            return
+        self._official_portal_appointment = appointment
+        self.portal_appointment_button.configure(text="取消官网预约")
+        self.portal_appointment_status.set(
+            f"官网预约：{appointment.local_start}（北京时间）；仅打开官方页面"
+        )
+        self.log("已预约按时打开官方教务入口；未联网检查，也不会自动提交。")
+
+    def _tick_portal_appointment(self) -> None:
+        """Called on Tk's event loop; no extra threads or school requests."""
+        appointment = self._official_portal_appointment
+        if appointment is None or self._closing:
+            return
+        now = time.time()
+        if appointment.is_due(now):
+            self._official_portal_appointment = None  # at most one browser launch
+            self.portal_appointment_button.configure(text="预约按时打开官网（辅助）")
+            self.portal_appointment_status.set(
+                "已到预约时间，已尝试打开官网；请在官方页面确认选课"
+            )
+            self.bell()
+            self.open_official_portal()
+            self.log("计划时刻已到；仅执行了一次打开官网操作，不代表成功选课。")
+            return
+        remaining = appointment.seconds_remaining(now)
+        self.portal_appointment_status.set(
+            f"官网预约倒计时：{format_countdown(remaining)}"
+            "｜须保持程序运行，按官方通知核对开放时刻"
+        )
 
     def open_official_portal(self) -> None:
         """Open the published school portal in the system browser, not by HTTPX.
@@ -572,6 +642,7 @@ class Application(tk.Tk):
             self.stop_button.configure(state="disabled")
 
     def poll(self) -> None:
+        self._tick_portal_appointment()
         try:
             while True:
                 event = self.events.get_nowait()
@@ -625,6 +696,7 @@ class Application(tk.Tk):
             self.after(300, self.poll)
 
     def close(self) -> None:
+        self._official_portal_appointment = None
         if self.worker:
             self._closing = True
             self.status.set("正在安全停止后台任务并关闭窗口…")

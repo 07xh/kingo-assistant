@@ -6,7 +6,7 @@ KingoAssistant is an independent personal course-selection assistant for the NCW
 
 ## Current status
 
-- **Windows:** V5.1 includes local course plans, editable priority order, preflight checks, read-only monitoring, and a hardened fail-closed automatic-enrollment state machine.
+- **Windows:** V5.2 builds on V5.1 and includes local course plans, editable priority order, preflight checks, read-only monitoring, and a hardened fail-closed automatic-enrollment state machine.
 - **Windows verification:** V5.1 with the scheduled window runner passed 161 offline tests, a native Windows EXE build, the packaged offline self-test, and the native Tk GUI smoke test.
 - **Latest successful V5.1 build:** [Windows standalone EXE workflow](https://github.com/07xh/kingo-assistant/actions/runs/42995506355).
 - **Android:** planned separately; no APK is implemented or released.
@@ -28,6 +28,10 @@ The engine requires all of the following before a school adapter can be used:
 The 2026-11-11 HAR included an explicit “current time is not a valid selection window” response. Timetable data and `zxinfo.zxxq` records are not an elective catalog or seat count. See [the sanitized HAR audit](docs/acceptance/ncwu-xiqueer-har-2026-11-11.md) and [the execution architecture](docs/architecture/automatic-enrollment.md).
 
 A separate scheduled runner now waits for the configured start time and checks only the official selection-window state at a bounded 60–3600 second interval. It is offline-tested but not yet connected to the Windows UI or a live NCWU adapter; see [scheduled-runner design](docs/architecture/scheduled-enrollment.md).
+
+## Official browser fallback for the next selection round
+
+Windows V5.2 adds an **official-site appointment**: after you enter a personally confirmed opening time, the running app counts down and opens the fixed official NCWU page once. You can copy your stored first-choice course code, move between ordered alternatives, and submit through the official website. This does **not** submit automatically or claim a verified live selection interface. Keep the computer awake and the client running; see [official-site fallback guide](docs/acceptance/official-portal-appointment.md).
 
 ## Windows client
 
