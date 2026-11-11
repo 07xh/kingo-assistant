@@ -6,8 +6,10 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import messagebox, simpledialog, ttk
 
-from core.desktop_settings import (COURSE_FIELDS, load_config, normalize_course,
-                                   save_config_atomic, update_config)
+from core.desktop_settings import (COURSE_FIELDS, INTERVAL_CUSTOM, INTERVAL_PRESETS,
+                                   interval_preset_for, parse_interval_range,
+                                   load_config, normalize_course, save_config_atomic,
+                                   update_config)
 from main import validate
 
 
@@ -67,6 +69,10 @@ class SettingsEditor(tk.Toplevel):
         self.target_time = tk.StringVar(value=str(strategy["target_time"]))
         self.interval_low = tk.StringVar(value=str(strategy["interval_range"][0]))
         self.interval_high = tk.StringVar(value=str(strategy["interval_range"][1]))
+        self.interval_preset = tk.StringVar(value=interval_preset_for(
+            self.interval_low.get(), self.interval_high.get()))
+        self.interval_low.trace_add("write", self._on_interval_edited)
+        self.interval_high.trace_add("write", self._on_interval_edited)
         self.max_cycles = tk.StringVar(value=str(strategy["max_cycles"]))
         self._build()
         self.refresh_table()
@@ -86,9 +92,9 @@ class SettingsEditor(tk.Toplevel):
         fields = [
             ("学年学期", self.semester, 0, 0),
             ("计划检查时间", self.target_time, 0, 2),
-            ("间隔下限（秒）", self.interval_low, 2, 0),
-            ("间隔上限（秒）", self.interval_high, 2, 2),
-            ("最多查询次数", self.max_cycles, 3, 0),
+            ("间隔下限（秒）", self.interval_low, 3, 0),
+            ("间隔上限（秒）", self.interval_high, 3, 2),
+            ("最多查询次数", self.max_cycles, 4, 0),
         ]
         ttk.Label(settings, text="查询模式").grid(row=1, column=0, sticky="w", pady=5)
         ttk.Combobox(settings, textvariable=self.mode,
@@ -96,10 +102,22 @@ class SettingsEditor(tk.Toplevel):
                          row=1, column=1, sticky="ew", padx=6, pady=5)
         ttk.Label(settings, text="monitor=低频监测；burst=到点只查询一次，不会自动选课。",
                   foreground="#666").grid(row=1, column=2, columnspan=2, sticky="w", padx=6)
+        ttk.Label(settings, text="监测间隔方案").grid(row=2, column=0, sticky="w", pady=5)
+        presets = ttk.Combobox(settings, textvariable=self.interval_preset,
+                               values=(*INTERVAL_PRESETS, INTERVAL_CUSTOM),
+                               state="readonly", width=22)
+        presets.grid(row=2, column=1, sticky="ew", padx=6, pady=5)
+        presets.bind("<<ComboboxSelected>>", self._apply_interval_preset)
+        ttk.Label(settings, text="60–3600 秒；直接修改数字即可自定义。",
+                  foreground="#666").grid(row=2, column=2, columnspan=2,
+                                           sticky="w", padx=6)
         for label, var, row, col in fields:
             ttk.Label(settings, text=label).grid(row=row, column=col, sticky="w", pady=5)
             ttk.Entry(settings, textvariable=var, width=23).grid(
                 row=row, column=col + 1, sticky="ew", padx=6, pady=5)
+        ttk.Label(settings, text="60 秒是客户端最短间隔，不是学校许可上限；若校方要求更长间隔，请遵守官方规定。课程查询仍为单链路，不提供并发请求爆发。",
+                  foreground="#666", wraplength=720).grid(
+                      row=5, column=0, columnspan=4, sticky="w", pady=(7, 2))
 
         wrapper = ttk.LabelFrame(outer, text="目标课程（1–30 门）", padding=8)
         wrapper.pack(fill="both", expand=True, pady=(12, 6))
@@ -123,6 +141,17 @@ class SettingsEditor(tk.Toplevel):
         ttk.Label(outer, text="保存时会清除 YAML 中的 Cookie 和推送令牌。若需使用，应通过环境变量提供。",
                   foreground="#666", wraplength=730).pack(anchor="w")
         self.table.bind("<Double-1>", lambda _: self.edit_course())
+
+    def _on_interval_edited(self, *_):
+        self.interval_preset.set(interval_preset_for(
+            self.interval_low.get(), self.interval_high.get()))
+
+    def _apply_interval_preset(self, _event=None):
+        choice = self.interval_preset.get()
+        if choice in INTERVAL_PRESETS:
+            low, high = INTERVAL_PRESETS[choice]
+            self.interval_low.set(str(low))
+            self.interval_high.set(str(high))
 
     def refresh_table(self):
         self.table.delete(*self.table.get_children())
@@ -165,11 +194,12 @@ class SettingsEditor(tk.Toplevel):
 
     def save(self):
         try:
+            interval_low, interval_high = parse_interval_range(
+                self.interval_low.get(), self.interval_high.get())
             revised = update_config(
                 self.config_data, courses=self.courses, semester=self.semester.get(),
                 mode=self.mode.get(), target_time=self.target_time.get(),
-                interval_low=int(self.interval_low.get()),
-                interval_high=int(self.interval_high.get()),
+                interval_low=interval_low, interval_high=interval_high,
                 max_cycles=int(self.max_cycles.get()))
             redacted = save_config_atomic(self.path, revised)
         except (ValueError, OSError, KeyError) as exc:

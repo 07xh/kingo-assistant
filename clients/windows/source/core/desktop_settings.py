@@ -17,6 +17,38 @@ import yaml
 
 MAX_CONFIG_SIZE = 256 * 1024
 COURSE_FIELDS = ("key", "course_id", "class_id", "course_name", "teacher")
+# Local app safety bounds; not a measured or authorized school rate limit.
+INTERVAL_MIN_SECONDS = 60
+INTERVAL_MAX_SECONDS = 3600
+INTERVAL_PRESETS = {
+    "最快（60 秒）": (60, 60),
+    "均衡（120 秒）": (120, 120),
+    "低频（300 秒）": (300, 300),
+}
+INTERVAL_CUSTOM = "自定义区间"
+
+
+def interval_preset_for(low, high) -> str:
+    """Identify presets without modifying a custom interval."""
+    for name, pair in INTERVAL_PRESETS.items():
+        if str(low).strip() == str(pair[0]) and str(high).strip() == str(pair[1]):
+            return name
+    return INTERVAL_CUSTOM
+
+
+def parse_interval_range(low: str, high: str) -> tuple[int, int]:
+    """Parse GUI interval inputs strictly as integer seconds."""
+    try:
+        lower, upper = low.strip(), high.strip()
+        if not (lower.isascii() and upper.isascii() and
+                lower.isdecimal() and upper.isdecimal()):
+            raise ValueError
+        start, end = int(lower), int(upper)
+    except (ValueError, AttributeError) as error:
+        raise ValueError("查询间隔请输入整数秒（60–3600）") from error
+    if not (INTERVAL_MIN_SECONDS <= start <= end <= INTERVAL_MAX_SECONDS):
+        raise ValueError("查询间隔须满足 60 ≤ 下限 ≤ 上限 ≤ 3600 秒；并遵守学校更严格的规定")
+    return start, end
 
 
 def load_config(path: Path) -> dict:
