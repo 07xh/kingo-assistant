@@ -214,7 +214,7 @@ class ControlledEnrollmentTests(unittest.TestCase):
         stopped = self.execute(self.engine(second), [self.target])
         self.assertTrue(stopped.halted)
         self.assertEqual(second.writes, [])
-        self.assertIn("既往提交", stopped.states["A"])
+        self.assertIn("未核实提交", stopped.states["A"])
         # Official confirmation later: resolve the fence without a write.
         second.enrolled.add(("C1", "K1"))
         recovered = self.execute(self.engine(second), [self.target])
