@@ -9,6 +9,7 @@ from core.enrollment import (
     SubmitReceipt, Target, WindowState,
 )
 from core.enrollment_schedule import ScheduledEnrollmentRunner
+from core.course_models import ScheduleSnapshot
 
 
 class FakeClock:
@@ -28,6 +29,7 @@ class FakeGateway:
     official_window_verified = True
     official_write_verified = True
     account_scope = "schedule-account"
+    enrollment_semester = "2026-2027-1"
 
     def __init__(self, windows):
         self.windows = list(windows)
@@ -46,7 +48,11 @@ class FakeGateway:
 
     async def list_offerings(self):
         self.catalog_calls += 1
-        return [Offering("C1", "K1", 1)]
+        return [Offering("C1", "K1", 1, semester=self.enrollment_semester,
+                         time_slots=())]
+
+    async def read_schedule(self):
+        return ScheduleSnapshot(self.enrollment_semester, (), True)
 
     async def submit_once(self, target):
         self.writes.append(target)

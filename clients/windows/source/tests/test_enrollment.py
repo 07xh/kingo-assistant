@@ -1,14 +1,16 @@
 """Offline-only tests for automatic enrollment safety and priority flow."""
 import asyncio
 import json
+from dataclasses import replace
 from pathlib import Path
 import tempfile
 import unittest
 
 from core.enrollment import (
     AttemptJournal, EnrollmentEngine, EnrollmentNotReady,
-    Offering, SubmitReceipt, Target, WindowState,
+    Offering, SubmitReceipt, Target, WindowState, VerificationPolicy,
 )
+from core.course_models import ScheduleSnapshot
 
 
 class FakeOfficialGateway:
@@ -17,6 +19,7 @@ class FakeOfficialGateway:
     official_window_verified = True
     official_write_verified = True
     account_scope = "synthetic-account-A"
+    enrollment_semester = "2026-2027-1"
 
     def __init__(self, offerings, *, result="confirm", enrolled=None,
                  window_states=None, responses=None, offering_snapshots=None):
@@ -46,8 +49,17 @@ class FakeOfficialGateway:
         index = self.catalog_calls
         self.catalog_calls += 1
         if self.offering_snapshots:
-            return self.offering_snapshots[min(index, len(self.offering_snapshots) - 1)]
-        return self.offerings
+            rows = self.offering_snapshots[min(index, len(self.offering_snapshots) - 1)]
+        else:
+            rows = self.offerings
+        # Only synthetic fixtures assign known empty teaching schedules.
+        # Real adapters must never invent unknown semester/time data.
+        return [replace(row, semester=self.enrollment_semester,
+                        time_slots=() if row.time_slots is None else row.time_slots)
+                for row in rows]
+
+    async def read_schedule(self):
+        return ScheduleSnapshot(self.enrollment_semester, (), True)
 
     async def submit_once(self, target):
         self.writes.append(target)
@@ -80,7 +92,9 @@ class AutomaticEnrollmentTest(unittest.TestCase):
     def engine(self, fake, *, opt_in=True, permission=True, journal=None):
         return EnrollmentEngine(fake, journal or self.journal,
                                 user_opted_in=opt_in,
-                                institution_permits_write=permission)
+                                institution_permits_write=permission,
+                                verification_policy=VerificationPolicy(
+                                    max_reads=3, interval_seconds=0))
 
     def run_engine(self, engine, targets=None):
         return asyncio.run(engine.run(targets or [self.a]))

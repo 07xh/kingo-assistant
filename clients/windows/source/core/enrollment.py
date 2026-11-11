@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import base64
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 import hashlib
 import hmac
@@ -23,6 +23,11 @@ import secrets
 import tempfile
 import threading
 from typing import Protocol, Sequence
+
+from core.course_models import (
+    CourseTarget as Target, CourseOffering as Offering,
+)
+from core.enrollment_state import Transition
 
 
 JOURNAL_VERSION = 2
@@ -44,21 +49,6 @@ class WindowState(str, Enum):
 
 
 @dataclass(frozen=True)
-class Target:
-    key: str
-    course_id: str
-    class_id: str
-    group: str = ""
-
-
-@dataclass(frozen=True)
-class Offering:
-    course_id: str
-    class_id: str
-    remain: int | None
-
-
-@dataclass(frozen=True)
 class SubmitReceipt:
     """Transport acknowledgement is not proof of enrollment."""
 
@@ -73,6 +63,7 @@ class SubmitReceipt:
 class RunReport:
     states: dict[str, str]
     halted: bool
+    transitions: dict[str, tuple[Transition, ...]] = field(default_factory=dict)
 
 
 class VerifiedGateway(Protocol):
@@ -84,10 +75,12 @@ class VerifiedGateway(Protocol):
     official_write_verified: bool
     # Stable, non-PII account scope, used only as HMAC input and never persisted.
     account_scope: str
+    enrollment_semester: str
 
     async def selection_window(self) -> WindowState: ...
     async def read_enrollments(self) -> set[tuple[str, str]]: ...
     async def list_offerings(self) -> Sequence[Offering]: ...
+    async def read_schedule(self): ...
     async def submit_once(self, target: Target) -> SubmitReceipt: ...
 
 
@@ -236,6 +229,11 @@ class AttemptJournal:
     def was_attempted(self, target: Target) -> bool:
         return self.status(target) is not None
 
+    def unresolved_fingerprints(self) -> set[str]:
+        data = self._read()
+        return {fingerprint for fingerprint, status in data["attempts"].items()
+                if status == "pending"} | set(data["legacy_attempts"])
+
     def reserve_before_write(self, target: Target) -> None:
         data = self._read()
         fingerprint = self._fingerprint(target, data)
@@ -332,7 +330,7 @@ class AttemptJournal:
                 local_lock.release()
 
 
-def _validate_targets(targets: Sequence[Target]) -> None:
+def _validate_targets(targets: Sequence[Target], semester: str | None = None) -> None:
     if not 1 <= len(targets) <= 30:
         raise ValueError("自动选课需要 1–30 条明确目标")
     keys = set()
@@ -340,6 +338,8 @@ def _validate_targets(targets: Sequence[Target]) -> None:
     for item in targets:
         if not isinstance(item, Target):
             raise ValueError("选课目标类型错误")
+        if semester and item.semester and item.semester != semester:
+            raise ValueError("选课目标学期不一致")
         fields = (item.key, item.course_id, item.class_id)
         if any(not isinstance(x, str) or not x.strip() or x != x.strip()
                or len(x) > 100 or any(ord(ch) < 32 for ch in x) for x in fields):
@@ -380,15 +380,32 @@ def _validate_catalog(records) -> list[Offering]:
     return result
 
 
+@dataclass(frozen=True, slots=True)
+class VerificationPolicy:
+    """Bounded read-only result verification; never a write retry."""
+    max_reads: int = 3
+    interval_seconds: float = 60.0
+
+    def __post_init__(self) -> None:
+        if type(self.max_reads) is not int or not 1 <= self.max_reads <= 5:
+            raise ValueError("核验次数需为 1–5")
+        if (type(self.interval_seconds) not in (float, int)
+                or not 0 <= self.interval_seconds <= 3600):
+            raise ValueError("核验间隔无效")
+
+
 class EnrollmentEngine:
-    """Serial priority/fallback state machine with official-window gating."""
+    """V5.1-capability-gated engine with V2 FSM flow (offline only)."""
 
     def __init__(self, gateway: VerifiedGateway, journal: AttemptJournal,
-                 *, user_opted_in: bool = False, institution_permits_write: bool = False):
+                 *, user_opted_in: bool = False,
+                 institution_permits_write: bool = False,
+                 verification_policy: VerificationPolicy | None = None):
         self.gateway = gateway
         self.journal = journal
         self.user_opted_in = user_opted_in
         self.institution_permits_write = institution_permits_write
+        self.verification_policy = verification_policy or VerificationPolicy()
 
     def _gate(self) -> None:
         capabilities = (
@@ -406,125 +423,15 @@ class EnrollmentEngine:
             raise EnrollmentNotReady("用户授权、学校许可及目录/窗口/已选/写入接口验收必须全部通过")
 
     def validate_ready(self) -> None:
-        """Public preflight for a scheduler; performs no network request."""
+        """Public, network-free V5.1 readiness gate for scheduled runner."""
         self._gate()
 
     async def _window(self) -> WindowState:
         state = await self.gateway.selection_window()
-        if not isinstance(state, WindowState):
-            return WindowState.UNKNOWN
-        return state
+        return state if isinstance(state, WindowState) else WindowState.UNKNOWN
 
     async def run(self, targets: Sequence[Target]) -> RunReport:
-        targets = list(targets)
-        _validate_targets(targets)
-        self.validate_ready()
-        states = {t.key: "未执行" for t in targets}
-
-        with self.journal.exclusive():
-            # The HAR observed an explicit "not a valid selection window" gate.
-            # The official window must be OPEN before catalog or write work begins.
-            try:
-                window = await self._window()
-                if window is not WindowState.OPEN:
-                    label = "学校选课窗口未开放" if window is WindowState.CLOSED else "无法确认学校选课窗口"
-                    return RunReport({t.key: label for t in targets}, True)
-                enrolled = _read_records(await self.gateway.read_enrollments())
-                catalog = _validate_catalog(await self.gateway.list_offerings())
-            except Exception:
-                return RunReport({t.key: "无法确认官方状态" for t in targets}, True)
-
-            satisfied = {t.group for t in targets if t.group
-                         and any(course_id == t.course_id for course_id, _ in enrolled)}
-            refresh_catalog = False
-
-            for target in targets:
-                identity = (target.course_id, target.class_id)
-                journal_state = self.journal.status(target)
-
-                if identity in enrolled:
-                    if journal_state in ("pending", "rejected", "legacy_pending"):
-                        self.journal.record_confirmed(target)
-                    states[target.key] = "已在官方选课记录中"
-                    if target.group:
-                        satisfied.add(target.group)
-                    continue
-
-                if journal_state in ("pending", "legacy_pending"):
-                    states[target.key] = "存在未核实提交，禁止自动重发"
-                    return RunReport(states, True)
-                if journal_state == "confirmed":
-                    states[target.key] = "历史确认与当前官方记录不一致"
-                    return RunReport(states, True)
-                if journal_state == "rejected":
-                    states[target.key] = "此前已明确拒绝，跳过重复提交"
-                    continue
-
-                # Refresh group satisfaction from the latest official records,
-                # including enrollments in another teaching class of this course.
-                if target.group and any(course_id == target.course_id for course_id, _ in enrolled):
-                    satisfied.add(target.group)
-                if target.group and target.group in satisfied:
-                    states[target.key] = "同组志愿已有成功课程"
-                    continue
-                if any(course_id == target.course_id for course_id, _ in enrolled):
-                    states[target.key] = "该课程已有其他教学班，跳过"
-                    continue
-
-                if refresh_catalog:
-                    try:
-                        catalog = _validate_catalog(await self.gateway.list_offerings())
-                    except Exception:
-                        states[target.key] = "无法刷新官方目录"
-                        return RunReport(states, True)
-                    refresh_catalog = False
-
-                matches = [item for item in catalog
-                           if (item.course_id, item.class_id) == identity]
-                if len(matches) != 1:
-                    states[target.key] = "未找到唯一教学班"
-                    continue
-                if matches[0].remain is None:
-                    states[target.key] = "真实余量未知"
-                    continue
-                if matches[0].remain == 0:
-                    states[target.key] = "暂无余量"
-                    continue
-
-                # Re-check the official window immediately before every write.
-                try:
-                    window = await self._window()
-                except Exception:
-                    window = WindowState.UNKNOWN
-                if window is not WindowState.OPEN:
-                    states[target.key] = ("学校选课窗口已关闭" if window is WindowState.CLOSED
-                                          else "提交前无法确认学校选课窗口")
-                    return RunReport(states, True)
-
-                # Persist a pending intent before the only allowed submission.
-                self.journal.reserve_before_write(target)
-                try:
-                    receipt = await self.gateway.submit_once(target)
-                    if not isinstance(receipt, SubmitReceipt):
-                        raise ValueError("写入确认响应结构异常")
-                    enrolled = _read_records(await self.gateway.read_enrollments())
-                except Exception:
-                    states[target.key] = "写入结果不确定，已停止防止重复提交"
-                    return RunReport(states, True)
-
-                if identity in enrolled:
-                    self.journal.record_confirmed(target)
-                    states[target.key] = "官方记录已确认成功"
-                    if target.group:
-                        satisfied.add(target.group)
-                elif receipt.accepted is False:
-                    self.journal.record_rejected(target)
-                    states[target.key] = "官方明确拒绝本次提交"
-                    # A confirmed rejection can move to the next preference,
-                    # but refresh the catalog first to avoid relying on stale seats.
-                    refresh_catalog = True
-                else:
-                    states[target.key] = "官方记录未确认，已停止防止重复提交"
-                    return RunReport(states, True)
-
-        return RunReport(states, False)
+        # Single engine entry point. Flow is split out for focused FSM testing;
+        # it retains this module's V5.1 HMAC journal, lock and official gates.
+        from core.enrollment_flow import run_enrollment
+        return await run_enrollment(self, targets)
