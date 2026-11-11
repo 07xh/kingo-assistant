@@ -27,6 +27,7 @@ from core.demo import DemoReport, run_demo
 from desktop_editor import SettingsEditor
 from core.inspector import inspect_html
 from core.har_audit import summarize_har, format_summary
+from tools.catalog_evidence import inspect_local_file
 from core.scheduler import Scheduler
 from core.preflight import inspect_readiness
 from core.offline_selftest import run_selftest
@@ -189,6 +190,7 @@ class Application(tk.Tk):
         menu = tk.Menu(self)
         tools_menu = tk.Menu(menu, tearoff=False)
         tools_menu.add_command(label="本机 HAR 结构检查（脱敏统计）", command=self.audit_local_har)
+        tools_menu.add_command(label="选课目录证据对照（离线 JSON）", command=self.review_catalog_evidence)
         menu.add_cascade(label="离线工具", menu=tools_menu)
         self.configure(menu=menu)
         self.after(300, self.poll)
@@ -383,6 +385,34 @@ class Application(tk.Tk):
             self.log(f"本机 HAR 结构统计完成：包含 {summary.matching_school_origin} 条华水 HTTPS 请求；未连接学校。")
         except (OSError, ValueError):
             messagebox.showerror("HAR 检查失败", "文件结构无效、文件过大或无法读取；请勿上传未经脱敏的 HAR。")
+
+    def review_catalog_evidence(self) -> None:
+        """Compare a locally redacted evidence pair; never enable live catalog mode."""
+        if self.worker:
+            messagebox.showinfo("请先停止监测", "监测期间请勿切换离线分析。")
+            return
+        filename = filedialog.askopenfilename(
+            title="选择已脱敏的证据对照 JSON（不要选择原始 HAR）",
+            filetypes=[("JSON 文件", "*.json")])
+        if not filename:
+            return
+        outcome = inspect_local_file(Path(filename))
+        status = outcome["status"]
+        captions = {
+            "blocked": "证据不完整或不安全，未通过离线对照",
+            "needs_more_evidence": "证据尚不足，仍需更多观察",
+            "ready_for_manual_review": "结构对照通过，但仍需本人对官方页面人工复核",
+        }
+        result = captions.get(status, "证据状态未知")
+        self.status.set("离线证据对照｜" + result)
+        self.log(f"本机证据对照：{outcome['matched_rows']} 条匿名记录一致；未连接学校。")
+        reason = "、".join(outcome.get("reason_codes", ()))
+        messagebox.showinfo(
+            "只读证据对照（非实时）",
+            f"{result}\n一致记录：{outcome['matched_rows']}\n"
+            f"原因代码：{reason}\n\n"
+            "不会自动将接口标记为已验证，更不会提交选课。"
+        )
 
     def replay_local(self) -> None:
         if self.worker:
