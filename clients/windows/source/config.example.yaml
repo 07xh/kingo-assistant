@@ -8,7 +8,7 @@ auth:
 strategy:
   mode: monitor       # monitor or burst; burst means ONE scheduled read-only check
   target_time: "2026-12-21 08:00:00" # timezone: Asia/Shanghai; confirm official announcement
-  interval_range: [60, 90]     # enforced lower bound: 60 seconds
+  interval_range: [60, 60]     # fastest CLIENT-side setting; NOT a verified NCWU server limit. Raise if required.
   max_cycles: 20
   # Only hashes of observed course+class IDs are stored; no Cookie or HTML.
   state_file: "data/notification-state.json"
