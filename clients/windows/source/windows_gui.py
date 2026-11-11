@@ -517,8 +517,9 @@ class Application(tk.Tk):
 
     def start_scheduled_enrollment(self) -> None:
         """Start a verified *in-process* engine; never open a browser."""
-        if self.worker or self.scheduled_worker:
-            messagebox.showinfo("已有任务", "请先完成或取消当前运行任务")
+        if (self.worker or self.scheduled_worker
+                or getattr(self, "_session_check_in_progress", False)):
+            messagebox.showinfo("已有任务", "请先完成当前监测、身份核验或预约任务")
             return
         factory = self._engine_factory
         if factory is None:
@@ -567,6 +568,8 @@ class Application(tk.Tk):
         self.start_button.configure(state="disabled")
         self.edit_button.configure(state="disabled")
         self.plans_button.configure(state="disabled")
+        if hasattr(self, "session_check_button"):
+            self.session_check_button.configure(state="disabled")
         self.status.set("自动选课后台任务正在进行本地适配器核验")
         self.log("应用内后台执行器已启动；尚未向学校发出选课成功声明。")
 
@@ -1028,6 +1031,9 @@ class Application(tk.Tk):
                     self.start_button.configure(state="normal")
                     self.edit_button.configure(state="normal")
                     self.plans_button.configure(state="normal")
+                    if (hasattr(self, "session_check_button")
+                            and not self._session_check_in_progress):
+                        self.session_check_button.configure(state="normal")
                     if self._closing and not self.worker:
                         self.destroy()
                         return
