@@ -9,6 +9,11 @@ on:
       - "v*"
     paths:
       - "clients/windows/**"
+      - "clients/android/**"
+      - "docs/**"
+      - "README.md"
+      - "SECURITY.md"
+      - ".gitignore"
       - ".github/workflows/windows-build.yml"
   workflow_dispatch:
 
