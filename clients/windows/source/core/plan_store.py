@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from hashlib import sha256
 import json
 import os
+import secrets
 from pathlib import Path
 import tempfile
 
@@ -169,6 +170,12 @@ def save_switch_backup(directory: Path, current_config: dict) -> str:
     overwrite previous recovery points. Backup names never include credentials.
     """
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
-    name = "切换备份-" + timestamp
-    save_plan(directory, name, current_config)
-    return name
+    folder = _directory(directory)
+    # Windows clocks can return identical microsecond timestamps for fast
+    # consecutive calls. Never overwrite a prior backup on such a collision.
+    for _ in range(32):
+        name = "切换备份-" + timestamp + "-" + secrets.token_hex(4)
+        if not _location(folder, name).exists():
+            save_plan(folder, name, current_config)
+            return name
+    raise ValueError("无法安全创建唯一的课程方案恢复点")
