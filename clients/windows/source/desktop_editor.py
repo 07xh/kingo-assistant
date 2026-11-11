@@ -92,36 +92,48 @@ class SettingsEditor(tk.Toplevel):
         settings.pack(fill="x")
         for col in range(4):
             settings.columnconfigure(col, weight=1 if col % 2 else 0)
-        fields = [
-            ("学年学期", self.semester, 0, 0),
-            ("计划检查时间", self.target_time, 0, 2),
-            ("间隔下限（秒）", self.interval_low, 3, 0),
-            ("间隔上限（秒）", self.interval_high, 3, 2),
-            ("最多查询次数（0=持续）", self.max_cycles, 4, 0),
-            ("最长监测分钟", self.max_duration_minutes, 4, 2),
-        ]
-        ttk.Label(settings, text="查询模式").grid(row=1, column=0, sticky="w", pady=5)
-        ttk.Combobox(settings, textvariable=self.mode,
+        ttk.Label(settings, text="学年学期").grid(row=0, column=0, sticky="w", pady=5)
+        ttk.Entry(settings, textvariable=self.semester, width=23).grid(
+            row=0, column=1, sticky="ew", padx=6, pady=5)
+        ttk.Label(settings, text="选课计划时间（北京时间）").grid(row=0, column=2, sticky="w", pady=5)
+        ttk.Entry(settings, textvariable=self.target_time, width=23).grid(
+            row=0, column=3, sticky="ew", padx=6, pady=5)
+        ttk.Label(settings, text="当前主程序仅支持只读监测；定时打开官网是手动备用方案，不会自动提交。",
+                  foreground="#666", wraplength=720).grid(
+                      row=1, column=0, columnspan=4, sticky="w", pady=(4, 2))
+
+        self.advanced_button = ttk.Button(
+            outer, text="展开只读监测高级设置", command=self.toggle_advanced_settings)
+        self.advanced_button.pack(anchor="w", pady=(7, 2))
+        self.advanced_settings = ttk.LabelFrame(
+            outer, text="只读监测高级设置（不提供自动提交）", padding=10)
+        advanced = self.advanced_settings
+        for col in range(4):
+            advanced.columnconfigure(col, weight=1 if col % 2 else 0)
+        ttk.Label(advanced, text="查询模式").grid(row=0, column=0, sticky="w", pady=5)
+        ttk.Combobox(advanced, textvariable=self.mode,
                      values=("monitor", "burst"), state="readonly", width=22).grid(
-                         row=1, column=1, sticky="ew", padx=6, pady=5)
-        ttk.Label(settings, text="monitor=低频监测；burst=到点只查询一次，不会自动选课。",
-                  foreground="#666").grid(row=1, column=2, columnspan=2, sticky="w", padx=6)
-        ttk.Label(settings, text="监测间隔方案").grid(row=2, column=0, sticky="w", pady=5)
-        presets = ttk.Combobox(settings, textvariable=self.interval_preset,
+                         row=0, column=1, sticky="ew", padx=6, pady=5)
+        ttk.Label(advanced, text="monitor=只读监测；burst=只在指定时间读取一次，不是抢课。",
+                  foreground="#666").grid(row=0, column=2, columnspan=2, sticky="w", padx=6)
+        ttk.Label(advanced, text="只读查询间隔方案").grid(row=1, column=0, sticky="w", pady=5)
+        presets = ttk.Combobox(advanced, textvariable=self.interval_preset,
                                values=(*INTERVAL_PRESETS, INTERVAL_CUSTOM),
                                state="readonly", width=22)
-        presets.grid(row=2, column=1, sticky="ew", padx=6, pady=5)
+        presets.grid(row=1, column=1, sticky="ew", padx=6, pady=5)
         presets.bind("<<ComboboxSelected>>", self._apply_interval_preset)
-        ttk.Label(settings, text="60–3600 秒；直接修改数字即可自定义。",
-                  foreground="#666").grid(row=2, column=2, columnspan=2,
-                                           sticky="w", padx=6)
-        for label, var, row, col in fields:
-            ttk.Label(settings, text=label).grid(row=row, column=col, sticky="w", pady=5)
-            ttk.Entry(settings, textvariable=var, width=23).grid(
+        for label, var, row, col in (
+            ("间隔下限（秒）", self.interval_low, 2, 0),
+            ("间隔上限（秒）", self.interval_high, 2, 2),
+            ("最多查询次数（0=按时长）", self.max_cycles, 3, 0),
+            ("最长监测分钟", self.max_duration_minutes, 3, 2),
+        ):
+            ttk.Label(advanced, text=label).grid(row=row, column=col, sticky="w", pady=5)
+            ttk.Entry(advanced, textvariable=var, width=23).grid(
                 row=row, column=col + 1, sticky="ew", padx=6, pady=5)
-        ttk.Label(settings, text="60 秒是客户端最短间隔，不是学校许可上限；若校方要求更长间隔，请遵守官方规定。课程查询仍为单链路，不提供并发请求爆发。",
+        ttk.Label(advanced, text="以上仅用于只读查询。实际频率还必须满足学校规则；设置速度不会启用抢课。",
                   foreground="#666", wraplength=720).grid(
-                      row=5, column=0, columnspan=4, sticky="w", pady=(7, 2))
+                      row=4, column=0, columnspan=4, sticky="w", pady=(6, 2))
 
         wrapper = ttk.LabelFrame(outer, text="目标课程（离线草稿允许 0–30 门）", padding=8)
         wrapper.pack(fill="both", expand=True, pady=(12, 6))
@@ -158,6 +170,14 @@ class SettingsEditor(tk.Toplevel):
         ttk.Label(outer, text="保存时会清除 YAML 中的 Cookie 和推送令牌。若需使用，应通过环境变量提供。",
                   foreground="#666", wraplength=730).pack(anchor="w")
         self.table.bind("<Double-1>", lambda _: self.edit_course())
+
+    def toggle_advanced_settings(self):
+        if self.advanced_settings.winfo_manager():
+            self.advanced_settings.pack_forget()
+            self.advanced_button.configure(text="展开只读监测高级设置")
+        else:
+            self.advanced_settings.pack(fill="x", after=self.advanced_button)
+            self.advanced_button.configure(text="收起只读监测高级设置")
 
     def _on_interval_edited(self, *_):
         self.interval_preset.set(interval_preset_for(
