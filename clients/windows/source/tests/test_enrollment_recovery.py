@@ -211,6 +211,20 @@ class ReadonlyRecoveryTests(unittest.TestCase):
                 self.reconcile(gateway)
         self.assertEqual(gateway.reads, 0)
 
+    def test_v2_optional_legacy_list_missing_is_normalized(self):
+        # Valid V2 files may omit legacy_attempts per the journal validator.
+        # A read and later reservation must not crash or silently discard it.
+        data = self.journal._new_data()
+        del data["legacy_attempts"]
+        self.path.write_text(json.dumps(data), encoding="utf-8")
+        self.assertIsNone(self.journal.status(self.target))
+        self.journal.reserve_before_write(self.target)
+        report = self.reconcile(self.make_gateway())
+        self.assertEqual(report.states["A"], RecoveryStatus.PENDING)
+        self.assertEqual(self.journal.status(self.target), "pending")
+        persisted = json.loads(self.path.read_text(encoding="utf-8"))
+        self.assertIn("legacy_attempts", persisted)
+
     def test_corrupt_journal_fails_closed_without_school_read(self):
         self.path.write_text("{not-valid-json", encoding="utf-8")
         gateway = self.make_gateway()
