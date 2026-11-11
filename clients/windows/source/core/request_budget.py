@@ -184,7 +184,7 @@ class GlobalRequestBudget:
                 import msvcrt
                 stream.seek(0, os.SEEK_END)
                 if stream.tell() == 0:
-                    stream.write(b'\\0')
+                    stream.write(b'\0')
                     stream.flush()
                 stream.seek(0)
                 try:
