@@ -62,8 +62,13 @@ class DesktopSettingsTest(unittest.TestCase):
             with self.subTest(label=label):
                 self.assertEqual(interval_preset_for(*pair), label)
                 self.assertEqual(parse_interval_range(*map(str, pair)), pair)
-                saved = self.updated(interval_low=pair[0], interval_high=pair[1])
-                self.assertEqual(saved["strategy"]["interval_range"], list(pair))
+                if pair[0] < 60:
+                    # A UI preset alone never counts as written school permission.
+                    with self.assertRaisesRegex(ValueError, "校方许可"):
+                        self.updated(interval_low=pair[0], interval_high=pair[1])
+                else:
+                    saved = self.updated(interval_low=pair[0], interval_high=pair[1])
+                    self.assertEqual(saved["strategy"]["interval_range"], list(pair))
         self.assertEqual(interval_preset_for("75", "135"), INTERVAL_CUSTOM)
         self.assertEqual(parse_interval_range(" 75 ", " 135 "), (75, 135))
         saved = self.updated(interval_low=75, interval_high=135)
