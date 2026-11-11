@@ -509,11 +509,11 @@ class Application(tk.Tk):
         lines = []
         for entry in OFFICIAL_ENTRIES:
             address = entry.launch_url or "在手机上使用官方喜鹊儿 App"
-            lines.append(f"{entry.name}\\n{address}")
+            lines.append(f"{entry.name}\n{address}")
         messagebox.showinfo(
             "华水官方入口（无联网）",
-            "\\n\\n".join(lines) +
-            "\\n\\n登录方式不是独立选课服务器的证据。"
+            "\n\n".join(lines) +
+            "\n\n登录方式不是独立选课服务器的证据。"
             "当前只有网页教务入口可能成为已核验课程查询源。"
         )
         self.log("已查看华水官方入口清单；无网络请求。")
@@ -527,7 +527,7 @@ class Application(tk.Tk):
             "手动检测官网登录页",
             "将向学校公开的两个网页登录地址分别发送至多一次不带凭据的 HTTPS GET。"
             "不跟随跳转，不下载页面正文，不读取课程，不提交选课。"
-            "\\n\\n仅用于比较登录页可达性，不代表选课接口可用。确认执行？"
+            "\n\n仅用于比较登录页可达性，不代表选课接口可用。确认执行？"
         ):
             return
         self._entry_probe_in_progress = True
@@ -720,8 +720,8 @@ class Application(tk.Tk):
                     self.log("本次官网登录页检测结束；不代表本人已登录或课程余量可读取。")
                     messagebox.showinfo(
                         "官方登录页可达性（非选课接口）",
-                        "\\n".join(lines) +
-                        "\\n\\n登录页响应速度不能用于证明选课后端速度或名额。"
+                        "\n".join(lines) +
+                        "\n\n登录页响应速度不能用于证明选课后端速度或名额。"
                     )
                 elif event.kind == "official_probe_error":
                     self._entry_probe_in_progress = False
