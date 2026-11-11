@@ -127,7 +127,11 @@ class ScheduledEnrollmentRunner:
                     0, max(0.0, self.monotonic() - started),
                 )
             remaining = target_epoch - self.clock.now()
-            if await self._pause(min(0.5, remaining), stop_event):
+            # Avoid waking the local event loop twice per second for days.
+            # Coarse waits are cancellation-aware; use subsecond precision
+            # only in the final 10 seconds before the confirmed start time.
+            step = 30.0 if remaining > 60 else (5.0 if remaining > 10 else 0.25)
+            if await self._pause(min(step, remaining), stop_event):
                 return ScheduledRunReport(
                     "cancelled_before_start",
                     self._result(ordered, "已取消，未发起学校请求"),
