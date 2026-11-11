@@ -2,6 +2,15 @@
 # Copy from actual browser evidence. Values below are placeholders, NOT NCWU endpoints.
 base_url: "https://jwmis.ncwu.edu.cn"
 xnxq: "2026-2027-1"
+# Must be replaced with independently verified, published/authorized school policy.
+# A self-entered source is not itself evidence of school permission.
+server_policy:
+  verified: false
+  source: ""
+  origin: "https://jwmis.ncwu.edu.cn"
+  windows: []  # Example shape only: [[60, 1], [3600, 20]]; NOT school limits.
+  max_concurrency: 1
+  database: "data/request-budget.sqlite"  # resolved under app data directory on Windows
 auth:
   # Prefer environment variable KINGO_COOKIE. Do not store passwords/cookies in this file.
   cookie: ""
