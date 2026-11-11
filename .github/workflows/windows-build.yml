@@ -61,7 +61,7 @@ jobs:
         shell: pwsh
         working-directory: clients/windows/source
         run: |
-          python -m PyInstaller --noconfirm --clean --onefile --windowed --name KingoAssistant-Windows --add-data "config.example.yaml;." --add-data "demo;demo" windows_gui.py
+          python -m PyInstaller --noconfirm --clean --onefile --windowed --name KingoAssistant-Windows --add-data "config.example.yaml;." --add-data "demo;demo" --collect-submodules pystray windows_gui.py
           if ($LASTEXITCODE -ne 0) { throw "PyInstaller build failed" }
 
       - name: Verify native Windows EXE and packaged Tk GUI

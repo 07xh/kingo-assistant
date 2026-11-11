@@ -26,6 +26,7 @@ from core.desktop_settings import load_config, quick_copy_value, resolve_state_f
 from core.demo import DemoReport, run_demo
 from desktop_editor import SettingsEditor
 from desktop_plans import PlanManager
+from desktop_tray import TrayController
 from core.inspector import inspect_html
 from core.har_audit import summarize_har, format_summary
 from tools.catalog_evidence import inspect_local_file
@@ -187,6 +188,7 @@ class Application(tk.Tk):
         self.geometry("960x650")
         self.minsize(750, 520)
         self.events: queue.Queue[MonitorEvent] = queue.Queue()
+        self._tray = TrayController(lambda kind: self.events.put(MonitorEvent(kind)))
         self.worker: MonitorWorker | None = None
         self._previous_states: dict[str, str] = {}
         self._display_courses: dict[str, dict] = {}
@@ -201,13 +203,26 @@ class Application(tk.Tk):
         self.status = tk.StringVar(value="未启动｜本机离线检查可直接使用")
         self._build()
         menu = tk.Menu(self)
+        manual_menu = tk.Menu(menu, tearoff=False)
+        manual_menu.add_command(label="打开官方教务（手动）", command=self.open_official_portal)
+        manual_menu.add_command(label="复制代码并打开官网（手动）", command=self.prepare_selected_course)
+        manual_menu.add_command(label="显示/隐藏官网预约（备用）", command=self.toggle_portal_panel)
+        menu.add_cascade(label="手动辅助", menu=manual_menu)
         tools_menu = tk.Menu(menu, tearoff=False)
+        tools_menu.add_command(label="脱敏 HTML 离线演练", command=self.replay_local)
+        tools_menu.add_command(label="虚构样例：下一步", command=self.demo_next)
         tools_menu.add_command(label="本机 HAR 结构检查（脱敏统计）", command=self.audit_local_har)
         tools_menu.add_command(label="选课目录证据对照（离线 JSON）", command=self.review_catalog_evidence)
         tools_menu.add_command(label="北化课表参数 · 离线调度测速", command=self.benchmark_offline)
         tools_menu.add_command(label="华水官方入口清单（离线）", command=self.show_official_entries)
         tools_menu.add_command(label="检测官方登录页可达性（手动）", command=self.probe_official_entries)
         menu.add_cascade(label="离线工具", menu=tools_menu)
+        app_menu = tk.Menu(menu, tearoff=False)
+        app_menu.add_command(label="显示/隐藏高级配置", command=self.toggle_advanced_panel)
+        app_menu.add_command(label="最小化到系统托盘", command=self.close)
+        app_menu.add_separator()
+        app_menu.add_command(label="完全退出", command=self.quit_application)
+        menu.add_cascade(label="程序", menu=app_menu)
         self.configure(menu=menu)
         self.after(300, self.poll)
         self.protocol("WM_DELETE_WINDOW", self.close)
@@ -221,35 +236,36 @@ class Application(tk.Tk):
 
         cfg = ttk.Frame(self, padding=(16, 6))
         cfg.pack(fill="x")
-        ttk.Label(cfg, text="配置文件").pack(side="left")
-        self.config_entry = ttk.Entry(cfg, textvariable=self.path)
-        self.config_entry.pack(side="left", fill="x", expand=True, padx=(8, 6))
-        self.pick_button = ttk.Button(cfg, text="选择…", command=self.pick_config)
-        self.pick_button.pack(side="left")
-        self.open_button = ttk.Button(cfg, text="打开文件", command=self.open_config)
-        self.open_button.pack(side="left", padx=5)
+        ttk.Label(cfg, text="课程和志愿：").pack(side="left")
         self.edit_button = ttk.Button(cfg, text="编辑课程和设置", command=self.edit_settings)
         self.edit_button.pack(side="left", padx=5)
         self.plans_button = ttk.Button(cfg, text="课程方案", command=self.manage_plans)
         self.plans_button.pack(side="left", padx=5)
 
-        actions = ttk.Frame(self, padding=(16, 8))
-        actions.pack(fill="x")
-        self.check_button = ttk.Button(actions, text="检查配置", command=self.check_config)
-        self.check_button.pack(side="left", padx=(0, 8))
-        ttk.Button(actions, text="运行准备度", command=self.preflight).pack(side="left", padx=(0, 8))
-        ttk.Button(actions, text="脱敏 HTML 离线演练", command=self.replay_local).pack(side="left", padx=(0, 8))
-        ttk.Button(actions, text="虚构样例：下一步", command=self.demo_next).pack(side="left", padx=(0, 8))
-        self.start_button = ttk.Button(actions, text="启动只读监测", command=self.start_monitor)
-        self.start_button.pack(side="left", padx=(0, 8))
-        self.stop_button = ttk.Button(actions, text="停止", command=self.stop_monitor, state="disabled")
-        self.stop_button.pack(side="left")
-        ttk.Button(actions, text="浏览器打开官方教务", command=self.open_official_portal).pack(side="right")
+        # Advanced protocol file controls remain available, but do not distract
+        # from the read-only workflow or imply that YAML unlocks live enrollment.
+        self.advanced_panel = ttk.LabelFrame(self, text="高级配置（仅本机）", padding=8)
+        ttk.Label(self.advanced_panel, text="配置文件").pack(side="left")
+        self.config_entry = ttk.Entry(self.advanced_panel, textvariable=self.path)
+        self.config_entry.pack(side="left", fill="x", expand=True, padx=(8, 6))
+        self.pick_button = ttk.Button(self.advanced_panel, text="选择…", command=self.pick_config)
+        self.pick_button.pack(side="left")
+        self.open_button = ttk.Button(self.advanced_panel, text="打开文件", command=self.open_config)
+        self.open_button.pack(side="left", padx=5)
 
-        portal_row = ttk.Frame(self, padding=(16, 0))
-        portal_row.pack(fill="x")
+        self.action_panel = ttk.Frame(self, padding=(16, 8))
+        self.action_panel.pack(fill="x")
+        self.check_button = ttk.Button(self.action_panel, text="检查配置", command=self.check_config)
+        self.check_button.pack(side="left", padx=(0, 8))
+        ttk.Button(self.action_panel, text="运行准备度", command=self.preflight).pack(side="left", padx=(0, 8))
+        self.start_button = ttk.Button(self.action_panel, text="启动只读监测", command=self.start_monitor)
+        self.start_button.pack(side="left", padx=(0, 8))
+        self.stop_button = ttk.Button(self.action_panel, text="停止", command=self.stop_monitor, state="disabled")
+        self.stop_button.pack(side="left")
+
+        self.portal_panel = ttk.LabelFrame(self, text="手动官网备用（不自动提交）", padding=8)
         self.portal_appointment_button = ttk.Button(
-            portal_row, text="预约按时打开官网（辅助）",
+            self.portal_panel, text="预约按时打开官网（辅助）",
             command=self.toggle_portal_appointment,
         )
         self.portal_appointment_button.pack(side="left", padx=(0, 8))
@@ -258,12 +274,13 @@ class Application(tk.Tk):
             command=self.inspect_scheduled_runner,
         ).pack(side="left", padx=(0, 8))
         ttk.Label(
-            portal_row, textvariable=self.portal_appointment_status,
+            self.portal_panel, textvariable=self.portal_appointment_status,
             foreground="#666", wraplength=650,
         ).pack(side="left", fill="x", expand=True)
 
         ttk.Label(self, textvariable=self.status, padding=(16, 6)).pack(fill="x")
-        frame = ttk.LabelFrame(self, text="目标课程（必须根据官方页面核对；以下数据不代表实时）", padding=8)
+        frame = ttk.LabelFrame(self, text="目标课程（当前只读；未接入真实自动选课提交）", padding=8)
+        self.course_frame = frame
         frame.pack(fill="both", expand=True, padx=16, pady=(2, 8))
         self.table = ttk.Treeview(frame, columns=("key", "course", "class_id", "teacher", "status"), show="headings")
         for col, label, width in (("key", "志愿", 70), ("course", "课程/代码", 220),
@@ -275,14 +292,8 @@ class Application(tk.Tk):
         self.table.configure(yscrollcommand=scroll.set)
         scroll.pack(side="right", fill="y")
         self.table.pack(fill="both", expand=True)
-        prep = ttk.Frame(frame, padding=(0, 7, 0, 0))
-        prep.pack(fill="x")
-        ttk.Button(prep, text="复制课程代码", command=lambda: self.copy_selected_field("course_id")).pack(side="left", padx=(0, 6))
-        ttk.Button(prep, text="复制教学班号", command=lambda: self.copy_selected_field("class_id")).pack(side="left", padx=(0, 6))
-        ttk.Button(prep, text="复制课程名称", command=lambda: self.copy_selected_field("course_name")).pack(side="left", padx=(0, 6))
-        ttk.Button(prep, text="复制代码并打开官网", command=self.prepare_selected_course).pack(side="left")
-        ttk.Label(frame, text="先选中一门真实课程；复制仅在本机进行，官网登录、核对教学班与最终提交仍需本人完成。",
-                  foreground="#666").pack(anchor="w", pady=(0, 3))
+        ttk.Label(frame, text="双击课程可复制代码。手动官网辅助与离线诊断已移至菜单，不属于自动提交。",
+                  foreground="#666").pack(anchor="w", pady=(5, 3))
         self.table.bind("<Double-1>", lambda _event: self.copy_selected_field("course_id"))
 
         log_frame = ttk.LabelFrame(self, text="本地运行信息（不展示账号、Cookie 或网页原文）", padding=8)
@@ -290,6 +301,18 @@ class Application(tk.Tk):
         self.log_box = tk.Text(log_frame, height=7, state="disabled", wrap="word")
         self.log_box.pack(fill="both", expand=True)
         ttk.Button(log_frame, text="导出本机运行日志", command=self.export_log).pack(anchor="e", pady=(5, 0))
+
+    def toggle_advanced_panel(self) -> None:
+        if self.advanced_panel.winfo_manager():
+            self.advanced_panel.pack_forget()
+        else:
+            self.advanced_panel.pack(fill="x", before=self.action_panel)
+
+    def toggle_portal_panel(self) -> None:
+        if self.portal_panel.winfo_manager():
+            self.portal_panel.pack_forget()
+        else:
+            self.portal_panel.pack(fill="x", before=self.course_frame)
 
     def log(self, message: str) -> None:
         self.log_box.configure(state="normal")
@@ -725,7 +748,16 @@ class Application(tk.Tk):
         try:
             while True:
                 event = self.events.get_nowait()
-                if event.kind == "status":
+                if event.kind == "tray_restore":
+                    self.restore_window()
+                elif event.kind == "tray_quit":
+                    self.quit_application()
+                    if not self.worker:
+                        return
+                elif event.kind == "tray_error":
+                    self.restore_window()
+                    self.log("系统托盘不可用，主窗口已恢复；任务未被静默终止。")
+                elif event.kind == "status":
                     cycles, states, request_ms, parse_ms = event.value
                     self.status.set(f"只读监测｜查询 {cycles} 次｜最近请求 {request_ms:.0f} ms｜解析 {parse_ms:.1f} ms｜请以官网为准")
                     newly_available = status_changes(self._previous_states, states)
@@ -799,11 +831,30 @@ class Application(tk.Tk):
         if not self._closing or self.worker:
             self.after(300, self.poll)
 
+    def restore_window(self) -> None:
+        self.deiconify()
+        self.lift()
+
     def close(self) -> None:
+        """Hide to native tray without canceling any existing monitor/appointment."""
+        if self._closing:
+            return
+        if self._tray.start():
+            self.withdraw()
+            self.status.set("已最小化到系统托盘；当前仅支持只读监测与官网备用预约")
+        else:
+            # Never leave a running process without a way to restore its window.
+            self.iconify()
+
+    def quit_application(self) -> None:
+        """Only an explicit quit stops background work and the appointment."""
+        if self._closing:
+            return
+        self._closing = True
         self._official_portal_appointment = None
+        self._tray.stop()
         if self.worker:
-            self._closing = True
-            self.status.set("正在安全停止后台任务并关闭窗口…")
+            self.status.set("正在安全停止后台任务并退出…")
             self.worker.stop()
             return
         self.destroy()
