@@ -71,7 +71,7 @@ class ClientTest(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(req.content.count(b"kind="), 1)
                 return httpx.Response(200, content=html(), headers={"content-type": "text/html; charset=gbk"})
             raise AssertionError("unknown request")
-        client = KingoClient(config())
+        client = KingoClient(config(), offline_test_mode=True)
         await client.http.aclose()
         client.http = httpx.AsyncClient(transport=httpx.MockTransport(handler), follow_redirects=False)
         try:
@@ -91,7 +91,7 @@ class ClientTest(unittest.IsolatedAsyncioTestCase):
         def handler(req):
             count["requests"] += 1
             return httpx.Response(429)
-        client = KingoClient(config())
+        client = KingoClient(config(), offline_test_mode=True)
         await client.http.aclose()
         client.http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
         try:
