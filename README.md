@@ -29,6 +29,22 @@ The 2026-11-11 HAR included an explicit “current time is not a valid selection
 
 A separate scheduled runner now waits for the configured start time and checks only the official selection-window state at a bounded 60–3600 second interval. It is offline-tested but not yet connected to the Windows UI or a live NCWU adapter; see [scheduled-runner design](docs/architecture/scheduled-enrollment.md).
 
+## Official entry diagnostics (manual; phase 1)
+
+NCWU's official selection notice lists the direct academic-system website,
+unified authentication and the official 喜鹊儿 app. Those are *login
+surfaces*, not evidence of three independent catalog/selection servers.
+
+The Windows source CLI offers `--official-entries` (offline inventory, no
+config required) and `--probe-official-entries` (explicit one-shot login-page
+reachability checks; at most two requests, no credentials or redirect
+following). Login-page HTTP success does **not** verify school catalog access.
+
+A guarded read-only route planner and synthetic tests are present, but only
+one documented web catalog candidate is registered. Live automatic failover
+and any actual enrollment POST are **not enabled**. See
+[the route design and acceptance gates](docs/architecture/official-entry-routing.md).
+
 ## Windows client
 
 - Course plans are stored locally and do not include credentials or school protocol settings.
