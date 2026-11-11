@@ -220,6 +220,9 @@ def main() -> int:
         with open(args.config, encoding="utf-8") as source:
             config = yaml.safe_load(source)
         offline_mode = bool(args.replay_html or args.inspect_html or args.replay_sequence)
+        if not (args.check_config or offline_mode):
+            from core.desktop_settings import resolve_state_file
+            config = resolve_state_file(config, Path(args.config).resolve().parent)
         validate(config, check_only=args.check_config or offline_mode)
         if args.inspect_html:
             inspect_local_html(args.inspect_html)
