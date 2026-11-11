@@ -50,17 +50,22 @@ def normalize_course(entry: dict) -> dict:
         raise ValueError("志愿标识不能为空")
     if not any(result[k] for k in ("course_id", "course_name", "teacher")):
         raise ValueError("至少填写课程代码、课程名称或任课教师")
-    # Retain existing ancillary fields (e.g. group) on an edited course.
-    return {**entry, **result}
+    # Retain safe ancillary fields and validate user-entered timetable hints.
+    group = _field(entry.get("group"), name="备选组", limit=60)
+    slots = _field(entry.get("time_slots"), name="上课节次", limit=200)
+    from core.conflicts import parse_slots
+    parse_slots(slots)
+    return {**entry, **result, "group": group, "time_slots": slots}
 
 
 def update_config(config: dict, *, courses: list[dict], semester: str,
                   mode: str, target_time: str, interval_low: int,
-                  interval_high: int, max_cycles: int) -> dict:
+                  interval_high: int, max_cycles: int,
+                  max_duration_minutes: int | None = None) -> dict:
     """Return a validated copy; nothing is written or sent over the network."""
     copy = deepcopy(config)
-    if not isinstance(courses, list) or not 1 <= len(courses) <= 30:
-        raise ValueError("必须设置 1 至 30 门目标课程")
+    if not isinstance(courses, list) or not 0 <= len(courses) <= 30:
+        raise ValueError("草稿允许 0 门，最多设置 30 门目标课程")
     normalized = [normalize_course(item) for item in courses]
     keys = [item["key"] for item in normalized]
     if len(set(keys)) != len(keys):
@@ -77,6 +82,8 @@ def update_config(config: dict, *, courses: list[dict], semester: str,
     copy["strategy"]["target_time"] = _field(target_time, name="计划检查时间", limit=60)
     copy["strategy"]["interval_range"] = [interval_low, interval_high]
     copy["strategy"]["max_cycles"] = max_cycles
+    if max_duration_minutes is not None:
+        copy["strategy"]["max_duration_minutes"] = max_duration_minutes
     # Preserve the read-only invariant even for imported configurations.
     copy["strategy"]["dry_run"] = True
     from main import validate
