@@ -104,3 +104,27 @@ def inspect_readiness(config: dict, env: dict | None = None) -> list[Check]:
                            '未配置推送令牌，仅可显示本机状态' if not have_notification
                            else '已配置推送令牌（不保证送达）', 'warning'))
     return basic
+
+
+def inspect_enrollment_schedule(offering, snapshot, semester: str) -> Check:
+    """Officially verified *offline contract* for the enrollment preflight.
+
+    This does not perform HTTP calls. Manual timetable hints are insufficient
+    to assert that a school will accept a write.
+    """
+    from core.course_models import (
+        ConflictVerdict, CourseOffering, ScheduleSnapshot, time_conflict,
+    )
+
+    if (not isinstance(offering, CourseOffering)
+            or not isinstance(snapshot, ScheduleSnapshot)
+            or snapshot.verified is not True
+            or snapshot.semester != semester
+            or offering.semester != semester):
+        return Check("教学时间冲突", False, "无法确认同一学期的可信课表")
+    verdict = time_conflict(offering.time_slots, snapshot.slots)
+    if verdict is ConflictVerdict.CONFLICT:
+        return Check("教学时间冲突", False, "已发现课程时间重叠")
+    if verdict is ConflictVerdict.UNKNOWN:
+        return Check("教学时间冲突", False, "周次或课程时间不完整，禁止自动提交")
+    return Check("教学时间冲突", True, "经核验的时间槽没有重叠")
