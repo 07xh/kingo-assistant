@@ -75,11 +75,12 @@ class ReadinessV49Test(unittest.TestCase):
         self.assertNotIn('ultra-secret-session', text)
         self.assertIn('本机配置不含会话敏感值', text)
 
-    def test_invalid_time_string_is_blocker(self):
+    def test_invalid_manual_time_is_advisory_for_read_only_monitoring(self):
         config = self._ready_config()
         config['courses'][0]['time_slots'] = 'Monday, 8am'
-        blockers, _ = split_checks(inspect_readiness(config, env={'KINGO_COOKIE': 'secret'}))
-        self.assertIn('手动节次格式', {c.label for c in blockers})
+        blockers, warnings = split_checks(inspect_readiness(config, env={'KINGO_COOKIE': 'secret'}))
+        self.assertNotIn('手动节次格式', {c.label for c in blockers})
+        self.assertIn('手动节次格式', {c.label for c in warnings})
 
     def test_empty_course_list_is_not_ready(self):
         config = self._ready_config()
