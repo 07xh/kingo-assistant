@@ -105,7 +105,8 @@ def inspect_readiness(config: dict, env: dict | None = None) -> list[Check]:
         basic.append(Check('节次信息完整度', not missing,
                            f'{len(missing)} 门课未录入节次，无法进行冲突初筛', 'warning'))
     except (ValueError, KeyError, TypeError):
-        basic.append(Check('手动节次格式', False, '节次格式无效，请在课程编辑器修改'))
+        basic.append(Check('手动节次格式', False,
+                           '本地节次格式无效，仅影响人工冲突初筛；请在课程编辑器修改', 'warning'))
     if notify.get('enabled'):
         have_notification = bool(environment.get('PUSHPLUS_TOKEN') or environment.get('SERVERCHAN_TOKEN')
                                  or notify.get('pushplus_token') or notify.get('serverchan_token'))
