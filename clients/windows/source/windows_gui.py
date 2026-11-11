@@ -270,7 +270,7 @@ class Application(tk.Tk):
         )
         self.portal_appointment_button.pack(side="left", padx=(0, 8))
         ttk.Button(
-            portal_row, text="自动选课计划预检（离线）",
+            self.action_panel, text="自动选课计划预检（离线）",
             command=self.inspect_scheduled_runner,
         ).pack(side="left", padx=(0, 8))
         ttk.Label(
