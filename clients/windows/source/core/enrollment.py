@@ -446,13 +446,6 @@ class EnrollmentEngine:
                         satisfied.add(target.group)
                     continue
 
-                if target.group and target.group in satisfied:
-                    states[target.key] = "同组志愿已有成功课程"
-                    continue
-                if any(course_id == target.course_id for course_id, _ in enrolled):
-                    states[target.key] = "该课程已有其他教学班，跳过"
-                    continue
-
                 if journal_state in ("pending", "legacy_pending"):
                     states[target.key] = "存在未核实提交，禁止自动重发"
                     return RunReport(states, True)
@@ -461,6 +454,17 @@ class EnrollmentEngine:
                     return RunReport(states, True)
                 if journal_state == "rejected":
                     states[target.key] = "此前已明确拒绝，跳过重复提交"
+                    continue
+
+                # Refresh group satisfaction from the latest official records,
+                # including enrollments in another teaching class of this course.
+                if target.group and any(course_id == target.course_id for course_id, _ in enrolled):
+                    satisfied.add(target.group)
+                if target.group and target.group in satisfied:
+                    states[target.key] = "同组志愿已有成功课程"
+                    continue
+                if any(course_id == target.course_id for course_id, _ in enrolled):
+                    states[target.key] = "该课程已有其他教学班，跳过"
                     continue
 
                 if refresh_catalog:
