@@ -21,6 +21,7 @@ from tkinter import filedialog, messagebox, ttk
 
 from loguru import logger
 
+
 from core.client import KingoClient, parse_courses
 from core.desktop_settings import load_config, quick_copy_value, resolve_state_file, status_changes
 from core.demo import DemoReport, run_demo
@@ -40,7 +41,7 @@ from core.scheduled_ui_bridge import prepare_scheduled_plan
 from core.time_sync import TimeSync
 from main import _read_local_html, validate
 
-APP_TITLE = "青果选课辅助 · Windows V5.2（官网备战辅助版）"
+APP_TITLE = "KingoAssistant · Windows（只读监测｜自动提交尚未接入）"
 OFFICIAL_PORTAL = "https://jwmis.ncwu.edu.cn"  # Confirmed by school notices; NOT an API endpoint.
 
 
@@ -231,7 +232,7 @@ class Application(tk.Tk):
     def _build(self) -> None:
         top = ttk.Frame(self, padding=(16, 14))
         top.pack(fill="x")
-        ttk.Label(top, text="青果选课辅助 · Windows V5.2", font=("Microsoft YaHei UI", 16, "bold")).pack(anchor="w")
+        ttk.Label(top, text="KingoAssistant · Windows", font=("Microsoft YaHei UI", 16, "bold")).pack(anchor="w")
         ttk.Label(top, text="本机独立运行｜当前只读监测｜自动执行核心已加入，官方接口待验收", foreground="#666").pack(anchor="w", pady=(4, 0))
 
         cfg = ttk.Frame(self, padding=(16, 6))
@@ -262,6 +263,11 @@ class Application(tk.Tk):
         self.start_button.pack(side="left", padx=(0, 8))
         self.stop_button = ttk.Button(self.action_panel, text="停止", command=self.stop_monitor, state="disabled")
         self.stop_button.pack(side="left")
+        self.scheduled_preflight_button = ttk.Button(
+            self.action_panel, text="检查自动选课计划（离线）",
+            command=self.inspect_scheduled_runner,
+        )
+        self.scheduled_preflight_button.pack(side="right")
 
         self.portal_panel = ttk.LabelFrame(self, text="手动官网备用（不自动提交）", padding=8)
         self.portal_appointment_button = ttk.Button(
@@ -269,10 +275,6 @@ class Application(tk.Tk):
             command=self.toggle_portal_appointment,
         )
         self.portal_appointment_button.pack(side="left", padx=(0, 8))
-        ttk.Button(
-            self.action_panel, text="自动选课计划预检（离线）",
-            command=self.inspect_scheduled_runner,
-        ).pack(side="left", padx=(0, 8))
         ttk.Label(
             self.portal_panel, textvariable=self.portal_appointment_status,
             foreground="#666", wraplength=650,
@@ -703,7 +705,8 @@ class Application(tk.Tk):
             # First run offline checks so placeholders and missing authorization
             # are explained before any attempt at a network connection.
             config = read_config(Path(self.path.get()), offline=True)
-            # Reuse one validated YAML snapshot for all readiness gates.
+            # One exact snapshot for preflight and the running client. Avoid
+            # a second YAML read between authorization and worker construction.
             config = resolve_state_file(config, app_dir())
             checks = inspect_readiness(config)
             blockers, warnings = split_checks(checks)
@@ -712,7 +715,6 @@ class Application(tk.Tk):
                 messagebox.showwarning("先完成启动预检", format_checks(checks))
                 self.log(f"启动被本地预检拦截：{len(blockers)} 项；没有连接学校。")
                 return
-            # Full live-mode validation remains mandatory, without rereading YAML.
             validate(config, check_only=False)
             self.populate(config)
             self._previous_states = {}
@@ -722,8 +724,8 @@ class Application(tk.Tk):
             self.status.set("无法启动监测：" + type(exc).__name__)
             self.log("真实模式未启用：官方接口参数、本人登录状态或权限尚未完成核验。")
             return
-        # The explicit start-button click is the user's opt-in for this run.
-        # Advisory details remain accessible through "运行准备度".
+        # The explicit "启动只读监测" click is the opt-in for this run.
+        # Advisory hints are logged and remain available via readiness UI.
         if warnings:
             self.log(f"本地预检有 {len(warnings)} 项非阻断提示；可在运行准备度中查看。")
         self.worker = MonitorWorker(config, self.events)
@@ -885,6 +887,12 @@ def run_packaged_gui_smoke() -> None:
                         raise AssertionError("Official entry inventory missing mobile app")
                 if len(app.table.get_children()) != 2:
                     raise AssertionError("Expected two placeholder courses in packaged template")
+                # Regression for PR #19/#20 GUI composition: main previously
+                # referenced a deleted 'portal_row' frame and could not open.
+                if app.scheduled_preflight_button.winfo_manager() != "pack":
+                    raise AssertionError("Typed plan preflight entry not mounted in main UI")
+                if app.portal_panel.winfo_manager():
+                    raise AssertionError("Manual-only fallback must stay hidden by default")
                 with patch("core.client.httpx.AsyncClient", side_effect=AssertionError("network attempted")):
                     app.demo_next()
                     app.update()
