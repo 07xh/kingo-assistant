@@ -13,7 +13,7 @@ from typing import Mapping
 
 from core.course_models import CourseTarget
 from core.enrollment import EnrollmentEngine, _validate_targets
-from core.enrollment_schedule import ScheduledEnrollmentRunner, ScheduledRunReport
+from core.enrollment_schedule import ScheduledEnrollmentRunner, ScheduledRunReport, validate_schedule_limits
 from core.official_portal_schedule import prepare_appointment
 from core.time_sync import TimeSync
 
@@ -69,15 +69,10 @@ def prepare_scheduled_plan(
     poll_range = strategy.get("window_poll_interval_range", (60, 60))
     wait_minutes = strategy.get("window_max_wait_minutes", 480)
 
-    # Reuse the actual runner's constructor validation: no copied bounds that
-    # might silently drift apart. This does not wait or create any traffic.
-    ScheduledEnrollmentRunner(
-        None, TimeSync(),  # type: ignore[arg-type]
-        poll_interval_range=poll_range,
-        max_wait_minutes=wait_minutes,
-    )
+    # Pure admission contract; no dummy engine, network client or clock.
+    limits, validated_wait = validate_schedule_limits(poll_range, wait_minutes)
     return PreparedScheduledPlan(
-        appointment.local_start, tuple(targets), tuple(poll_range), wait_minutes,
+        appointment.local_start, tuple(targets), limits, validated_wait,
     )
 
 
