@@ -671,11 +671,11 @@ class Application(tk.Tk):
             self.status.set("无法启动监测：" + type(exc).__name__)
             self.log("真实模式未启用：官方接口参数、本人登录状态或权限尚未完成核验。")
             return
-        warning_text = (f"本地预检发现 {len(warnings)} 项提示，请核对课程代码、节次与备选课程。\n\n"
-                        if warnings else "")
-        if not messagebox.askokcancel("确认只读操作", warning_text +
-                                      "仅在学校允许的频率与访问方式下使用。\n程序只查询课程信息和提醒，不会提交选课。确认开始？"):
-            return
+        # Clicking the explicit "启动只读监测" button is this run's opt-in.
+        # Do not require a second modal click when all mandatory gates pass.
+        # Advisory hints remain available through "运行准备度" and in the log.
+        if warnings:
+            self.log(f"本地预检有 {len(warnings)} 项非阻断提示；可在运行准备度中查看。")
         self.worker = MonitorWorker(config, self.events)
         self.worker.start()
         self.start_button.configure(state="disabled")
