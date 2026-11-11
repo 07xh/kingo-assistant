@@ -37,6 +37,24 @@ class ScheduledRunReport:
     waited_seconds: float
 
 
+def validate_schedule_limits(
+    poll_interval_range: tuple[int, int] | list[int],
+    max_wait_minutes: int,
+) -> tuple[tuple[int, int], int]:
+    """Pure, shared validation for GUI plan admission and runtime creation."""
+    if (not isinstance(poll_interval_range, (tuple, list))
+            or len(poll_interval_range) != 2
+            or any(type(x) is not int for x in poll_interval_range)):
+        raise ValueError("选课窗口轮询间隔必须是两个整数秒")
+    low, high = poll_interval_range
+    if not MIN_WINDOW_POLL_SECONDS <= low <= high <= MAX_WINDOW_POLL_SECONDS:
+        raise ValueError("选课窗口轮询间隔必须在 60–3600 秒范围内")
+    if (type(max_wait_minutes) is not int
+            or not MIN_WINDOW_WAIT_MINUTES <= max_wait_minutes <= MAX_WINDOW_WAIT_MINUTES):
+        raise ValueError("等待选课窗口时长必须为 1–1440 分钟")
+    return (low, high), max_wait_minutes
+
+
 class ScheduledEnrollmentRunner:
     """Wait for the configured local time, then probe the official window.
 
@@ -56,21 +74,13 @@ class ScheduledEnrollmentRunner:
         monotonic: Callable[[], float] = time.monotonic,
         uniform: Callable[[float, float], float] = random.uniform,
     ):
-        if (not isinstance(poll_interval_range, (tuple, list))
-                or len(poll_interval_range) != 2
-                or any(type(x) is not int for x in poll_interval_range)):
-            raise ValueError("选课窗口轮询间隔必须是两个整数秒")
-        low, high = poll_interval_range
-        if not MIN_WINDOW_POLL_SECONDS <= low <= high <= MAX_WINDOW_POLL_SECONDS:
-            raise ValueError("选课窗口轮询间隔必须在 60–3600 秒范围内")
-        if (type(max_wait_minutes) is not int
-                or not MIN_WINDOW_WAIT_MINUTES <= max_wait_minutes <= MAX_WINDOW_WAIT_MINUTES):
-            raise ValueError("等待选课窗口时长必须为 1–1440 分钟")
+        limits, validated_wait = validate_schedule_limits(
+            poll_interval_range, max_wait_minutes
+        )
         self.engine = engine
         self.clock = clock
-        self.low = low
-        self.high = high
-        self.max_wait_minutes = max_wait_minutes
+        self.low, self.high = limits
+        self.max_wait_minutes = validated_wait
         self.sleep = sleep
         self.monotonic = monotonic
         self.uniform = uniform
