@@ -21,7 +21,7 @@ The 2026-11-11 HAR audit confirms timetable JSON and Xiqueer selection-related m
 
 ## Local journal
 
-- Version 2 uses a per-journal random HMAC key and a non-PII account scope supplied transiently by the adapter. The journal stores only fingerprints and `pending/rejected/confirmed` states.
+- Version 2 uses a per-journal random HMAC salt and a non-PII account scope supplied transiently by the adapter. The journal stores only fingerprints and `pending/rejected/confirmed` states.
 - Version 1 fingerprints migrate to `legacy_pending` and require reconciliation.
 - The process lock uses an OS file lock. The lock file intentionally remains after normal exit; an orphaned file is reusable once the OS releases the lock.
 - No account identifier, course ID, class ID, cookie, token, response body, or raw HAR is persisted in the journal.
