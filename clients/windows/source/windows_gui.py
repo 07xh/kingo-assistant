@@ -525,14 +525,14 @@ class Application(tk.Tk):
             return
         if not messagebox.askyesno(
             "手动检测官网登录页",
-            "将向学校公开的两个网页登录地址分别发送至多一次不带凭据的 HTTPS GET。"
-            "不跟随跳转，不下载页面正文，不读取课程，不提交选课。"
+            "仅在核实并提供了对应域名的请求预算时，才允许执行单次 HTTPS GET。"
+            "当前版本未配置入口探测预算，将跳过联网请求；不读取课程，不提交选课。"
             "\n\n仅用于比较登录页可达性，不代表选课接口可用。确认执行？"
         ):
             return
         self._entry_probe_in_progress = True
         self.status.set("正在手动检测官方登录页｜不是课程查询")
-        self.log("开始本次明确授权的官网登录页检测；最多两次 GET。")
+        self.log("官网登录页检测已启动；无已核实域名预算时不联网。")
 
         def execute() -> None:
             try:
