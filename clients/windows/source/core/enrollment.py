@@ -199,6 +199,9 @@ class AttemptJournal:
                or any(c not in "0123456789abcdef" for c in key)
                for key in legacy):
             raise ValueError("历史提交指纹无效，拒绝执行")
+        # Validation accepts older V2 files without this optional list.
+        # Normalize in memory so status/reserve/recovery cannot KeyError.
+        value["legacy_attempts"] = legacy
         return value
 
     def _fingerprint(self, target: Target, data: dict) -> str:
@@ -429,6 +432,18 @@ class EnrollmentEngine:
     async def _window(self) -> WindowState:
         state = await self.gateway.selection_window()
         return state if isinstance(state, WindowState) else WindowState.UNKNOWN
+
+    async def reconcile_pending(self, targets: Sequence[Target]):
+        """One permitted read-only reconciliation, even outside selection time.
+
+        This method never uses the write gate, submits a course, checks the
+        selection window, or clears an unresolved journal fence. A separately
+        verified official readback adapter and matching account/term are
+        mandatory. Only explicit official enrollment records can mark a
+        local pending attempt as confirmed.
+        """
+        from core.enrollment_recovery import reconcile_pending
+        return await reconcile_pending(self.gateway, self.journal, targets)
 
     async def run(self, targets: Sequence[Target]) -> RunReport:
         # Single engine entry point. Flow is split out for focused FSM testing;
