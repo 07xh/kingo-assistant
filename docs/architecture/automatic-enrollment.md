@@ -4,13 +4,13 @@
 
 The Windows V5.0 mainline includes a fail-closed automatic-enrollment state machine, but **there is no NCWU live enrollment adapter**. The client remains read-only. Offline tests prove only the orchestration logic against synthetic data.
 
-The 2026-11-11 HAR audit confirms timetable JSON and Xiqueer selection-related metadata, but not a verified elective catalog, live remaining-seat field, or authorized submission/confirmation contract. One response explicitly reports that the current time is outside a valid selection window. Do not map timetable or \`zxinfo.zxxq\` records into available elective courses or seats.
+The 2026-11-11 HAR audit confirms timetable JSON and Xiqueer selection-related metadata, but not a verified elective catalog, live remaining-seat field, or authorized submission/confirmation contract. One response explicitly reports that the current time is outside a valid selection window. Do not map timetable or `zxinfo.zxxq` records into available elective courses or seats.
 
 ## Execution state machine
 
 1. Validate a strict ordered list of exact course + teaching-class identities.
 2. Require explicit user opt-in, school permission, and four independently reviewed adapter capabilities: official catalog, current enrollment records, selection-window state, and write contract.
-3. Read the official selection-window state. Only \`OPEN\` may proceed; \`CLOSED\` and \`UNKNOWN\` stop before catalog or write work.
+3. Read the official selection-window state. Only `OPEN` may proceed; `CLOSED` and `UNKNOWN` stop before catalog or write work.
 4. Read official enrollments before acting. Existing enrollments suppress duplicate writes.
 5. Read a uniquely matching offering with a validated remaining-seat field. Unknown, missing, duplicate, or zero-seat entries are not submitted.
 6. Re-check the official selection window immediately before each write.
@@ -21,8 +21,8 @@ The 2026-11-11 HAR audit confirms timetable JSON and Xiqueer selection-related m
 
 ## Local journal
 
-- Version 2 uses a per-install random HMAC key and a non-PII account scope supplied transiently by the adapter. The journal stores only fingerprints and \`pending/rejected/confirmed\` states.
-- Version 1 fingerprints migrate to \`legacy_pending\` and require reconciliation.
+- Version 2 uses a per-journal random HMAC key and a non-PII account scope supplied transiently by the adapter. The journal stores only fingerprints and `pending/rejected/confirmed` states.
+- Version 1 fingerprints migrate to `legacy_pending` and require reconciliation.
 - The process lock uses an OS file lock. The lock file intentionally remains after normal exit; an orphaned file is reusable once the OS releases the lock.
 - No account identifier, course ID, class ID, cookie, token, response body, or raw HAR is persisted in the journal.
 

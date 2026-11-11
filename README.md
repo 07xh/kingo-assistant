@@ -25,7 +25,7 @@ The engine requires all of the following before a school adapter can be used:
 6. Official enrollment-list readback to confirm success; transport acknowledgements alone are insufficient.
 7. Serial writes only. Explicit rejection may move to the next configured preference after a fresh catalog read. Unknown outcomes stop and are never automatically retried.
 
-The 2026-11-11 HAR included an explicit “current time is not a valid selection window” response. Timetable data and \`zxinfo.zxxq\` records are not an elective catalog or seat count. See [the sanitized HAR audit](docs/acceptance/ncwu-xiqueer-har-2026-11-11.md) and [the execution architecture](docs/architecture/automatic-enrollment.md).
+The 2026-11-11 HAR included an explicit “current time is not a valid selection window” response. Timetable data and `zxinfo.zxxq` records are not an elective catalog or seat count. See [the sanitized HAR audit](docs/acceptance/ncwu-xiqueer-har-2026-11-11.md) and [the execution architecture](docs/architecture/automatic-enrollment.md).
 
 ## Windows client
 
@@ -36,19 +36,19 @@ The 2026-11-11 HAR included an explicit “current time is not a valid selection
 
 ## Repository layout
 
-- \`clients/windows/source/\` — Windows source and tests.
-- \`clients/windows/kingo-windows-v4.6.tar.xz\` — immutable source bootstrap snapshot.
-- \`clients/android/\` — future Android client.
-- \`docs/architecture/\` — architecture decisions.
-- \`docs/acceptance/\` — evidence and acceptance gates.
-- \`.github/workflows/windows-build.yml\` — native Windows build and packaged-EXE verification.
+- `clients/windows/source/` — Windows source and tests.
+- `clients/windows/kingo-windows-v4.6.tar.xz` — immutable source bootstrap snapshot.
+- `clients/android/` — future Android client.
+- `docs/architecture/` — architecture decisions.
+- `docs/acceptance/` — evidence and acceptance gates.
+- `.github/workflows/windows-build.yml` — native Windows build and packaged-EXE verification.
 
 ## Windows build
 
 1. Open the **Actions** tab.
 2. Select **Windows standalone EXE**.
 3. Run the workflow manually or use a successful push/PR run.
-4. Download the \`KingoAssistant-Windows-portable\` artifact from that run.
+4. Download the `KingoAssistant-Windows-portable` artifact from that run.
 
 The workflow runs offline unit tests, builds the EXE on Windows, and starts the packaged executable with offline self-test and Tk GUI smoke-test flags. Build artifacts are temporary; stable releases should be published as GitHub Releases after review.
 
