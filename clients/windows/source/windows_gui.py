@@ -584,8 +584,9 @@ def run_packaged_gui_smoke() -> None:
                         raise AssertionError("Second demo snapshot is invalid")
                 app.check_config()
                 app.update()
-                with patch("windows_gui.messagebox.showwarning") as warning, \
-                     patch("windows_gui.MonitorWorker", side_effect=AssertionError("network attempt")):
+                with patch.object(messagebox, "showwarning") as warning, \
+                     patch.object(sys.modules[__name__], "MonitorWorker",
+                                  side_effect=AssertionError("network attempt")):
                     app.start_monitor()
                 warning.assert_called_once()
                 if app.worker is not None:
