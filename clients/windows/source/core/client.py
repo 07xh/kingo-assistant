@@ -18,6 +18,8 @@ import httpx
 from bs4 import BeautifulSoup
 from loguru import logger
 
+from .request_budget import SingleFlight
+
 
 class Status(str, Enum):
     AVAILABLE = "发现余量，请在官网确认"
@@ -248,6 +250,7 @@ class KingoClient:
         self.parse_ms = 0.0
         self.stop = asyncio.Event()
         self.lock = asyncio.Lock()
+        self._single_flight = SingleFlight()
         self.entry_url: str | None = None
         self.entry_loaded_at = 0.0
         self._compiled_query: dict[str, tuple[str, bytes | None]] = {}
@@ -326,6 +329,13 @@ class KingoClient:
         await self.identity()
 
     async def fetch_course_list(self, term: str, course_ids: list[str] | None = None) -> list[CourseItem]:
+        # Only in-flight, identical reads share work; no stale response cache.
+        key = (term, None if course_ids is None else tuple(sorted(course_ids)))
+        result = await self._single_flight.run(
+            key, lambda: self._fetch_course_list_serial(term, course_ids))
+        return list(result)
+
+    async def _fetch_course_list_serial(self, term: str, course_ids: list[str] | None = None) -> list[CourseItem]:
         async with self.lock:
             now = time.monotonic()
             if self.entry_url is None or now - self.entry_loaded_at > 1800:
