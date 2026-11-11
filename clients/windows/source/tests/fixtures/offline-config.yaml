@@ -1,0 +1,18 @@
+# Offline unit-test-only fixture. NEVER a real NCWU configuration.
+base_url: "https://campus.example.edu"
+xnxq: "2026-2027-1"
+auth: {cookie: ""}
+strategy:
+  mode: monitor
+  interval_range: [60, 90]
+  max_cycles: 1
+  dry_run: true
+courses:
+  - {key: "target-B", course_id: "TEST101", class_id: "B", course_name: ""}
+  - {key: "target-A", course_id: "TEST101", class_id: "A", course_name: ""}
+notify: {}
+protocol:
+  verified: false
+  list_method: POST
+  table_marker: 'id="actual-courses"'
+  columns: {course_id: 0, course_name: 1, teacher: 2, remain: 3, class_id: 4}

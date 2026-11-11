@@ -1,0 +1,19 @@
+青果选课辅助 Windows V4.6 — 最短验收路径
+
+一、解压本 ZIP（不要直接在压缩软件预览窗口中运行）。
+二、Windows 安装 Python 3.10+ 后双击 run-windows.bat，首次需联网安装依赖。
+三、软件打开后点击“虚构样例：下一步”三次：
+    第 1 次：两个教学班均为“已满”；
+    第 2 次：虚构教学班 target-B 出现余量 2；
+    第 3 次：target-B 恢复“已满”。
+四、点击“检查配置”恢复你自己的课程配置。这些均为本地虚构页面，完全没有连接学校。
+五、Windows 上可以运行 build-windows.bat 打包 EXE；构建后执行 --self-test 验证资源完整。
+
+【重要】
+这个 ZIP 是源码包，里面没有已经构建好的 Windows EXE。
+学校真实只读课程接口与登录态均尚未验收，程序不会自动提交选课。
+不要将学校账号、Cookie、HAR、未脱敏的 HTML 分享给他人。
+详情见 README-Windows.md 与 CHANGELOG-Windows-v4.5.md。
+
+V4.6：点击「离线工具」→「本机 HAR 结构检查」，可以只看华水请求数量与状态，不能据此认定接口已核验。
+Windows 构建后需要验证 dist\build-verification.json（必须为 Windows 原生测试记录）。
