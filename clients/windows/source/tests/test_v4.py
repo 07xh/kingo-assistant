@@ -186,7 +186,7 @@ class ServerResponseHandling(unittest.IsolatedAsyncioTestCase):
         def handler(request):
             calls.append(request)
             return httpx.Response(403)
-        client = KingoClient(config())
+        client = KingoClient(config(), offline_test_mode=True)
         await client.http.aclose()
         client.http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
         try:
