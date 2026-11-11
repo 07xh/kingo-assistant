@@ -20,6 +20,7 @@ from core.client import KingoClient, parse_courses
 from core.inspector import inspect_html
 from core.scheduler import Scheduler
 from core.monitor_policy import validate_limits
+from core.request_budget import read_verified_policy_config
 from core.time_sync import TimeSync
 
 
@@ -63,6 +64,9 @@ def validate(config: dict, check_only: bool = False) -> None:
         raise ValueError("课程至少提供一个真实的匹配条件")
     if not check_only and not (config.get("auth", {}).get("cookie") or __import__("os").getenv("KINGO_COOKIE")):
         raise ValueError("未找到本人官方登录的会话 Cookie；建议通过 KINGO_COOKIE 配置")
+    if not check_only:
+        # No network operation may begin with an unspecified or unverified budget.
+        read_verified_policy_config(config, (url.scheme, url.netloc))
 
 
 def replay_html(config: dict, filename: str) -> None:
