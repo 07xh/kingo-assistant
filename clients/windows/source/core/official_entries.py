@@ -12,7 +12,9 @@ import math
 import time
 from dataclasses import dataclass
 from enum import Enum
-from typing import Iterable, Sequence
+from typing import Iterable, Mapping, Sequence
+from urllib.parse import urlsplit
+from contextlib import AsyncExitStack
 
 import httpx
 
@@ -64,6 +66,7 @@ class ProbeState(str, Enum):
     CONNECTION_ERROR = "connection_error"
     APP_ONLY = "app_only"
     SKIPPED = "skipped"
+    POLICY_UNVERIFIED = "policy_unverified"
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,14 +78,18 @@ class LoginProbe:
 
 
 async def probe_official_login_surfaces(
-    *, transport: httpx.AsyncBaseTransport | None = None
+    *, transport: httpx.AsyncBaseTransport | None = None,
+    request_budgets: Mapping[str, object] | None = None,
 ) -> tuple[LoginProbe, ...]:
     """Manually invoked: at most one unauthenticated GET per public web entry.
 
     No redirects, credentials, cookies, response bodies, endpoint discovery,
     retry loop or parallel requests. NEVER use these results to select a
-    catalog/enrollment backend.
+    catalog/enrollment backend. Live calls require a verified per-origin budget;
+    absent a budget, the entry is skipped before any network activity.
     """
+    if transport is not None and not isinstance(transport, httpx.MockTransport):
+        raise ValueError("仅允许通过 MockTransport 注入离线测试传输")
     results: list[LoginProbe] = []
     halted = False
     async with httpx.AsyncClient(
@@ -98,12 +105,25 @@ async def probe_official_login_surfaces(
             if halted:
                 results.append(LoginProbe(entry.identifier, ProbeState.SKIPPED))
                 continue
+            budget = None
+            if transport is None:
+                parsed = urlsplit(entry.launch_url)
+                origin = f"{parsed.scheme}://{parsed.netloc}"
+                budget = (request_budgets or {}).get(origin)
+                if budget is None:
+                    results.append(LoginProbe(entry.identifier, ProbeState.POLICY_UNVERIFIED))
+                    continue
             started = time.perf_counter()
             try:
-                # Read only headers/status; do not download or parse login-page bodies.
-                async with client.stream("GET", entry.launch_url,
-                                         headers={"Accept": "text/html,*/*"}) as response:
-                    code = response.status_code
+                # Every real-school probe must reserve an independent verified
+                # per-origin request budget. MockTransport tests never go online.
+                async with AsyncExitStack() as guards:
+                    if budget is not None:
+                        await guards.enter_async_context(budget.request())
+                    # Read only headers/status; no page body or redirect traversal.
+                    async with client.stream("GET", entry.launch_url,
+                                             headers={"Accept": "text/html,*/*"}) as response:
+                        code = response.status_code
                 duration = (time.perf_counter() - started) * 1000
                 if code == 429:
                     state = ProbeState.RATE_LIMITED
