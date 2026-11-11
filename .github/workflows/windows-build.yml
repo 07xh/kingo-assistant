@@ -1,6 +1,12 @@
 name: Windows standalone EXE
 
 on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "clients/windows/**"
+      - ".github/workflows/windows-build.yml"
   push:
     branches:
       - import/windows-v4.6
