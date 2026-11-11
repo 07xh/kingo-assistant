@@ -178,6 +178,8 @@ class AttemptJournal:
                 and all(isinstance(x, str) and len(x) == 64
                         and all(c in "0123456789abcdef" for c in x)
                         for x in value["attempts"])):
+            if len(value["attempts"]) > MAX_JOURNAL_ATTEMPTS:
+                raise ValueError("历史提交记录超过安全上限，拒绝自动迁移")
             migrated = self._new_data()
             migrated["legacy_attempts"] = list(dict.fromkeys(value["attempts"]))
             self._write(migrated)
@@ -395,6 +397,10 @@ class EnrollmentEngine:
             "official_window_verified",
             "official_write_verified",
         )
+        scope = getattr(self.gateway, "account_scope", None)
+        if (not isinstance(scope, str) or not scope.strip()
+                or scope != self.journal.account_scope):
+            raise EnrollmentNotReady("当前官方账户与本地提交记录隔离范围不一致")
         if not (self.user_opted_in is True and self.institution_permits_write is True
                 and all(getattr(self.gateway, name, False) is True for name in capabilities)):
             raise EnrollmentNotReady("用户授权、学校许可及目录/窗口/已选/写入接口验收必须全部通过")

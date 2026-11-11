@@ -73,7 +73,7 @@ class AutomaticEnrollmentTest(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.path = Path(self.temp.name) / "journal.json"
-        self.journal = AttemptJournal(self.path, "2026-2027-1")
+        self.journal = AttemptJournal(self.path, "2026-2027-1", account_scope="synthetic-account-A")
         self.a = Target("A", "COURSE-1", "CLASS-1", "optional")
         self.b = Target("B", "COURSE-2", "CLASS-2", "optional")
 
@@ -306,9 +306,18 @@ class AutomaticEnrollmentTest(unittest.TestCase):
             enrolled={("COURSE-1", "OTHER-CLASS")},
         )
         report = self.run_engine(self.engine(fake), [self.a, self.b])
-        self.assertEqual(report.states["A"], "该课程已有其他教学班，跳过")
+        self.assertEqual(report.states["A"], "同组志愿已有成功课程")
         self.assertEqual(report.states["B"], "同组志愿已有成功课程")
         self.assertEqual(fake.writes, [])
+
+
+    def test_account_scope_must_match_the_verified_gateway(self):
+        other = AttemptJournal(self.path, "2026-2027-1", account_scope="synthetic-account-B")
+        fake = FakeOfficialGateway([Offering("COURSE-1", "CLASS-1", 1)])
+        with self.assertRaises(EnrollmentNotReady):
+            self.run_engine(self.engine(fake, journal=other))
+        self.assertEqual(fake.writes, [])
+
 
 
 if __name__ == "__main__":
