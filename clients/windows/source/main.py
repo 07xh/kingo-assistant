@@ -67,7 +67,7 @@ def validate(config: dict, check_only: bool = False) -> None:
 
 
 def display_official_entries(*, probe: bool = False) -> None:
-    """Show official login routes; only an explicit flag contacts two login pages."""
+    """Show official login routes; unverified live probe budgets fail closed."""
     measurements = {}
     if probe:
         measurements = {
@@ -239,7 +239,7 @@ def main() -> int:
     offline.add_argument("--official-entries", action="store_true",
                          help="显示学校官方登录方式（不访问网络，不需要配置）")
     offline.add_argument("--probe-official-entries", action="store_true",
-                         help="手动探测官方网页登录页可达性，每入口至多一次 GET")
+                         help="官网登录页只读探测（无已核实请求预算时跳过联网）")
     args = parser.parse_args()
     messages = deque(maxlen=5)
     logger.remove()
