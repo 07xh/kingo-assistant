@@ -883,6 +883,12 @@ def run_packaged_gui_smoke() -> None:
                         raise AssertionError("Official entry inventory missing mobile app")
                 if len(app.table.get_children()) != 2:
                     raise AssertionError("Expected two placeholder courses in packaged template")
+                # Regression for PR #19/#20 GUI composition: main previously
+                # referenced a deleted 'portal_row' frame and could not open.
+                if app.scheduled_preflight_button.winfo_manager() != "pack":
+                    raise AssertionError("Typed plan preflight entry not mounted in main UI")
+                if app.portal_panel.winfo_manager():
+                    raise AssertionError("Manual-only fallback must stay hidden by default")
                 with patch("core.client.httpx.AsyncClient", side_effect=AssertionError("network attempted")):
                     app.demo_next()
                     app.update()
