@@ -28,7 +28,7 @@ The engine requires all of the following before a school adapter can be used:
 
 The 2026-11-11 HAR included an explicit “current time is not a valid selection window” response. Timetable data and `zxinfo.zxxq` records are not an elective catalog or seat count. See [the sanitized HAR audit](docs/acceptance/ncwu-xiqueer-har-2026-11-11.md) and [the execution architecture](docs/architecture/automatic-enrollment.md).
 
-A separate scheduled runner can wait for a configured time and check a verified selection-window state at a bounded 60–3600 second interval. The Windows UI now exposes **offline plan validation only**, not a launch action or a live NCWU adapter. Local waiting uses coarse sleeps until the final seconds to reduce needless CPU wakeups. See [scheduled-runner design](docs/architecture/scheduled-enrollment.md).
+A separate scheduled runner can wait for a configured time and check a verified selection-window state at a bounded 60–3600 second interval. The Windows EXE now includes a **threaded, in-process enrollment execution controller** with explicit start/cancel, completion events, and tray-aware shutdown. Its start button remains **disabled by default** because no verified NCWU write-adapter factory is shipped; local plan preflight cannot enable school submissions. A stop request cancels waiting, but does not interrupt an in-flight write/readback. See [scheduled-runner design](docs/architecture/scheduled-enrollment.md) and [native Windows executor](docs/architecture/windows-scheduled-execution.md).
 
 ## Official browser fallback for the next selection round
 
