@@ -87,19 +87,27 @@ class DesktopScheduledWorker:
         engine = self.engine_factory()
         if not isinstance(engine, EnrollmentEngine):
             raise EnrollmentNotReady("当前没有已验收的自动选课执行器")
-        engine.validate_ready()
-        self.send(ScheduledWorkerEvent("waiting"))
+        report: ScheduledRunReport | None = None
         try:
-            report: ScheduledRunReport = await run_prepared_schedule(
+            engine.validate_ready()
+            self.send(ScheduledWorkerEvent("waiting"))
+            report = await run_prepared_schedule(
                 self.plan, engine, stop_event=cancel
             )
-            self.send(ScheduledWorkerEvent("result", report))
         finally:
-            # Optional ownership-aware adapter cleanup. Only real adapters
-            # implementing aclose are closed; do not leak HTTP connections.
+            # Always close an owned gateway, including after a rejected gate.
+            # Cleanup failures are reported as non-fatal diagnostics, not as
+            # a substitute for the independently verified enrollment result.
             closer = getattr(engine.gateway, "aclose", None)
             if callable(closer):
-                await closer()
+                try:
+                    await closer()
+                except Exception as exc:
+                    self.send(ScheduledWorkerEvent(
+                        "cleanup_warning", type(exc).__name__
+                    ))
+        if report is not None:
+            self.send(ScheduledWorkerEvent("result", report))
 
     def _thread_main(self) -> None:
         try:
