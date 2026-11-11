@@ -430,6 +430,18 @@ class EnrollmentEngine:
         state = await self.gateway.selection_window()
         return state if isinstance(state, WindowState) else WindowState.UNKNOWN
 
+    async def reconcile_pending(self, targets: Sequence[Target]):
+        """One permitted read-only reconciliation, even outside selection time.
+
+        This method never uses the write gate, submits a course, checks the
+        selection window, or clears an unresolved journal fence. A separately
+        verified official readback adapter and matching account/term are
+        mandatory. Only explicit official enrollment records can mark a
+        local pending attempt as confirmed.
+        """
+        from core.enrollment_recovery import reconcile_pending
+        return await reconcile_pending(self.gateway, self.journal, targets)
+
     async def run(self, targets: Sequence[Target]) -> RunReport:
         # Single engine entry point. Flow is split out for focused FSM testing;
         # it retains this module's V5.1 HMAC journal, lock and official gates.
