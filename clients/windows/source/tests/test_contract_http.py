@@ -78,12 +78,16 @@ class BudgetedClientTest(unittest.IsolatedAsyncioTestCase):
         client = await self.client(handler)
         await client.read("GET", "/mine", "/")
         await client.read("GET", "/mine", "/")
-        started = time.monotonic()
         await client.read("GET", "/mine", "/")
-        self.assertGreaterEqual(time.monotonic() - started, 0.075)
         self.assertEqual(count, 3)
         with closing(sqlite3.connect(self.path)) as conn:
-            self.assertEqual(conn.execute("SELECT count(*) FROM requests").fetchone()[0], 3)
+            stamps = [row[0] for row in conn.execute(
+                "SELECT at FROM requests ORDER BY at"
+            )]
+        self.assertEqual(len(stamps), 3)
+        # Assert the actual 100ms sliding-window admission invariant, not
+        # just the final call's wall time (prior reads may have spent time).
+        self.assertGreaterEqual(stamps[2] - stamps[0], 0.097)
 
     async def test_no_offline_escape_without_mock_transport(self):
         fake = KingoClient(synthetic_config(), offline_test_mode=True)

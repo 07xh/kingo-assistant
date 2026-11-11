@@ -35,6 +35,7 @@ from core.offline_selftest import run_selftest
 from core.offline_benchmark import format_benchmark, run_offline_benchmark
 from core.official_portal_schedule import OfficialPortalAppointment, prepare_appointment, format_countdown
 from core.official_entries import OFFICIAL_ENTRIES, probe_official_login_surfaces
+from core.scheduled_ui_bridge import prepare_scheduled_plan
 from core.time_sync import TimeSync
 from main import _read_local_html, validate
 
@@ -252,6 +253,10 @@ class Application(tk.Tk):
             command=self.toggle_portal_appointment,
         )
         self.portal_appointment_button.pack(side="left", padx=(0, 8))
+        ttk.Button(
+            portal_row, text="自动选课计划预检（离线）",
+            command=self.inspect_scheduled_runner,
+        ).pack(side="left", padx=(0, 8))
         ttk.Label(
             portal_row, textvariable=self.portal_appointment_status,
             foreground="#666", wraplength=650,
@@ -371,6 +376,32 @@ class Application(tk.Tk):
         """One deliberate action: copy exact course ID and launch official login page."""
         if self.copy_selected_field("course_id"):
             self.open_official_portal()
+
+    def inspect_scheduled_runner(self) -> None:
+        """Validate the real runner's local admission contract, never start it."""
+        if self.worker:
+            messagebox.showinfo("先停止监测", "运行期间无法变更或核对定时计划。")
+            return
+        try:
+            config = read_config(Path(self.path.get()), offline=True)
+            plan = prepare_scheduled_plan(config)
+        except (ValueError, TypeError, KeyError, OSError) as exc:
+            self.status.set("自动选课计划预检未通过｜没有启动后台任务")
+            self.log("本地自动选课计划预检未通过；未连接学校。")
+            messagebox.showwarning("定时计划字段待完善", str(exc))
+            return
+        self.status.set("定时计划本地字段已核对｜真实自动选课未启用")
+        self.log("定时计划字段检查通过；学校课程目录、窗口和提交适配器仍未验收。")
+        messagebox.showinfo(
+            "本地定时计划检查完成（不是抢课启动）",
+            f"计划时间（北京时间）：{plan.target_time}\n"
+            f"精确课程及教学班：{len(plan.targets)} 个\n"
+            f"窗口检查间隔：{plan.poll_interval_range[0]}–{plan.poll_interval_range[1]} 秒\n"
+            f"最长等待窗口：{plan.max_wait_minutes} 分钟\n\n"
+            "这只代表本地字段和调度器参数有效。"
+            "当前未提供经过独立验收的华水课程目录、窗口、已选记录及正式提交适配器；"
+            "因此没有启动自动选课，也没有创建学校网络请求。"
+        )
 
     def toggle_portal_appointment(self) -> None:
         """Schedule the official browser page only; never submit enrollment."""
