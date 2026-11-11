@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 from core.desktop_settings import (INTERVAL_CUSTOM, INTERVAL_PRESETS,
                                    interval_preset_for, parse_interval_range,
+                                   quick_copy_value,
                                    load_config, normalize_course, resolve_state_file,
                                    save_config_atomic, scrub_secrets,
                                    status_changes, update_config)
@@ -77,6 +78,30 @@ class DesktopSettingsTest(unittest.TestCase):
             with self.subTest(low=low, high=high):
                 with self.assertRaisesRegex(ValueError, "查询间隔"):
                     parse_interval_range(low, high)
+
+    def test_quick_copy_allows_only_exact_course_fields(self):
+        target = {"key": "one", "course_id": "EL101", "class_id": "C2",
+                  "course_name": "电路", "teacher": "李老师", "cookie": "SECRET"}
+        self.assertEqual(quick_copy_value(target, "course_id"), "EL101")
+        self.assertEqual(quick_copy_value(target, "class_id"), "C2")
+        self.assertEqual(quick_copy_value(target, "course_name"), "电路")
+        for field in ("teacher", "cookie", "__dict__"):
+            with self.subTest(field=field):
+                with self.assertRaises(ValueError):
+                    quick_copy_value(target, field)
+
+    def test_quick_copy_rejects_placeholders_and_missing_values(self):
+        for target, field in (
+            (None, "course_id"),
+            ({"course_id": "FILL_FROM_OFFICIAL_PAGE"}, "course_id"),
+            ({"course_id": "SECOND_OPTION_ID"}, "course_id"),
+            ({"course_id": ""}, "course_id"),
+            ({"class_id": "  "}, "class_id"),
+            ({"course_name": "A\\nB"}, "course_name"),
+        ):
+            with self.subTest(target=target, field=field):
+                with self.assertRaises(ValueError):
+                    quick_copy_value(target, field)
 
     def test_course_edit_keeps_extra_data_but_rejects_controls(self):
         result = normalize_course({'key': '1', 'course_id': 'A', 'group': 'other', 'teacher': None})
