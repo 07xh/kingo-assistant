@@ -144,7 +144,8 @@ class MonitorWorker:
             try:
                 await clock.sync(client.http,
                                  client.url(self.config["protocol"]["identity_path"]),
-                                 client.url(self.config["protocol"]["identity_referer"]))
+                                 client.url(self.config["protocol"]["identity_referer"]),
+                                 budgeted_get=lambda url, ref: client.read("GET", url, ref))
             except Exception:
                 self.updates.put(MonitorEvent("message", "校时不可用，使用本机时间。"))
             client.prepare_query(self.config["xnxq"])
