@@ -6,12 +6,13 @@ KingoAssistant is an independent personal course-selection assistant for the NCW
 
 ## Current status
 
-- **Windows:** V5.2 builds on V5.1 and includes local course plans, editable priority order, preflight checks, read-only monitoring, and a hardened fail-closed automatic-enrollment state machine.
+- **Windows:** V5.3 extends V5.2 with an early browser-login reminder and a separate explicit read-only script-session check, alongside local course plans, editable priority order, monitoring, and an offline-tested enrollment state machine.
 - **Windows verification:** V5.1 with the scheduled window runner passed 161 offline tests, a native Windows EXE build, the packaged offline self-test, and the native Tk GUI smoke test.
 - **Latest successful V5.1 build:** [Windows standalone EXE workflow](https://github.com/07xh/kingo-assistant/actions/runs/42995506355).
 - **Android:** planned separately; no APK is implemented or released.
 - **School integration:** the 2026-11-11 HAR confirms a timetable JSON response and selection-related metadata, but does not verify a live elective catalog, a remaining-seat field, or a permitted write/confirmation contract.
 - **Automatic enrollment:** orchestration logic exists and is tested with synthetic gateways. **No NCWU live write adapter is implemented or enabled.** The Windows client remains read-only; do not interpret a build or offline test as a successful real enrollment.
+- **Login preparation:** the app can open the official browser 15 minutes before an appointment and can explicitly check its **own** configured HTTP session when the official identity endpoint is verified. It cannot auto-login with school credentials or import browser cookies. See [login preparation](docs/architecture/login-preparation.md).
 
 ## Automatic enrollment architecture
 
@@ -31,7 +32,7 @@ A separate scheduled runner now waits for the configured start time and checks o
 
 ## Official browser fallback for the next selection round
 
-Windows V5.2 adds an **official-site appointment**: after you enter a personally confirmed opening time, the running app counts down and opens the fixed official NCWU page once. You can copy your stored first-choice course code, move between ordered alternatives, and submit through the official website. This does **not** submit automatically or claim a verified live selection interface. Keep the computer awake and the client running; see [official-site fallback guide](docs/acceptance/official-portal-appointment.md).
+Windows V5.3 retains the V5.2 **official-site appointment**: after you enter a personally confirmed opening time, the running app counts down and opens the fixed official NCWU page once. You can copy your stored first-choice course code, move between ordered alternatives, and submit through the official website. This does **not** submit automatically or claim a verified live selection interface. Keep the computer awake and the client running; see [official-site fallback guide](docs/acceptance/official-portal-appointment.md).
 
 ## Windows client
 
