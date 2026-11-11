@@ -7,9 +7,11 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from core.desktop_settings import (load_config, normalize_course,
-                                   resolve_state_file, save_config_atomic,
-                                   scrub_secrets, status_changes, update_config)
+from core.desktop_settings import (INTERVAL_CUSTOM, INTERVAL_PRESETS,
+                                   interval_preset_for, parse_interval_range,
+                                   load_config, normalize_course, resolve_state_file,
+                                   save_config_atomic, scrub_secrets,
+                                   status_changes, update_config)
 from windows_gui import bundled_config
 
 
@@ -53,6 +55,28 @@ class DesktopSettingsTest(unittest.TestCase):
             with self.subTest(case=case):
                 with self.assertRaises(ValueError):
                     self.updated(**case)
+
+    def test_interval_presets_and_custom_values(self):
+        for label, pair in INTERVAL_PRESETS.items():
+            with self.subTest(label=label):
+                self.assertEqual(interval_preset_for(*pair), label)
+                self.assertEqual(parse_interval_range(*map(str, pair)), pair)
+                saved = self.updated(interval_low=pair[0], interval_high=pair[1])
+                self.assertEqual(saved["strategy"]["interval_range"], list(pair))
+        self.assertEqual(interval_preset_for("75", "135"), INTERVAL_CUSTOM)
+        self.assertEqual(parse_interval_range(" 75 ", " 135 "), (75, 135))
+        saved = self.updated(interval_low=75, interval_high=135)
+        self.assertEqual(saved["strategy"]["interval_range"], [75, 135])
+        self.assertEqual(parse_interval_range("3600", "3600"), (3600, 3600))
+
+    def test_invalid_interval_inputs_rejected(self):
+        bad = [("59", "60"), ("60", "3601"), ("120", "60"),
+               ("", "120"), ("abc", "120"), ("60.5", "120"),
+               ("-60", "60"), ("６０", "120")]
+        for low, high in bad:
+            with self.subTest(low=low, high=high):
+                with self.assertRaisesRegex(ValueError, "查询间隔"):
+                    parse_interval_range(low, high)
 
     def test_course_edit_keeps_extra_data_but_rejects_controls(self):
         result = normalize_course({'key': '1', 'course_id': 'A', 'group': 'other', 'teacher': None})
