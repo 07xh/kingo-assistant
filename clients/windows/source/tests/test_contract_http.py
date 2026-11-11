@@ -62,12 +62,26 @@ class BudgetedClientTest(unittest.IsolatedAsyncioTestCase):
         first = await self.client(handler)
         with self.assertRaises(RateLimitError):
             await first.read("GET", "/mine", "/")
+        with closing(sqlite3.connect(self.path)) as conn:
+            cooldown_row = conn.execute(
+                "SELECT value FROM metadata WHERE key='backoff_until'"
+            ).fetchone()
+        self.assertIsNotNone(cooldown_row)
         second = await self.client(handler)
-        started = time.monotonic()
         response = await second.read("GET", "/mine", "/")
         self.assertEqual(response.status_code, 200)
-        self.assertGreaterEqual(time.monotonic() - started, 0.83)
         self.assertEqual(len(calls), 2)
+        with closing(sqlite3.connect(self.path)) as conn:
+            stamps = [row[0] for row in conn.execute(
+                "SELECT at FROM requests ORDER BY at"
+            )]
+        # Expired requests are pruned from the sliding-log table, so the
+        # original 429 reservation may have been deleted after one second.
+        self.assertTrue(stamps)
+        # The persisted next reservation must not precede the server cooldown
+        # deadline; wall-clock duration after client creation is not a stable
+        # substitute for testing this contract.
+        self.assertGreaterEqual(stamps[-1] + 0.002, cooldown_row[0])
 
     async def test_all_requests_take_quota_and_no_second_send_without_capacity(self):
         count = 0
