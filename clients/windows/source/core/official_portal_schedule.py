@@ -16,6 +16,7 @@ from typing import Mapping
 
 CHINA_TIMEZONE = timezone(timedelta(hours=8))
 MAX_SCHEDULE_HORIZON_SECONDS = 120 * 24 * 3600
+PRELOGIN_LEAD_SECONDS = 15 * 60  # browser opening only; not authentication
 _TIME_FORMAT = re.compile(r"\A\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\Z")
 _PLACEHOLDER_IDS = frozenset({"FILL_FROM_OFFICIAL_PAGE", "SECOND_OPTION_ID"})
 
@@ -33,6 +34,11 @@ class OfficialPortalAppointment:
 
     def is_due(self, now_epoch: float) -> bool:
         return now_epoch >= self.start_at_epoch
+
+    def prelogin_is_due(self, now_epoch: float) -> bool:
+        """Offer an early official browser login once in the final 15 minutes."""
+        return (self.start_at_epoch - PRELOGIN_LEAD_SECONDS <= now_epoch
+                < self.start_at_epoch)
 
 
 def prepare_appointment(
