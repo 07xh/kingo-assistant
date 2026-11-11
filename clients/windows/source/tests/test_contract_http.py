@@ -1,6 +1,6 @@
 """Contract wiring regression against httpx.MockTransport, never a school host."""
 import asyncio
-from contextlib import suppress
+from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from email.utils import format_datetime
 from pathlib import Path
@@ -82,7 +82,7 @@ class BudgetedClientTest(unittest.IsolatedAsyncioTestCase):
         await client.read("GET", "/mine", "/")
         self.assertGreaterEqual(time.monotonic() - started, 0.075)
         self.assertEqual(count, 3)
-        with sqlite3.connect(self.path) as conn:
+        with closing(sqlite3.connect(self.path)) as conn:
             self.assertEqual(conn.execute("SELECT count(*) FROM requests").fetchone()[0], 3)
 
     async def test_no_offline_escape_without_mock_transport(self):
@@ -116,7 +116,7 @@ class BudgetedClientTest(unittest.IsolatedAsyncioTestCase):
                 budgeted_get=lambda url, ref: client.read("GET", url, ref),
             )
         self.assertEqual(calls, ["/mine"])
-        with sqlite3.connect(self.path) as conn:
+        with closing(sqlite3.connect(self.path)) as conn:
             self.assertEqual(conn.execute("SELECT count(*) FROM requests").fetchone()[0], 1)
 
     def test_retry_after_header_http_date_or_invalid(self):
