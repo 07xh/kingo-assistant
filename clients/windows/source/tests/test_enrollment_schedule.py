@@ -186,6 +186,31 @@ class ScheduledEnrollmentTest(unittest.TestCase):
         self.assertEqual(self.gateway.window_calls, 0)
         self.assertEqual(self.monotonic_value[0], 0)
 
+    def test_long_local_wait_does_not_wake_every_half_second(self):
+        pauses = []
+
+        async def fake_sleep(seconds):
+            pauses.append(seconds)
+            self.clock.current += seconds
+            self.monotonic_value[0] += seconds
+
+        runner = ScheduledEnrollmentRunner(
+            self.engine, self.clock,
+            poll_interval_range=(60, 60),
+            max_wait_minutes=2,
+            sleep=fake_sleep,
+            monotonic=lambda: self.monotonic_value[0],
+            uniform=lambda low, high: low,
+        )
+        report = self.run_runner(runner, target_time="4600")
+        self.assertEqual(report.reason, "engine_completed")
+        self.assertEqual(report.window_checks, 1)
+        self.assertEqual(len(self.gateway.writes), 1)
+        self.assertIn(30.0, pauses)
+        self.assertIn(5.0, pauses)
+        self.assertIn(0.25, pauses)
+        self.assertLess(len(pauses), 200)  # instead of 7200 timer wakeups
+
     def test_poll_interval_and_timeout_bounds(self):
         for interval, wait in [((0, 1), 2), ((60, 3601), 2), ((90, 60), 2),
                                ((60, 60), 0), ((60, 60), 1441)]:
