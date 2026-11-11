@@ -197,7 +197,7 @@ class AttemptJournal:
             raise ValueError("提交记录结构无效，拒绝执行")
         if any(not isinstance(key, str) or len(key) != 64
                or any(c not in "0123456789abcdef" for c in key)
-               or status not in _ATTEMPT_STATES
+               or not isinstance(status, str) or status not in _ATTEMPT_STATES
                for key, status in attempts.items()):
             raise ValueError("提交状态无效，拒绝执行")
         if any(not isinstance(key, str) or len(key) != 64
@@ -262,6 +262,13 @@ class AttemptJournal:
             data["attempts"][fingerprint] = new_state
             self._write(data)
             return
+        if current is None and new_state == "confirmed":
+            legacy = self._legacy_fingerprint(target)
+            if legacy in data["legacy_attempts"]:
+                data["legacy_attempts"].remove(legacy)
+                data["attempts"][fingerprint] = "confirmed"
+                self._write(data)
+                return
         raise EnrollmentNotReady("提交记录状态冲突，须先人工核对")
 
     def record_rejected(self, target: Target) -> None:
@@ -304,21 +311,23 @@ class AttemptJournal:
                     raise EnrollmentNotReady("已有另一个选课进程持有本机锁") from exc
             yield
         finally:
-            if stream is not None:
-                if locked:
-                    try:
-                        if os.name == "nt":
-                            import msvcrt
-                            stream.seek(0)
-                            msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
-                        else:
-                            import fcntl
-                            fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
-                    finally:
+            try:
+                if stream is not None:
+                    if locked:
+                        try:
+                            if os.name == "nt":
+                                import msvcrt
+                                stream.seek(0)
+                                msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
+                            else:
+                                import fcntl
+                                fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
+                        finally:
+                            stream.close()
+                    else:
                         stream.close()
-                else:
-                    stream.close()
-            local_lock.release()
+            finally:
+                local_lock.release()
 
 
 def _validate_targets(targets: Sequence[Target]) -> None:
@@ -416,7 +425,7 @@ class EnrollmentEngine:
                 return RunReport({t.key: "无法确认官方状态" for t in targets}, True)
 
             satisfied = {t.group for t in targets if t.group
-                         and (t.course_id, t.class_id) in enrolled}
+                         and any(course_id == t.course_id for course_id, _ in enrolled)}
             refresh_catalog = False
 
             for target in targets:
@@ -424,7 +433,7 @@ class EnrollmentEngine:
                 journal_state = self.journal.status(target)
 
                 if identity in enrolled:
-                    if journal_state in ("pending", "rejected"):
+                    if journal_state in ("pending", "rejected", "legacy_pending"):
                         self.journal.record_confirmed(target)
                     states[target.key] = "已在官方选课记录中"
                     if target.group:
