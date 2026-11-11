@@ -604,6 +604,20 @@ def run_packaged_gui_smoke() -> None:
                 app.update()
                 if app.table.set("A", "course") != "FILL_FROM_OFFICIAL_PAGE":
                     raise AssertionError("Demo did not restore the real local configuration")
+                app.table.selection_set("A")
+                with patch("tkinter.messagebox.showwarning"):
+                    if app.copy_selected_field("course_id"):
+                        raise AssertionError("Placeholder course must not be copied")
+                # A synthetic target is only placed in memory; no school network
+                # or user config file is accessed or modified.
+                app._display_courses["A"]["course_id"] = "SYNTHETIC101"
+                if not app.copy_selected_field("course_id"):
+                    raise AssertionError("Valid local course code was not copied")
+                if app.clipboard_get() != "SYNTHETIC101":
+                    raise AssertionError("Clipboard did not contain the selected course code")
+                with patch("webbrowser.open", return_value=True) as opened:
+                    app.prepare_selected_course()
+                    opened.assert_called_once_with(OFFICIAL_PORTAL)
             finally:
                 app.destroy()
 
