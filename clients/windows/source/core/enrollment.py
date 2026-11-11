@@ -422,6 +422,10 @@ class EnrollmentEngine:
                 and all(getattr(self.gateway, name, False) is True for name in capabilities)):
             raise EnrollmentNotReady("用户授权、学校许可及目录/窗口/已选/写入接口验收必须全部通过")
 
+    def validate_ready(self) -> None:
+        """Public, network-free V5.1 readiness gate for scheduled runner."""
+        self._gate()
+
     async def _window(self) -> WindowState:
         state = await self.gateway.selection_window()
         return state if isinstance(state, WindowState) else WindowState.UNKNOWN
