@@ -65,6 +65,41 @@ class RequestBudgetTest(unittest.IsolatedAsyncioTestCase):
         await asyncio.gather(worker(1), worker(2))
         self.assertEqual(events, ["start-1", "end-1", "start-2", "end-2"])
 
+    async def test_concurrent_managers_share_one_request_lease(self):
+        first = self.budget(((0.01, 10),))
+        second = self.budget(((0.01, 10),))
+        started = asyncio.Event()
+        release = asyncio.Event()
+        overlap = []
+
+        async def hold_first():
+            async with first.request():
+                started.set()
+                await release.wait()
+
+        async def acquire_second():
+            async with second.request():
+                overlap.append('second')
+
+        one = asyncio.create_task(hold_first())
+        await started.wait()
+        two = asyncio.create_task(acquire_second())
+        await asyncio.sleep(0.08)
+        self.assertEqual(overlap, [])
+        release.set()
+        await asyncio.gather(one, two)
+        self.assertEqual(overlap, ['second'])
+
+    async def test_process_lease_released_after_request_exception(self):
+        first = self.budget(((0.01, 10),))
+        second = self.budget(((0.01, 10),))
+        with self.assertRaisesRegex(RuntimeError, 'synthetic'):
+            async with first.request():
+                raise RuntimeError('synthetic')
+        async with asyncio.timeout(2):
+            async with second.request():
+                pass
+
     async def test_policy_change_requires_reconciliation(self):
         self.budget()
         with self.assertRaises(PolicyError):
