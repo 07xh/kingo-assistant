@@ -30,6 +30,19 @@ class InventoryTest(unittest.TestCase):
 
 
 class ManualProbeTest(unittest.IsolatedAsyncioTestCase):
+    async def test_unverified_origins_skip_all_real_network_requests(self):
+        from unittest.mock import patch
+        with patch("core.official_entries.httpx.AsyncClient") as client:
+            client.return_value.__aenter__.return_value.stream.side_effect = AssertionError(
+                "School network must never be reached without a verified budget"
+            )
+            report = await probe_official_login_surfaces()
+            client.return_value.__aenter__.return_value.stream.assert_not_called()
+        self.assertEqual([r.state for r in report], [
+            ProbeState.POLICY_UNVERIFIED, ProbeState.POLICY_UNVERIFIED,
+            ProbeState.APP_ONLY,
+        ])
+
     async def test_probe_is_explicit_single_get_per_web_login_no_redirects_or_cookies(self):
         seen = []
 
