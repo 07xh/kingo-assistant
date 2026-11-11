@@ -28,6 +28,7 @@ from core.demo import DemoReport, run_demo
 from desktop_editor import SettingsEditor
 from desktop_plans import PlanManager
 from desktop_tray import TrayController
+from desktop_scheduled_worker import DesktopScheduledWorker, ScheduledWorkerEvent
 from core.inspector import inspect_html
 from core.har_audit import summarize_har, format_summary
 from tools.catalog_evidence import inspect_local_file
@@ -208,6 +209,10 @@ class Application(tk.Tk):
         self.events: queue.Queue[MonitorEvent] = queue.Queue()
         self._tray = TrayController(lambda kind: self.events.put(MonitorEvent(kind)))
         self.worker: MonitorWorker | None = None
+        # No school submit adapter is shipped. An audited provider may inject
+        # a factory later; local plan validation alone never arms execution.
+        self._engine_factory = None
+        self.scheduled_worker: DesktopScheduledWorker | None = None
         self._previous_states: dict[str, str] = {}
         self._display_courses: dict[str, dict] = {}
         self._demo_report: DemoReport | None = None
@@ -285,6 +290,16 @@ class Application(tk.Tk):
             command=self.inspect_scheduled_runner,
         )
         self.scheduled_preflight_button.pack(side="right")
+        self.scheduled_start_button = ttk.Button(
+            self.action_panel, text="自动执行（待接入官方接口）",
+            command=self.start_scheduled_enrollment, state="disabled",
+        )
+        self.scheduled_start_button.pack(side="right", padx=(0, 8))
+        self.scheduled_stop_button = ttk.Button(
+            self.action_panel, text="取消自动计划",
+            command=self.stop_scheduled_enrollment, state="disabled",
+        )
+        self.scheduled_stop_button.pack(side="right", padx=(0, 8))
 
         self.portal_panel = ttk.LabelFrame(self, text="手动官网备用（不自动提交）", padding=8)
         self.portal_appointment_button = ttk.Button(
@@ -444,6 +459,76 @@ class Application(tk.Tk):
             "当前未提供经过独立验收的华水课程目录、窗口、已选记录及正式提交适配器；"
             "因此没有启动自动选课，也没有创建学校网络请求。"
         )
+
+    def install_verified_engine_factory(self, factory) -> None:
+        """Internal integration seam for a *reviewed* school-specific adapter.
+
+        This API never grants permission or marks capabilities as verified.
+        EnrollmentEngine validates all account, policy and gateway gates in the
+        background before the scheduler is allowed to wait.
+        """
+        if self.worker or self.scheduled_worker:
+            raise RuntimeError("运行中的任务不允许切换选课适配器")
+        if not callable(factory):
+            raise TypeError("选课执行器必须由可信工厂构造")
+        self._engine_factory = factory
+        self.scheduled_start_button.configure(state="normal")
+
+    def start_scheduled_enrollment(self) -> None:
+        """Start a verified *in-process* engine; never open a browser."""
+        if self.worker or self.scheduled_worker:
+            messagebox.showinfo("已有任务", "请先完成或取消当前运行任务")
+            return
+        factory = self._engine_factory
+        if factory is None:
+            self.status.set("自动选课不可启动｜未接入经核验的华水官方提交适配器")
+            self.log("没有真实学校选课接口适配器，未创建任何学校网络请求。")
+            return
+        try:
+            config = read_config(Path(self.path.get()), offline=True)
+            plan = prepare_scheduled_plan(config)
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            self.status.set("自动选课计划未通过本地预检")
+            self.log("计划缺少真实课程代码/教学班、学期或时间，不启动。")
+            messagebox.showwarning("预约参数待完善", str(exc))
+            return
+        if not messagebox.askyesno(
+            "启动应用内自动执行",
+            f"选课时间（北京时间）：{plan.target_time}\\n"
+            f"确定的课程及教学班：{len(plan.targets)} 条\\n\\n"
+            "此功能将通过经过授权的应用内教务适配器发送正式提交，"
+            "只以官方已选课程记录核验结果；不使用浏览器代替提交。\\n"
+            "确认启动本次自动选课任务？",
+        ):
+            return
+        sender = lambda item: self.events.put(
+            MonitorEvent("scheduled_" + item.kind, item.value)
+        )
+        worker = DesktopScheduledWorker(plan, factory, sender)
+        self.scheduled_worker = worker
+        try:
+            worker.start()
+        except Exception:
+            self.scheduled_worker = None
+            self.status.set("后台计划启动失败")
+            self.log("后台线程创建异常，未声称已提交课程。")
+            return
+        self.scheduled_start_button.configure(state="disabled")
+        self.scheduled_stop_button.configure(state="normal")
+        self.start_button.configure(state="disabled")
+        self.edit_button.configure(state="disabled")
+        self.plans_button.configure(state="disabled")
+        self.status.set("自动选课后台任务正在进行本地适配器核验")
+        self.log("应用内后台执行器已启动；尚未向学校发出选课成功声明。")
+
+    def stop_scheduled_enrollment(self) -> None:
+        worker = self.scheduled_worker
+        if worker is None:
+            return
+        worker.stop()
+        self.scheduled_stop_button.configure(state="disabled")
+        self.status.set("已请求取消｜若提交已发出，将完成官方结果核验后退出")
+        self.log("已请求停止自动任务；不会强行中断不确定的选课写入。")
 
     def toggle_portal_appointment(self) -> None:
         """Schedule the official browser page only; never submit enrollment."""
@@ -716,7 +801,7 @@ class Application(tk.Tk):
             self.log("无法解析本机样本，请核对脱敏页面和表头列号。")
 
     def start_monitor(self) -> None:
-        if self.worker or self._benchmark_in_progress:
+        if self.worker or getattr(self, "scheduled_worker", None) or self._benchmark_in_progress:
             return
         try:
             # First run offline checks so placeholders and missing authorization
