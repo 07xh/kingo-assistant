@@ -405,6 +405,10 @@ class EnrollmentEngine:
                 and all(getattr(self.gateway, name, False) is True for name in capabilities)):
             raise EnrollmentNotReady("用户授权、学校许可及目录/窗口/已选/写入接口验收必须全部通过")
 
+    def validate_ready(self) -> None:
+        """Public preflight for a scheduler; performs no network request."""
+        self._gate()
+
     async def _window(self) -> WindowState:
         state = await self.gateway.selection_window()
         if not isinstance(state, WindowState):
@@ -414,7 +418,7 @@ class EnrollmentEngine:
     async def run(self, targets: Sequence[Target]) -> RunReport:
         targets = list(targets)
         _validate_targets(targets)
-        self._gate()
+        self.validate_ready()
         states = {t.key: "未执行" for t in targets}
 
         with self.journal.exclusive():
