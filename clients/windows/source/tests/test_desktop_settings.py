@@ -62,13 +62,24 @@ class DesktopSettingsTest(unittest.TestCase):
             with self.subTest(label=label):
                 self.assertEqual(interval_preset_for(*pair), label)
                 self.assertEqual(parse_interval_range(*map(str, pair)), pair)
-                saved = self.updated(interval_low=pair[0], interval_high=pair[1])
-                self.assertEqual(saved["strategy"]["interval_range"], list(pair))
+                if pair[0] < 30:
+                    with self.assertRaisesRegex(ValueError, "实验模式"):
+                        self.updated(interval_low=pair[0], interval_high=pair[1])
+                else:
+                    saved = self.updated(interval_low=pair[0], interval_high=pair[1])
+                    self.assertEqual(saved["strategy"]["interval_range"], list(pair))
         self.assertEqual(interval_preset_for("75", "135"), INTERVAL_CUSTOM)
         self.assertEqual(parse_interval_range(" 75 ", " 135 "), (75, 135))
         saved = self.updated(interval_low=75, interval_high=135)
         self.assertEqual(saved["strategy"]["interval_range"], [75, 135])
         self.assertEqual(parse_interval_range("3600", "3600"), (3600, 3600))
+
+    def test_experimental_opt_in_keeps_real_protocol_unverified(self):
+        config = self.updated(interval_low=0.5, interval_high=0.5,
+                              fast_polling_opt_in=True)
+        self.assertEqual(config["strategy"]["interval_range"], [0.5, 0.5])
+        self.assertTrue(config["strategy"]["fast_polling_opt_in"])
+        self.assertFalse(config["protocol"]["verified"])
 
     def test_invalid_interval_inputs_rejected(self):
         bad = [("59", "60"), ("60", "3601"), ("120", "60"),

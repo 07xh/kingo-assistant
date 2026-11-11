@@ -24,7 +24,7 @@ class MonitorLimits:
     max_duration_minutes: int
 
 
-def validate_limits(strategy: dict) -> MonitorLimits:
+def validate_limits(strategy: dict, base_url: str = "") -> MonitorLimits:
     """Validate locally; does not contact or certify the school's server."""
     if not isinstance(strategy, dict):
         raise ValueError("缺少监测设置")
@@ -61,6 +61,13 @@ def validate_limits(strategy: dict) -> MonitorLimits:
         if policy.get("manually_confirmed") not in (False, None):
             raise ValueError("频率规则的人工确认状态无效")
 
+    if low < ABSOLUTE_MIN_INTERVAL:
+        # Experiments or host-scoped approval records are explicitly opted into;
+        # neither implies the university approved these hypothetical rates.
+        from .polling_policy import validate_rate_permission
+        validate_rate_permission(strategy, base_url)
+        if policy.get("manually_confirmed") is not True:
+            minimum = low
     if not minimum <= low <= high <= MAX_INTERVAL:
         raise ValueError(f"查询间隔需在 {minimum:g} 至 3600 秒之间，且下限不能大于上限")
 

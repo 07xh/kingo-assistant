@@ -18,6 +18,8 @@ import httpx
 from bs4 import BeautifulSoup
 from loguru import logger
 
+from .monitor_policy import validate_limits
+
 
 class Status(str, Enum):
     AVAILABLE = "发现余量，请在官网确认"
@@ -224,6 +226,11 @@ def parse_courses(raw: bytes, config: dict, course_ids: list[str] | None = None,
 class KingoClient:
     def __init__(self, config: dict):
         self.config = config
+        limits = validate_limits(config["strategy"], config["base_url"])
+        # Read-only fast intervals require serial pacing of ALL client reads.
+        self._minimum_request_gap = limits.low if limits.low < 60 else 0.0
+        self._request_lock = asyncio.Lock()
+        self._last_request_at: float | None = None
         self.p = config["protocol"]
         if self.p.get("verified") is not True:
             raise ProtocolError("protocol.verified=false：尚未核实本人课程查询接口")
@@ -285,8 +292,19 @@ class KingoClient:
         for attempt in range(3):
             started = time.perf_counter()
             try:
-                response = await self.http.request(method, self.url(path), headers=headers,
-                                                   content=body)
+                # No parallel HTTP reads, including navigation and bounded retries.
+                # The lock covers the actual transport request.
+                async with self._request_lock:
+                    if self._minimum_request_gap and self._last_request_at is not None:
+                        remaining = self._minimum_request_gap - (
+                            time.monotonic() - self._last_request_at)
+                        if remaining > 0:
+                            await asyncio.sleep(remaining)
+                    if self.stop.is_set():
+                        raise ProtocolError("监测已停止")
+                    self._last_request_at = time.monotonic()
+                    response = await self.http.request(
+                        method, self.url(path), headers=headers, content=body)
                 if response.status_code in (401, 403, 429):
                     if response.status_code == 401:
                         raise AuthenticationError("会话无效")

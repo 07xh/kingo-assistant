@@ -47,7 +47,7 @@ def validate(config: dict, check_only: bool = False) -> None:
         raise ValueError("当前安全版只能运行 dry_run: true，不提供自动选课写入")
     if strategy["mode"] == "burst":
         TimeSync.parse(strategy["target_time"])
-    validate_limits(strategy)
+    validate_limits(strategy, config["base_url"])
     targets = config["courses"]
     minimum_courses = 0 if check_only else 1
     if not isinstance(targets, list) or not minimum_courses <= len(targets) <= 30:

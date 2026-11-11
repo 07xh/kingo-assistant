@@ -40,14 +40,8 @@ def quick_copy_value(target: dict, field: str) -> str:
         raise ValueError("目标课程信息未填写或仍为模板，请先从官网核对并编辑课程")
     return value
 
-# Local app safety bounds; not a measured or authorized school rate limit.
-INTERVAL_MIN_SECONDS = 60
-INTERVAL_MAX_SECONDS = 3600
-INTERVAL_PRESETS = {
-    "最快（60 秒）": (60, 60),
-    "均衡（120 秒）": (120, 120),
-    "低频（300 秒）": (300, 300),
-}
+# Shared by CLI, GUI and validated live requests.
+from .polling_policy import INTERVAL_PRESETS, parse_interval_range
 INTERVAL_CUSTOM = "自定义区间"
 
 
@@ -57,21 +51,6 @@ def interval_preset_for(low, high) -> str:
         if str(low).strip() == str(pair[0]) and str(high).strip() == str(pair[1]):
             return name
     return INTERVAL_CUSTOM
-
-
-def parse_interval_range(low: str, high: str) -> tuple[int, int]:
-    """Parse GUI interval inputs strictly as integer seconds."""
-    try:
-        lower, upper = low.strip(), high.strip()
-        if not (lower.isascii() and upper.isascii() and
-                lower.isdecimal() and upper.isdecimal()):
-            raise ValueError
-        start, end = int(lower), int(upper)
-    except (ValueError, AttributeError) as error:
-        raise ValueError("查询间隔请输入整数秒（60–3600）") from error
-    if not (INTERVAL_MIN_SECONDS <= start <= end <= INTERVAL_MAX_SECONDS):
-        raise ValueError("查询间隔须满足 60 ≤ 下限 ≤ 上限 ≤ 3600 秒；并遵守学校更严格的规定")
-    return start, end
 
 
 
@@ -115,9 +94,10 @@ def normalize_course(entry: dict) -> dict:
 
 
 def update_config(config: dict, *, courses: list[dict], semester: str,
-                  mode: str, target_time: str, interval_low: int,
-                  interval_high: int, max_cycles: int,
-                  max_duration_minutes: int | None = None) -> dict:
+                  mode: str, target_time: str, interval_low: int | float,
+                  interval_high: int | float, max_cycles: int,
+                  max_duration_minutes: int | None = None,
+                  fast_polling_opt_in: bool | None = None) -> dict:
     """Return a validated copy; nothing is written or sent over the network."""
     copy = deepcopy(config)
     if not isinstance(courses, list) or not 0 <= len(courses) <= 30:
@@ -132,14 +112,19 @@ def update_config(config: dict, *, courses: list[dict], semester: str,
         raise ValueError("学年学期不能为空")
     if mode not in ("monitor", "burst"):
         raise ValueError("监测模式无效")
-    if not all(type(n) is int for n in (interval_low, interval_high, max_cycles)):
-        raise ValueError("间隔与次数必须为整数")
+    if type(max_cycles) is not int:
+        raise ValueError("最多查询次数必须为整数")
+    interval_low, interval_high = parse_interval_range(interval_low, interval_high)
     copy["strategy"]["mode"] = mode
     copy["strategy"]["target_time"] = _field(target_time, name="计划检查时间", limit=60)
     copy["strategy"]["interval_range"] = [interval_low, interval_high]
     copy["strategy"]["max_cycles"] = max_cycles
     if max_duration_minutes is not None:
         copy["strategy"]["max_duration_minutes"] = max_duration_minutes
+    if fast_polling_opt_in is not None:
+        if type(fast_polling_opt_in) is not bool:
+            raise ValueError("实验确认必须为布尔值")
+        copy["strategy"]["fast_polling_opt_in"] = fast_polling_opt_in
     # Preserve the read-only invariant even for imported configurations.
     copy["strategy"]["dry_run"] = True
     from main import validate

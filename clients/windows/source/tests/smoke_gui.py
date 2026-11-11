@@ -67,13 +67,20 @@ def main():
                 editor.save()
                 showerror.assert_called_once()
             editor.interval_low.set('75')
+            editor.interval_preset.set('加速（1 秒，需确认）')
+            editor._apply_interval_preset()
+            with patch('desktop_editor.messagebox.showerror') as missing_opt_in:
+                editor.save()
+                missing_opt_in.assert_called_once()
+            editor.fast_polling_opt_in.set(True)
             with patch('desktop_editor.messagebox.showinfo'):
                 editor.save()
             app.update()
             config = load_config(Path(app.path.get()))
             assert config['xnxq'] == '2026-2027-2'
             assert config['courses'][0]['course_id'] == 'LOCAL_TEST_101'
-            assert config['strategy']['interval_range'] == [75, 135]
+            assert config['strategy']['interval_range'] == [1.0, 1.0]
+            assert config['strategy']['fast_polling_opt_in'] is True
             assert app.table.set('A', 'course') == 'LOCAL_TEST_101'
             assert app.table.set('A', 'class_id') == '—'
             app.table.selection_set('A')

@@ -77,6 +77,8 @@ class SettingsEditor(tk.Toplevel):
         self.interval_high.trace_add("write", self._on_interval_edited)
         self.max_cycles = tk.StringVar(value=str(strategy["max_cycles"]))
         self.max_duration_minutes = tk.StringVar(value=str(strategy.get("max_duration_minutes", 480)))
+        self.fast_polling_opt_in = tk.BooleanVar(
+            value=strategy.get("fast_polling_opt_in") is True)
         self._build()
         self.refresh_table()
         self.grab_set()
@@ -112,16 +114,19 @@ class SettingsEditor(tk.Toplevel):
                                state="readonly", width=22)
         presets.grid(row=2, column=1, sticky="ew", padx=6, pady=5)
         presets.bind("<<ComboboxSelected>>", self._apply_interval_preset)
-        ttk.Label(settings, text="60–3600 秒；直接修改数字即可自定义。",
+        ttk.Label(settings, text="默认 60–3600 秒；0.5/1/1.5 秒为实验性档位。",
                   foreground="#666").grid(row=2, column=2, columnspan=2,
                                            sticky="w", padx=6)
         for label, var, row, col in fields:
             ttk.Label(settings, text=label).grid(row=row, column=col, sticky="w", pady=5)
             ttk.Entry(settings, textvariable=var, width=23).grid(
                 row=row, column=col + 1, sticky="ew", padx=6, pady=5)
-        ttk.Label(settings, text="60 秒是客户端最短间隔，不是学校许可上限；若校方要求更长间隔，请遵守官方规定。课程查询仍为单链路，不提供并发请求爆发。",
+        ttk.Label(settings, text="短间隔不是已确认的校方安全上限。优先遵守学校实际限频规则；监测仍为只读单链路，遇到 403/429 立即停止。",
                   foreground="#666", wraplength=720).grid(
                       row=5, column=0, columnspan=4, sticky="w", pady=(7, 2))
+        ttk.Checkbutton(settings, variable=self.fast_polling_opt_in,
+                        text="我理解校方实际许可速率尚未核实，主动选择实验性只读监测").grid(
+                            row=6, column=0, columnspan=4, sticky="w", pady=(4, 4))
 
         wrapper = ttk.LabelFrame(outer, text="目标课程（离线草稿允许 0–30 门）", padding=8)
         wrapper.pack(fill="both", expand=True, pady=(12, 6))
@@ -222,7 +227,8 @@ class SettingsEditor(tk.Toplevel):
                 mode=self.mode.get(), target_time=self.target_time.get(),
                 interval_low=interval_low, interval_high=interval_high,
                 max_cycles=int(self.max_cycles.get()),
-                max_duration_minutes=int(self.max_duration_minutes.get()))
+                max_duration_minutes=int(self.max_duration_minutes.get()),
+                fast_polling_opt_in=self.fast_polling_opt_in.get())
             redacted = save_config_atomic(self.path, revised)
         except (ValueError, OSError, KeyError) as exc:
             messagebox.showerror("无法保存", str(exc), parent=self)

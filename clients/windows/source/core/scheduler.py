@@ -164,20 +164,26 @@ class Scheduler:
                 if not self.client.stop.is_set():
                     await self.cycle()
                 return
-            limits = validate_limits(self.strategy)
+            # Offline schedulers in tests need no host; real fast-mode policy
+            # still validates an actual origin in the live KingoClient.
+            limits = validate_limits(self.strategy, self.config.get("base_url", ""))
             deadline = time.monotonic() + limits.max_duration_minutes * 60
             while not self.client.stop.is_set():
                 # A zero cycle limit permits long monitoring, but never an
                 # unbounded unattended session: deadline ALWAYS applies.
                 if (limits.max_cycles and self.cycles >= limits.max_cycles) or time.monotonic() >= deadline:
                     break
+                cycle_started = time.monotonic()
                 await self.cycle()
                 if limits.max_cycles and self.cycles >= limits.max_cycles:
                     break
                 seconds_left = max(0.0, deadline - time.monotonic())
                 if seconds_left <= 0:
                     break
-                if not await self._sleep_or_stop(min(random.uniform(limits.low, limits.high), seconds_left)):
+                elapsed = time.monotonic() - cycle_started
+                # Pace from cycle starts without compensating with request bursts.
+                remaining = max(0.0, random.uniform(limits.low, limits.high) - elapsed)
+                if remaining and not await self._sleep_or_stop(min(remaining, seconds_left)):
                     break
         except AuthenticationError:
             self.last_error = "本人会话无效或登录已过期；请在官方页面重新登录并核验授权"
