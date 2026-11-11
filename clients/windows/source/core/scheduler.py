@@ -164,7 +164,9 @@ class Scheduler:
                 if not self.client.stop.is_set():
                     await self.cycle()
                 return
-            limits = validate_limits(self.strategy, self.config["base_url"])
+            # Offline schedulers in tests need no host; real fast-mode policy
+            # still validates an actual origin in the live KingoClient.
+            limits = validate_limits(self.strategy, self.config.get("base_url", ""))
             deadline = time.monotonic() + limits.max_duration_minutes * 60
             while not self.client.stop.is_set():
                 # A zero cycle limit permits long monitoring, but never an
