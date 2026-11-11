@@ -72,6 +72,7 @@ class MonitorGuiLifecycleTests(TestCase):
             status=Mock(),
             log=Mock(),
             after=Mock(),
+            poll=Mock(),  # Tk's after(300, self.poll) callback
             destroy=Mock(),
         )
 
