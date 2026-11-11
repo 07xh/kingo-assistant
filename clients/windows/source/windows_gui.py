@@ -22,7 +22,7 @@ from tkinter import filedialog, messagebox, ttk
 from loguru import logger
 
 from core.client import KingoClient, parse_courses
-from core.desktop_settings import load_config, resolve_state_file, status_changes
+from core.desktop_settings import load_config, quick_copy_value, resolve_state_file, status_changes
 from core.demo import DemoReport, run_demo
 from desktop_editor import SettingsEditor
 from desktop_plans import PlanManager
@@ -182,6 +182,7 @@ class Application(tk.Tk):
         self.events: queue.Queue[MonitorEvent] = queue.Queue()
         self.worker: MonitorWorker | None = None
         self._previous_states: dict[str, str] = {}
+        self._display_courses: dict[str, dict] = {}
         self._demo_report: DemoReport | None = None
         self._demo_index = 0
         self._closing = False
@@ -234,15 +235,25 @@ class Application(tk.Tk):
         ttk.Label(self, textvariable=self.status, padding=(16, 6)).pack(fill="x")
         frame = ttk.LabelFrame(self, text="目标课程（必须根据官方页面核对；以下数据不代表实时）", padding=8)
         frame.pack(fill="both", expand=True, padx=16, pady=(2, 8))
-        self.table = ttk.Treeview(frame, columns=("key", "course", "teacher", "status"), show="headings")
-        for col, label, width in (("key", "志愿", 90), ("course", "课程/代码", 250),
-                                   ("teacher", "教师", 140), ("status", "状态", 300)):
+        self.table = ttk.Treeview(frame, columns=("key", "course", "class_id", "teacher", "status"), show="headings")
+        for col, label, width in (("key", "志愿", 70), ("course", "课程/代码", 220),
+                                   ("class_id", "教学班", 110), ("teacher", "教师", 120),
+                                   ("status", "状态", 250)):
             self.table.heading(col, text=label)
             self.table.column(col, width=width, stretch=True)
         scroll = ttk.Scrollbar(frame, orient="vertical", command=self.table.yview)
         self.table.configure(yscrollcommand=scroll.set)
         scroll.pack(side="right", fill="y")
         self.table.pack(fill="both", expand=True)
+        prep = ttk.Frame(frame, padding=(0, 7, 0, 0))
+        prep.pack(fill="x")
+        ttk.Button(prep, text="复制课程代码", command=lambda: self.copy_selected_field("course_id")).pack(side="left", padx=(0, 6))
+        ttk.Button(prep, text="复制教学班号", command=lambda: self.copy_selected_field("class_id")).pack(side="left", padx=(0, 6))
+        ttk.Button(prep, text="复制课程名称", command=lambda: self.copy_selected_field("course_name")).pack(side="left", padx=(0, 6))
+        ttk.Button(prep, text="复制代码并打开官网", command=self.prepare_selected_course).pack(side="left")
+        ttk.Label(frame, text="先选中一门真实课程；复制仅在本机进行，官网登录、核对教学班与最终提交仍需本人完成。",
+                  foreground="#666").pack(anchor="w", pady=(0, 3))
+        self.table.bind("<Double-1>", lambda _event: self.copy_selected_field("course_id"))
 
         log_frame = ttk.LabelFrame(self, text="本地运行信息（不展示账号、Cookie 或网页原文）", padding=8)
         log_frame.pack(fill="both", expand=True, padx=16, pady=(0, 10))
@@ -305,6 +316,37 @@ class Application(tk.Tk):
         else:
             self.log("非 Windows 系统请使用文本编辑器编辑：" + target.name)
 
+    def copy_selected_field(self, field: str) -> bool:
+        """Local clipboard helper; never log or transmit the copied field."""
+        selected = self.table.selection()
+        if not selected:
+            messagebox.showinfo("请选择目标课程", "先在目标课程列表中选中一行。")
+            return False
+        if self._demo_report is not None:
+            messagebox.showinfo("仅为虚构样例", "当前显示的是离线演示数据；先点击“检查配置”恢复真实目标。")
+            return False
+        target = self._display_courses.get(str(selected[0]))
+        try:
+            value = quick_copy_value(target, field)
+            self.clipboard_clear()
+            self.clipboard_append(value)
+            self.update_idletasks()
+        except ValueError as error:
+            messagebox.showwarning("课程信息不完整", str(error))
+            return False
+        except tk.TclError:
+            messagebox.showerror("无法复制", "系统剪贴板暂不可用，请检查后重试。")
+            return False
+        label = {"course_id": "课程代码", "class_id": "教学班编号",
+                 "course_name": "课程名称"}.get(field, "信息")
+        self.log(f"已复制所选课程的{label}到本机剪贴板；请在官网核对并手动提交。")
+        return True
+
+    def prepare_selected_course(self) -> None:
+        """One deliberate action: copy exact course ID and launch official login page."""
+        if self.copy_selected_field("course_id"):
+            self.open_official_portal()
+
     def open_official_portal(self) -> None:
         """Open the published school portal in the system browser, not by HTTPX.
 
@@ -347,11 +389,14 @@ class Application(tk.Tk):
 
     def populate(self, config: dict) -> None:
         self.table.delete(*self.table.get_children())
+        self._display_courses = {}
         for item in config["courses"]:
             key = str(item["key"])
+            self._display_courses[key] = dict(item)
             course = str(item.get("course_name") or item.get("course_id") or "待填写")
+            class_id = str(item.get("class_id") or "—")
             teacher = str(item.get("teacher") or "—")
-            self.table.insert("", "end", iid=key, values=(key, course, teacher, "待监测"))
+            self.table.insert("", "end", iid=key, values=(key, course, class_id, teacher, "待监测"))
 
     def demo_next(self) -> None:
         """Step through 3 bundled fictional snapshots; never touch the school."""
@@ -594,6 +639,20 @@ def run_packaged_gui_smoke() -> None:
                 app.check_config()
                 if app.table.set("A", "course") != "FILL_FROM_OFFICIAL_PAGE":
                     raise AssertionError("Demo did not restore the real local configuration")
+                app.table.selection_set("A")
+                with patch("tkinter.messagebox.showwarning"):
+                    if app.copy_selected_field("course_id"):
+                        raise AssertionError("Placeholder course must not be copied")
+                # A synthetic target is only placed in memory; no school network
+                # or user config file is accessed or modified.
+                app._display_courses["A"]["course_id"] = "SYNTHETIC101"
+                if not app.copy_selected_field("course_id"):
+                    raise AssertionError("Valid local course code was not copied")
+                if app.clipboard_get() != "SYNTHETIC101":
+                    raise AssertionError("Clipboard did not contain the selected course code")
+                with patch("webbrowser.open", return_value=True) as opened:
+                    app.prepare_selected_course()
+                    opened.assert_called_once_with(OFFICIAL_PORTAL)
             finally:
                 app.destroy()
 
