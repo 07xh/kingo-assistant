@@ -49,7 +49,7 @@ class ReadinessV49Test(unittest.TestCase):
     def test_manual_time_overlap_is_advisory_not_hard_block(self):
         checks = inspect_readiness(self._ready_config(), env={'KINGO_COOKIE': 'secret'})
         blockers, warnings = split_checks(checks)
-        self.assertEqual(blockers, [])
+        self.assertEqual({item.label for item in blockers}, {'服务器请求预算'})
         self.assertIn('手动节次冲突', {c.label for c in warnings})
         self.assertIn('A/B', format_checks(checks))
 
@@ -64,7 +64,7 @@ class ReadinessV49Test(unittest.TestCase):
         config = self._ready_config()
         config['courses'] = [{'key': 'A', 'course_name': 'TEST', 'time_slots': ''}]
         blockers, warnings = split_checks(inspect_readiness(config, env={'KINGO_COOKIE': 'secret'}))
-        self.assertFalse(blockers)
+        self.assertEqual({item.label for item in blockers}, {'服务器请求预算'})
         self.assertTrue({'课程精确匹配', '节次信息完整度'}.issubset({c.label for c in warnings}))
 
     def test_auth_config_is_not_leaked_in_report(self):

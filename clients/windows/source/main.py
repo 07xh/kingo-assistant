@@ -20,6 +20,7 @@ from core.client import KingoClient, parse_courses
 from core.inspector import inspect_html
 from core.scheduler import Scheduler
 from core.monitor_policy import validate_limits
+from core.request_budget import read_verified_policy_config
 from core.time_sync import TimeSync
 
 
@@ -63,6 +64,9 @@ def validate(config: dict, check_only: bool = False) -> None:
         raise ValueError("课程至少提供一个真实的匹配条件")
     if not check_only and not (config.get("auth", {}).get("cookie") or __import__("os").getenv("KINGO_COOKIE")):
         raise ValueError("未找到本人官方登录的会话 Cookie；建议通过 KINGO_COOKIE 配置")
+    if not check_only:
+        # No network operation may begin with an unspecified or unverified budget.
+        read_verified_policy_config(config, (url.scheme, url.netloc))
 
 
 def replay_html(config: dict, filename: str) -> None:
@@ -172,7 +176,8 @@ async def run(config: dict, messages: deque) -> None:
         # Best effort NTP/HTTP Date, not proof of campus enrollment opening time.
         try:
             await clock.sync(client.http, client.url(config["protocol"]["identity_path"]),
-                             client.url(config["protocol"]["identity_referer"]))
+                             client.url(config["protocol"]["identity_referer"]),
+                             budgeted_get=lambda url, ref: client.read("GET", url, ref))
         except Exception as error:
             logger.warning("网络校时不可用：{}；回退本机时间", type(error).__name__)
         client.prepare_query(config["xnxq"])  # Pre-compile static GET/POST body before monitoring.
@@ -215,6 +220,9 @@ def main() -> int:
         with open(args.config, encoding="utf-8") as source:
             config = yaml.safe_load(source)
         offline_mode = bool(args.replay_html or args.inspect_html or args.replay_sequence)
+        if not (args.check_config or offline_mode):
+            from core.desktop_settings import resolve_state_file
+            config = resolve_state_file(config, Path(args.config).resolve().parent)
         validate(config, check_only=args.check_config or offline_mode)
         if args.inspect_html:
             inspect_local_html(args.inspect_html)

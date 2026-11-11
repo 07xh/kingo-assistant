@@ -11,6 +11,8 @@ import os
 
 from core.conflicts import find_conflicts
 from core.monitor_policy import validate_limits
+from core.request_budget import PolicyError, read_verified_policy_config
+from urllib.parse import urlsplit
 
 
 @dataclass(frozen=True)
@@ -82,6 +84,13 @@ def inspect_readiness(config: dict, env: dict | None = None) -> list[Check]:
         Check('课程精确匹配', not generic_match,
               '部分目标只填名称/教师，可能对应多个教学班，请核对课程代码和班级', 'warning'),
     ]
+    try:
+        parsed = urlsplit(str(config.get('base_url', '')))
+        read_verified_policy_config(config, (parsed.scheme, parsed.netloc))
+        basic.append(Check('服务器请求预算', True, '已填写本机策略，仍须由学校独立核对允许范围'))
+    except (PolicyError, TypeError, ValueError):
+        basic.append(Check('服务器请求预算', False,
+                           '缺少已确认的官方访问策略、窗口配额、匹配域名或持久化数据库路径'))
     try:
         validate_limits(config.get('strategy', {}))
     except ValueError:

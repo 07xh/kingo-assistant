@@ -189,20 +189,28 @@ def save_config_atomic(path: Path, config: dict) -> tuple[str, ...]:
 
 
 def resolve_state_file(config: dict, user_directory: Path) -> dict:
-    """Runtime-only: relative notification state paths stay under user data dir."""
+    """Runtime-only: resolve state and budget paths within the user data dir."""
     copy = deepcopy(config)
+    root = user_directory.resolve()
+
+    def local_path(raw: str, label: str) -> str:
+        if not isinstance(raw, str):
+            raise ValueError(label + "路径无效")
+        target = Path(raw).expanduser()
+        if not target.is_absolute():
+            target = (root / target).resolve()
+            if not target.is_relative_to(root):
+                raise ValueError(label + "相对路径不能离开应用数据目录")
+        if target.is_symlink() or target.parent.is_symlink():
+            raise ValueError(label + "路径不允许使用符号链接")
+        return str(target)
+
     raw = copy.get("strategy", {}).get("state_file")
-    if not raw:
-        return copy
-    if not isinstance(raw, str):
-        raise ValueError("状态文件路径无效")
-    target = Path(raw).expanduser()
-    if not target.is_absolute():
-        root = user_directory.resolve()
-        target = (root / target).resolve()
-        if not target.is_relative_to(root):
-            raise ValueError("相对状态文件路径不能离开应用数据目录")
-    copy["strategy"]["state_file"] = str(target)
+    if raw:
+        copy["strategy"]["state_file"] = local_path(raw, "状态文件")
+    policy = copy.get("server_policy")
+    if isinstance(policy, dict) and policy.get("database"):
+        policy["database"] = local_path(policy["database"], "请求预算")
     return copy
 
 

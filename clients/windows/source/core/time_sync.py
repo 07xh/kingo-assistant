@@ -52,7 +52,7 @@ class TimeSync:
         dispersion = struct.unpack_from('!I', data, 8)[0] / 65536
         return ((t2-t1)+(t3-t4))/2, max(0, delay)/2 + dispersion
 
-    async def sync(self, http, url, referer):
+    async def sync(self, http, url, referer, *, budgeted_get=None):
         samples = []
         for _ in range(3):
             try:
@@ -64,7 +64,9 @@ class TimeSync:
             self.source = 'NTP（UTC，并非教务业务时钟）'
         else:
             before = time.time()
-            response = await http.get(url, headers={'Cache-Control': 'no-cache', 'Referer': referer})
+            if budgeted_get is None:
+                raise ValueError('学校 HTTP Date 校时必须使用统一预算请求入口')
+            response = await budgeted_get(url, referer)
             after = time.time()
             response.raise_for_status()
             if response.headers.get('Age', '0') != '0':

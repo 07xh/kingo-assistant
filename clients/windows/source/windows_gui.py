@@ -75,6 +75,8 @@ def ensure_config() -> Path:
 
 def read_config(path: Path, *, offline: bool = False) -> dict:
     config = load_config(path)
+    if not offline:
+        config = resolve_state_file(config, app_dir())
     validate(config, check_only=offline)
     return config
 
@@ -145,7 +147,8 @@ class MonitorWorker:
             try:
                 await clock.sync(client.http,
                                  client.url(self.config["protocol"]["identity_path"]),
-                                 client.url(self.config["protocol"]["identity_referer"]))
+                                 client.url(self.config["protocol"]["identity_referer"]),
+                                 budgeted_get=lambda url, ref: client.read("GET", url, ref))
             except Exception:
                 self.updates.put(MonitorEvent("message", "校时不可用，使用本机时间。"))
             client.prepare_query(self.config["xnxq"])
@@ -452,7 +455,7 @@ class Application(tk.Tk):
             return
         try:
             config = read_config(Path(self.path.get()), offline=True)
-            checks = inspect_readiness(config)
+            checks = inspect_readiness(resolve_state_file(config, app_dir()))
         except Exception:
             messagebox.showerror("无法检查", "配置结构无效，请先修正 YAML 文件。")
             return
@@ -601,7 +604,7 @@ class Application(tk.Tk):
             # First run offline checks so placeholders and missing authorization
             # are explained before any attempt at a network connection.
             config = read_config(Path(self.path.get()), offline=True)
-            checks = inspect_readiness(config)
+            checks = inspect_readiness(resolve_state_file(config, app_dir()))
             blockers, warnings = split_checks(checks)
             if blockers:
                 self.status.set(f"无法启动｜{len(blockers)} 项本地前提未完成")

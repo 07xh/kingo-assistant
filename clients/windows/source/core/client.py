@@ -13,10 +13,15 @@ import time
 from dataclasses import dataclass
 from enum import Enum
 from urllib.parse import urlencode, urljoin, urlsplit
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
+import math
 
 import httpx
 from bs4 import BeautifulSoup
 from loguru import logger
+
+from .request_budget import SingleFlight, build_verified_budget
 
 
 class Status(str, Enum):
@@ -222,7 +227,7 @@ def parse_courses(raw: bytes, config: dict, course_ids: list[str] | None = None,
 
 
 class KingoClient:
-    def __init__(self, config: dict):
+    def __init__(self, config: dict, *, offline_test_mode: bool = False):
         self.config = config
         self.p = config["protocol"]
         if self.p.get("verified") is not True:
@@ -232,6 +237,9 @@ class KingoClient:
         if parts.scheme != "https" or not parts.hostname or parts.username or parts.password:
             raise ProtocolError("必须使用学校官方 HTTPS 域名")
         self.origin = (parts.scheme, parts.netloc)
+        # Only explicitly opted-in offline MockTransport tests can skip quotas.
+        self._offline_test_mode = offline_test_mode
+        self.budget = None if offline_test_mode else build_verified_budget(config, self.origin)
         self.http = httpx.AsyncClient(http1=True, http2=False, follow_redirects=False,
             timeout=httpx.Timeout(connect=5, read=10, write=10, pool=5),
             limits=httpx.Limits(max_connections=2, max_keepalive_connections=2,
@@ -248,6 +256,7 @@ class KingoClient:
         self.parse_ms = 0.0
         self.stop = asyncio.Event()
         self.lock = asyncio.Lock()
+        self._single_flight = SingleFlight()
         self.entry_url: str | None = None
         self.entry_loaded_at = 0.0
         self._compiled_query: dict[str, tuple[str, bytes | None]] = {}
@@ -276,17 +285,49 @@ class KingoClient:
                 raise ProtocolError("不支持的只读查询方法")
         return self._compiled_query[term]
 
+    @staticmethod
+    def _retry_after_seconds(value: str | None) -> float | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if value.isascii() and value.isdigit():
+            return float(int(value))
+        try:
+            date = parsedate_to_datetime(value)
+            if date.tzinfo is None:
+                return None
+            return max(0.0, (date - datetime.now(timezone.utc)).total_seconds())
+        except (TypeError, ValueError, OverflowError):
+            return None
+
+    async def _budgeted_request(self, method: str, url: str, headers: dict,
+                                body: bytes | None) -> httpx.Response:
+        if self._offline_test_mode:
+            if not isinstance(self.http._transport, httpx.MockTransport):
+                raise ProtocolError("离线测试模式只允许 httpx.MockTransport，不可访问真实网络")
+            return await self.http.request(method, url, headers=headers, content=body)
+        async with self.budget.request():
+            response = await self.http.request(method, url, headers=headers, content=body)
+            if response.status_code in (429, 503):
+                seconds = self._retry_after_seconds(response.headers.get("Retry-After"))
+                if response.status_code == 429 and seconds is None:
+                    seconds = 60.0  # Local protective cooldown, not a server policy.
+                if seconds is not None:
+                    await self.budget.impose_retry_after(seconds)
+            return response
+
     async def read(self, method: str, path: str, referer: str,
                    body: bytes | None = None) -> httpx.Response:
         """A bounded retry policy for GET or verified *read-only* POST only."""
+        if method.upper() not in ("GET", "POST"):
+            raise ProtocolError("只读客户端仅支持 GET 或经过核实的只读 POST")
         headers = {"Referer": self.url(referer)}
         if body is not None:
             headers["Content-Type"] = "application/x-www-form-urlencoded; charset=GBK"
         for attempt in range(3):
             started = time.perf_counter()
             try:
-                response = await self.http.request(method, self.url(path), headers=headers,
-                                                   content=body)
+                response = await self._budgeted_request(method, self.url(path), headers, body)
                 if response.status_code in (401, 403, 429):
                     if response.status_code == 401:
                         raise AuthenticationError("会话无效")
@@ -326,6 +367,13 @@ class KingoClient:
         await self.identity()
 
     async def fetch_course_list(self, term: str, course_ids: list[str] | None = None) -> list[CourseItem]:
+        # Only in-flight, identical reads share work; no stale response cache.
+        key = (term, None if course_ids is None else tuple(sorted(course_ids)))
+        result = await self._single_flight.run(
+            key, lambda: self._fetch_course_list_serial(term, course_ids))
+        return list(result)
+
+    async def _fetch_course_list_serial(self, term: str, course_ids: list[str] | None = None) -> list[CourseItem]:
         async with self.lock:
             now = time.monotonic()
             if self.entry_url is None or now - self.entry_loaded_at > 1800:
