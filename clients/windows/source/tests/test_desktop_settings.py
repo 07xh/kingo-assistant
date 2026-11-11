@@ -91,12 +91,14 @@ class DesktopSettingsTest(unittest.TestCase):
     def test_state_file_relative_is_under_user_dir(self):
         with tempfile.TemporaryDirectory() as tmp:
             config = self.updated()
-            runtime = resolve_state_file(config, Path(tmp))
-            self.assertEqual(Path(runtime['strategy']['state_file']), Path(tmp) / 'data/notification-state.json')
+            user_dir = Path(tmp).resolve()
+            runtime = resolve_state_file(config, user_dir)
+            expected = (user_dir / 'data/notification-state.json').resolve()
+            self.assertEqual(Path(runtime['strategy']['state_file']).resolve(), expected)
             self.assertEqual(config['strategy']['state_file'], 'data/notification-state.json')
             config['strategy']['state_file'] = '../outside.json'
             with self.assertRaises(ValueError):
-                resolve_state_file(config, Path(tmp))
+                resolve_state_file(config, user_dir)
 
     def test_available_transition_only_once(self):
         before = {'A': '已满', 'B': '发现余量（2）', 'C': '未知'}
