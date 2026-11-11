@@ -34,10 +34,11 @@ from core.preflight import inspect_readiness, split_checks, format_checks
 from core.offline_selftest import run_selftest
 from core.offline_benchmark import format_benchmark, run_offline_benchmark
 from core.official_portal_schedule import OfficialPortalAppointment, prepare_appointment, format_countdown
+from core.session_probe import SessionProbeResult, probe_own_session
 from core.time_sync import TimeSync
 from main import _read_local_html, validate
 
-APP_TITLE = "青果选课辅助 · Windows V5.2（官网备战辅助版）"
+APP_TITLE = "青果选课辅助 · Windows V5.3（提前登录与会话检查）"
 OFFICIAL_PORTAL = "https://jwmis.ncwu.edu.cn"  # Confirmed by school notices; NOT an API endpoint.
 
 
@@ -190,6 +191,8 @@ class Application(tk.Tk):
         self._closing = False
         self._benchmark_in_progress = False
         self._official_portal_appointment: OfficialPortalAppointment | None = None
+        self._portal_prelogin_opened = False
+        self._session_check_in_progress = False
         self.portal_appointment_status = tk.StringVar(value="官网预约未启动（与自动提交无关）")
         self.path = tk.StringVar(value=str(ensure_config()))
         self.status = tk.StringVar(value="未启动｜本机离线检查可直接使用")
@@ -208,7 +211,7 @@ class Application(tk.Tk):
     def _build(self) -> None:
         top = ttk.Frame(self, padding=(16, 14))
         top.pack(fill="x")
-        ttk.Label(top, text="青果选课辅助 · Windows V5.2", font=("Microsoft YaHei UI", 16, "bold")).pack(anchor="w")
+        ttk.Label(top, text="青果选课辅助 · Windows V5.3", font=("Microsoft YaHei UI", 16, "bold")).pack(anchor="w")
         ttk.Label(top, text="本机独立运行｜当前只读监测｜自动执行核心已加入，官方接口待验收", foreground="#666").pack(anchor="w", pady=(4, 0))
 
         cfg = ttk.Frame(self, padding=(16, 6))
@@ -245,6 +248,11 @@ class Application(tk.Tk):
             command=self.toggle_portal_appointment,
         )
         self.portal_appointment_button.pack(side="left", padx=(0, 8))
+        ttk.Button(portal_row, text="现在提前登录", command=self.open_official_portal).pack(
+            side="left", padx=(0, 8))
+        self.session_check_button = ttk.Button(
+            portal_row, text="核验脚本会话（只读）", command=self.check_script_session)
+        self.session_check_button.pack(side="left", padx=(0, 8))
         ttk.Label(
             portal_row, textvariable=self.portal_appointment_status,
             foreground="#666", wraplength=650,
@@ -365,10 +373,37 @@ class Application(tk.Tk):
         if self.copy_selected_field("course_id"):
             self.open_official_portal()
 
+    def check_script_session(self) -> None:
+        """Only a verified official identity GET may confirm the script session.
+
+        A browser login is never mistaken for an HTTP client session. Run any
+        permitted request in a worker, not on Tk's UI event loop.
+        """
+        if self.worker or self._session_check_in_progress or self._closing:
+            return
+        try:
+            config = read_config(Path(self.path.get()), offline=True)
+        except (ValueError, KeyError, OSError):
+            messagebox.showwarning("无法核验会话", "本机配置无效，请先修正。")
+            return
+        self._session_check_in_progress = True
+        self.session_check_button.configure(state="disabled")
+        self.status.set("准备核验脚本会话｜只读操作，不会提交选课")
+
+        def execute() -> None:
+            try:
+                result = asyncio.run(probe_own_session(config))
+            except Exception:
+                result = SessionProbeResult("unavailable", False)
+            self.events.put(MonitorEvent("session_probe", result))
+
+        threading.Thread(target=execute, name="KingoSessionProbe", daemon=True).start()
+
     def toggle_portal_appointment(self) -> None:
         """Schedule the official browser page only; never submit enrollment."""
         if self._official_portal_appointment is not None:
             self._official_portal_appointment = None
+            self._portal_prelogin_opened = False
             self.portal_appointment_button.configure(text="预约按时打开官网（辅助）")
             self.portal_appointment_status.set("官网预约已取消")
             self.log("已取消本机官网预约；不会打开任何学校页面。")
@@ -386,12 +421,14 @@ class Application(tk.Tk):
             f"已填写的真实课程志愿：{appointment.target_count} 门。\n\n"
             "注意：配置模板中的日期和时刻不是官方确认的开放时刻。"
             "请先核对学校针对本人年级及校区的最新专项通知。\n\n"
-            "软件必须保持运行，届时只会打开华水教务官网。"
-            "登录、查找教学班、提交和最终核验仍须在官方页面完成。\n\n"
+            "软件必须保持运行：提前 15 分钟打开官网供本人登录，"
+            "开放时再次打开官网。不会导入浏览器 Cookie。"
+            "查找教学班、提交和最终核验仍须在官方页面完成。\n\n"
             "确认你已核对准确时间并开始预约？",
         ):
             return
         self._official_portal_appointment = appointment
+        self._portal_prelogin_opened = False
         self.portal_appointment_button.configure(text="取消官网预约")
         self.portal_appointment_status.set(
             f"官网预约：{appointment.local_start}（北京时间）；仅打开官方页面"
@@ -414,9 +451,15 @@ class Application(tk.Tk):
             self.open_official_portal()
             self.log("计划时刻已到；仅执行了一次打开官网操作，不代表成功选课。")
             return
+        if (not self._portal_prelogin_opened
+                and appointment.prelogin_is_due(now)):
+            self._portal_prelogin_opened = True  # at most one early launch
+            self.open_official_portal()
+            self.log("进入提前 15 分钟登录时段；打开官网不代表已经登录。")
         remaining = appointment.seconds_remaining(now)
+        prelogin = "｜已尝试提前打开官网登录" if self._portal_prelogin_opened else ""
         self.portal_appointment_status.set(
-            f"官网预约倒计时：{format_countdown(remaining)}"
+            f"官网预约倒计时：{format_countdown(remaining)}{prelogin}"
             "｜须保持程序运行，按官方通知核对开放时刻"
         )
 
@@ -657,6 +700,12 @@ class Application(tk.Tk):
                     for key, state in states.items():
                         if self.table.exists(key):
                             self.table.set(key, "status", str(state))
+                elif event.kind == "session_probe":
+                    self._session_check_in_progress = False
+                    self.session_check_button.configure(state="normal")
+                    result = event.value
+                    self.status.set(result.message)
+                    self.log(result.message)
                 elif event.kind == "benchmark_done":
                     self._benchmark_in_progress = False
                     result = event.value
