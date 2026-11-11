@@ -19,6 +19,7 @@ class OfficialPortalGuiTest(unittest.TestCase):
         }
         self.app = SimpleNamespace(
             _official_portal_appointment=None,
+            _portal_prelogin_opened=False,
             _closing=False,
             portal_appointment_button=Mock(),
             portal_appointment_status=Mock(),
@@ -37,17 +38,34 @@ class OfficialPortalGuiTest(unittest.TestCase):
         self.assertIsNotNone(self.app._official_portal_appointment)
         self.app.open_official_portal.assert_not_called()
 
-    def test_only_one_launch_at_confirmed_time_and_never_submit(self):
+    def test_one_early_browser_login_and_one_scheduled_launch_never_submit(self):
         self._schedule()
-        with patch("windows_gui.time.time", return_value=self.plan_at - 30):
+        with patch("windows_gui.time.time", return_value=self.plan_at - 901):
             Application._tick_portal_appointment(self.app)
         self.app.open_official_portal.assert_not_called()
+        with patch("windows_gui.time.time", return_value=self.plan_at - 900):
+            Application._tick_portal_appointment(self.app)
+            Application._tick_portal_appointment(self.app)
+        self.app.open_official_portal.assert_called_once()
+        self.assertTrue(self.app._portal_prelogin_opened)
         with patch("windows_gui.time.time", return_value=self.plan_at):
             Application._tick_portal_appointment(self.app)
             Application._tick_portal_appointment(self.app)
         self.assertIsNone(self.app._official_portal_appointment)
-        self.app.open_official_portal.assert_called_once()
+        self.assertEqual(self.app.open_official_portal.call_count, 2)
         self.app.bell.assert_called_once()
+
+    def test_appointment_started_within_prelogin_window_opens_early_only_once(self):
+        self._schedule()
+        with patch("windows_gui.time.time", return_value=self.plan_at - 10):
+            Application._tick_portal_appointment(self.app)
+            Application._tick_portal_appointment(self.app)
+        self.app.open_official_portal.assert_called_once()
+        Application.toggle_portal_appointment(self.app)
+        self.assertFalse(self.app._portal_prelogin_opened)
+        with patch("windows_gui.time.time", return_value=self.plan_at):
+            Application._tick_portal_appointment(self.app)
+        self.app.open_official_portal.assert_called_once()
 
     def test_cancel_prevents_opening_at_target_time(self):
         self._schedule()
