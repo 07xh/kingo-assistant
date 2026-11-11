@@ -14,9 +14,9 @@ Use synthetic data in tests. Redact secrets before sharing diagnostic output.
 
 ## Responsible use
 
-This project is intended for personally authorized, permitted access. It must not be used to bypass CAPTCHA, access controls, authentication, or server-side rate limits, or to generate high-frequency request bursts against school infrastructure.
+This project is intended for personally authorized, officially permitted access. It must not be used to bypass CAPTCHA, authentication, access controls, selection-window restrictions, or server-side rate limits, or to generate high-frequency request bursts against school infrastructure.
 
-The Windows V4.6 client is read-only. A displayed seat count is a point-in-time observation, not proof of a successful enrollment.
+The current Windows client remains read-only. The automatic-enrollment state machine is an offline-tested orchestration core; no NCWU live write adapter is implemented or enabled. A transport acknowledgement or a displayed seat count is not proof of successful enrollment.
 
 ## Reporting
 
