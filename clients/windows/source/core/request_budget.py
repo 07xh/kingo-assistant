@@ -44,6 +44,7 @@ class RequestPolicy:
     max_concurrency: int
     source: str
     verified: bool = False
+    scope: str = ""
 
     def __post_init__(self) -> None:
         if not self.windows or len(self.windows) > 8:
@@ -98,7 +99,13 @@ class GlobalRequestBudget:
             import hashlib
             import json
             signature = hashlib.sha256(json.dumps(
-                [[w.window_seconds, w.max_requests] for w in self.policy.windows],
+                {
+                    "scope": self.policy.scope,
+                    "source": self.policy.source,
+                    "concurrency": self.policy.max_concurrency,
+                    "windows": [[w.window_seconds, w.max_requests]
+                                for w in self.policy.windows],
+                },
                 sort_keys=True, separators=(",", ":"),
             ).encode("utf-8")).hexdigest()
             conn.execute("CREATE TABLE IF NOT EXISTS policy (signature TEXT NOT NULL)")
@@ -293,7 +300,8 @@ def read_verified_policy_config(config: dict, origin: tuple[str, str]) -> tuple[
     database = Path(db_raw)
     if db_raw == ":memory:" or not database.is_absolute():
         raise PolicyError("预算数据库必须为可共享的绝对本地路径")
-    policy = RequestPolicy(windows, data.get("max_concurrency", 1), data["source"], True)
+    policy = RequestPolicy(windows, data.get("max_concurrency", 1), data["source"], True,
+                           "://".join(origin))
     return policy, database
 
 
