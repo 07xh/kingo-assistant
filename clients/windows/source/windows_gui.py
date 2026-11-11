@@ -19,6 +19,8 @@ import tkinter as tk
 import webbrowser
 from tkinter import filedialog, messagebox, ttk
 
+from loguru import logger
+
 
 from core.client import KingoClient, parse_courses
 from core.desktop_settings import load_config, quick_copy_value, resolve_state_file, status_changes
