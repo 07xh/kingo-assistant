@@ -2,7 +2,7 @@
 
 ## Current implementation status
 
-The Windows V5.0 mainline includes a fail-closed automatic-enrollment state machine, but **there is no NCWU live enrollment adapter**. The client remains read-only. Offline tests prove only the orchestration logic against synthetic data.
+The Windows V5.1 mainline includes a hardened fail-closed automatic-enrollment state machine, editable priority order, and persistent attempt-state transitions, but **there is no NCWU live enrollment adapter**. The client remains read-only. Offline tests prove only the orchestration logic against synthetic data.
 
 The 2026-11-11 HAR audit confirms timetable JSON and Xiqueer selection-related metadata, but not a verified elective catalog, live remaining-seat field, or authorized submission/confirmation contract. One response explicitly reports that the current time is outside a valid selection window. Do not map timetable or `zxinfo.zxxq` records into available elective courses or seats.
 
