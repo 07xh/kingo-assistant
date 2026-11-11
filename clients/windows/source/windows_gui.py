@@ -101,6 +101,7 @@ class MonitorWorker:
         self.client: KingoClient | None = None
         self.task: asyncio.Task | None = None
         self._stop_requested = threading.Event()
+        self._had_scheduler_error = False
 
     def start(self) -> None:
         if self.thread and self.thread.is_alive():
@@ -121,17 +122,24 @@ class MonitorWorker:
             loop.call_soon_threadsafe(stop_in_loop)
 
     def _thread_main(self) -> None:
+        outcome = "completed"
         try:
             asyncio.run(self._run())
         except Exception as exc:
+            outcome = "failed"
             # Deliberately do not serialize server responses, URL, credentials or
             # arbitrary exception details to the GUI or log.
             self.updates.put(MonitorEvent("error", type(exc).__name__))
         finally:
+            if outcome == "completed":
+                if self._stop_requested.is_set():
+                    outcome = "stopped"
+                elif self._had_scheduler_error:
+                    outcome = "failed"
             self.loop = None
             self.client = None
             self.task = None
-            self.updates.put(MonitorEvent("finished"))
+            self.updates.put(MonitorEvent("finished", outcome))
 
     async def _run(self) -> None:
         self.loop = asyncio.get_running_loop()
@@ -158,17 +166,26 @@ class MonitorWorker:
             scheduler = Scheduler(client, clock, self.config)
             running = asyncio.create_task(scheduler.run())
             self.task = running
+            last_snapshot = None
             try:
                 while not running.done():
                     if self._stop_requested.is_set():
                         client.stop.set()
-                    self.updates.put(MonitorEvent("status", (scheduler.cycles, dict(scheduler.states),
-                                                                  client.last_ms, client.parse_ms)))
+                    # A long scheduled wait should not enqueue identical Tk
+                    # updates twice a second for hours. Emit only on change.
+                    snapshot = (scheduler.cycles, tuple(sorted(scheduler.states.items())),
+                                client.last_ms, client.parse_ms)
+                    if snapshot != last_snapshot:
+                        self.updates.put(MonitorEvent(
+                            "status", (scheduler.cycles, dict(scheduler.states),
+                                       client.last_ms, client.parse_ms)))
+                        last_snapshot = snapshot
                     await asyncio.sleep(0.5)
                 await running
                 self.updates.put(MonitorEvent("status", (scheduler.cycles, dict(scheduler.states),
                                                                   client.last_ms, client.parse_ms)))
                 if scheduler.last_error:
+                    self._had_scheduler_error = True
                     self.updates.put(MonitorEvent("stop_reason", scheduler.last_error))
             except asyncio.CancelledError:
                 self.updates.put(MonitorEvent("message", "已终止本次监测或定时检查。"))
@@ -823,6 +840,12 @@ class Application(tk.Tk):
                     self.pick_button.configure(state="normal")
                     self.open_button.configure(state="normal")
                     self.stop_button.configure(state="disabled")
+                    if not self._closing:
+                        if event.value == "stopped":
+                            self.status.set("已停止｜后台只读监测已结束")
+                        elif event.value == "completed":
+                            self.status.set("已完成｜本次只读监测已结束")
+                        # A prior stop_reason/error remains visible when failed.
                     self.log("监测任务已结束；未提交任何选课请求。")
                     if self._closing:
                         self.destroy()
