@@ -172,7 +172,8 @@ async def run(config: dict, messages: deque) -> None:
         # Best effort NTP/HTTP Date, not proof of campus enrollment opening time.
         try:
             await clock.sync(client.http, client.url(config["protocol"]["identity_path"]),
-                             client.url(config["protocol"]["identity_referer"]))
+                             client.url(config["protocol"]["identity_referer"]),
+                             budgeted_get=lambda url, ref: client.read("GET", url, ref))
         except Exception as error:
             logger.warning("网络校时不可用：{}；回退本机时间", type(error).__name__)
         client.prepare_query(config["xnxq"])  # Pre-compile static GET/POST body before monitoring.
