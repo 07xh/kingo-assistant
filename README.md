@@ -6,9 +6,9 @@ KingoAssistant is an independent course-information assistant project for person
 
 ## Current status
 
-- **Windows:** V4.6 source tree is present in `clients/windows/source/`. A native Windows 2022 build succeeded on 2026-11-11.
-- **Windows verification:** 72 offline unit tests passed; the packaged EXE passed its offline self-test and native Tk GUI smoke test.
-- **Build artifact:** [KingoAssistant-Windows-portable](https://github.com/07xh/kingo-assistant/actions/runs/42976926321/artifacts/13835991252) (temporary GitHub Actions artifact; expires 2026-11-25).
+- **Windows:** V4.6 baseline plus new offline HAR/selection-evidence tools. Source tree is present in `clients/windows/source/`. A native Windows 2022 build succeeded on 2026-11-11.
+- **Windows verification:** 88 offline unit tests passed; the packaged EXE passed its offline self-test and native Tk GUI smoke test.
+- **Build artifact:** [KingoAssistant-Windows-portable](https://github.com/07xh/kingo-assistant/actions/runs/42980776360/artifacts/13836679934) (temporary GitHub Actions artifact; expires 2026-11-25).
 - **Android:** planned as a separate client; no APK is implemented or released yet.
 - **School integration:** live NCWU course-catalog and remaining-seat endpoints have not been verified.
 - **Enrollment writes:** not implemented. The current client is a read-only watcher and reminder; a detected seat count is not an enrollment confirmation.
@@ -32,6 +32,13 @@ The Windows EXE is a verified packaging build, not a verified NCWU integration o
 4. Download the `KingoAssistant-Windows-portable` artifact from a successful run.
 
 The workflow runs offline tests, builds the EXE on Windows, and starts the packaged executable with offline self-test and Tk GUI smoke-test flags. The current artifact is retained for 14 days; stable releases should be published as GitHub Releases after review.
+
+## Offline evidence tools
+
+- Windows **离线工具 → 本机 HAR 结构检查（脱敏统计）**: locally counts NCWU timetable-schema responses, Xiqueer gateway traffic, and selection-window restriction messages. It never displays the raw response or sends a network request.
+- Windows **离线工具 → 选课目录证据对照（离线 JSON）**: checks anonymous, sanitized official-UI-vs-response evidence and still requires human verification.
+- [Local HAR audit guide](docs/acceptance/har-offline-audit.md) and [catalog verification rules](docs/acceptance/catalog-readonly-verification.md).
+- Neither tool makes the live elective catalog or seat-count integration verified.
 
 ## Safety and privacy boundaries
 
