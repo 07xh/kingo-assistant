@@ -61,7 +61,6 @@ class StartupPreflightEfficiencyTest(unittest.TestCase):
              patch("windows_gui.messagebox.showwarning") as block_dialog:
             Application.start_monitor(app)
         block_dialog.assert_not_called()
-        ask.assert_called_once()
         ask.assert_not_called()
         self.assertTrue(any("1 项非阻断提示" in str(call)
                             for call in app.log.call_args_list))
