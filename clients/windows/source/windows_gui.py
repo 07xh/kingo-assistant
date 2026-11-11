@@ -495,10 +495,10 @@ class Application(tk.Tk):
             return
         if not messagebox.askyesno(
             "启动应用内自动执行",
-            f"选课时间（北京时间）：{plan.target_time}\\n"
-            f"确定的课程及教学班：{len(plan.targets)} 条\\n\\n"
+            f"选课时间（北京时间）：{plan.target_time}\n"
+            f"确定的课程及教学班：{len(plan.targets)} 条\n\n"
             "此功能将通过经过授权的应用内教务适配器发送正式提交，"
-            "只以官方已选课程记录核验结果；不使用浏览器代替提交。\\n"
+            "只以官方已选课程记录核验结果；不使用浏览器代替提交。\n"
             "确认启动本次自动选课任务？",
         ):
             return
@@ -858,7 +858,7 @@ class Application(tk.Tk):
                     self.restore_window()
                 elif event.kind == "tray_quit":
                     self.quit_application()
-                    if not self.worker and not self.scheduled_worker:
+                    if not self.worker and not getattr(self, "scheduled_worker", None):
                         return
                 elif event.kind == "tray_error":
                     self.restore_window()
@@ -975,12 +975,12 @@ class Application(tk.Tk):
                             self.status.set("已完成｜本次只读监测已结束")
                         # A prior stop_reason/error remains visible when failed.
                     self.log("监测任务已结束；未提交任何选课请求。")
-                    if self._closing and not self.scheduled_worker:
+                    if self._closing and not getattr(self, "scheduled_worker", None):
                         self.destroy()
                         return
         except queue.Empty:
             pass
-        if not self._closing or self.worker or self.scheduled_worker:
+        if not self._closing or self.worker or getattr(self, "scheduled_worker", None):
             self.after(300, self.poll)
 
     def restore_window(self) -> None:
@@ -1007,9 +1007,10 @@ class Application(tk.Tk):
         self._tray.stop()
         if self.worker:
             self.worker.stop()
-        if self.scheduled_worker:
-            self.scheduled_worker.stop()
-        if self.worker or self.scheduled_worker:
+        scheduled = getattr(self, "scheduled_worker", None)
+        if scheduled:
+            scheduled.stop()
+        if self.worker or scheduled:
             self.status.set("正在安全结束后台任务并退出…")
             return
         self.destroy()
