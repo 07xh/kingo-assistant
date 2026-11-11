@@ -97,7 +97,7 @@ class DesktopSettingsTest(unittest.TestCase):
             ({"course_id": "SECOND_OPTION_ID"}, "course_id"),
             ({"course_id": ""}, "course_id"),
             ({"class_id": "  "}, "class_id"),
-            ({"course_name": "A\\nB"}, "course_name"),
+            ({"course_name": "A\nB"}, "course_name"),
         ):
             with self.subTest(target=target, field=field):
                 with self.assertRaises(ValueError):
