@@ -15,6 +15,14 @@ on:
       - "SECURITY.md"
       - ".gitignore"
       - ".github/workflows/windows-build.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "clients/windows/**"
+      - "docs/**"
+      - "README.md"
+      - ".github/workflows/windows-build.yml"
   workflow_dispatch:
 
 permissions:
