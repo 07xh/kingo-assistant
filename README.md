@@ -27,6 +27,8 @@ The engine requires all of the following before a school adapter can be used:
 
 The 2026-11-11 HAR included an explicit “current time is not a valid selection window” response. Timetable data and `zxinfo.zxxq` records are not an elective catalog or seat count. See [the sanitized HAR audit](docs/acceptance/ncwu-xiqueer-har-2026-11-11.md) and [the execution architecture](docs/architecture/automatic-enrollment.md).
 
+A separate scheduled runner now waits for the configured start time and checks only the official selection-window state at a bounded 60–3600 second interval. It is offline-tested but not yet connected to the Windows UI or a live NCWU adapter; see [scheduled-runner design](docs/architecture/scheduled-enrollment.md).
+
 ## Windows client
 
 - Course plans are stored locally and do not include credentials or school protocol settings.
