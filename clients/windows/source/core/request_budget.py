@@ -13,7 +13,6 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 import math
 from pathlib import Path
-from urllib.parse import urlsplit
 import sqlite3
 import time
 from typing import AsyncIterator
@@ -193,37 +192,33 @@ class SingleFlight:
         return await asyncio.shield(task)
 
 
-def build_verified_budget(config: dict, origin: tuple[str, str]) -> GlobalRequestBudget:
-    """Load explicit approved policy; fail closed on missing/incomplete data.
 
-    A config flag and source note do not independently prove institutional
-    consent: they are an assertion made by the operator after verification.
-    """
+def read_verified_policy_config(config: dict, origin: tuple[str, str]) -> tuple[RequestPolicy, Path]:
+    """Pure validation of the operator-supplied authorized policy contract."""
     data = config.get("server_policy")
     if not isinstance(data, dict) or data.get("verified") is not True:
         raise PolicyError("没有经过核实的服务器请求策略，禁止联网读取")
-    if data.get("source") in (None, "") or not isinstance(data.get("source"), str):
+    if not isinstance(data.get("source"), str) or not data["source"].strip():
         raise PolicyError("服务器策略缺少可核查的出处")
     if data.get("origin") != "://".join(origin):
-        raise PolicyError("服务器策略的 HTTPS origin 与当前请求域名不匹配")
+        raise PolicyError("服务器策略 origin 与当前请求域名不匹配")
     raw = data.get("windows")
     if not isinstance(raw, list) or not (1 <= len(raw) <= 8):
         raise PolicyError("必须配置经核实的滑动时间窗口")
-    try:
-        windows = tuple(WindowLimit(item[0], item[1]) for item in raw)
-    except (TypeError, IndexError, ValueError) as exc:
-        raise PolicyError("服务器配额窗口格式无效") from exc
     if any(not isinstance(item, (list, tuple)) or len(item) != 2 for item in raw):
         raise PolicyError("服务器配额必须为 [秒数, 最大请求数]")
-    database = data.get("database")
-    if (not isinstance(database, str) or not database.strip()
-            or len(database) > 500):
+    windows = tuple(WindowLimit(item[0], item[1]) for item in raw)
+    db_raw = data.get("database")
+    if not isinstance(db_raw, str) or not db_raw.strip() or len(db_raw) > 500:
         raise PolicyError("未配置固定持久化预算数据库路径")
-    # The same protected origin/account should use one shared DB path across
-    # processes. Do not accept a URL, ephemeral in-memory DB or symlink.
-    db = Path(database)
-    if database == ":memory:" or not db.is_absolute():
+    database = Path(db_raw)
+    if db_raw == ":memory:" or not database.is_absolute():
         raise PolicyError("预算数据库必须为可共享的绝对本地路径")
-    policy = RequestPolicy(windows, data.get("max_concurrency", 1),
-                           data["source"], True)
-    return GlobalRequestBudget(policy, db)
+    policy = RequestPolicy(windows, data.get("max_concurrency", 1), data["source"], True)
+    return policy, database
+
+
+def build_verified_budget(config: dict, origin: tuple[str, str]) -> GlobalRequestBudget:
+    """Build per-origin budget; only after explicit independent policy review."""
+    policy, database = read_verified_policy_config(config, origin)
+    return GlobalRequestBudget(policy, database)
