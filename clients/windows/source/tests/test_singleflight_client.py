@@ -21,7 +21,7 @@ class CoalescedCatalogTest(unittest.IsolatedAsyncioTestCase):
                 return httpx.Response(200, content=html(),
                                       headers={"content-type": "text/html; charset=gbk"})
             raise AssertionError("unexpected synthetic request")
-        client = KingoClient(config())
+        client = KingoClient(config(), offline_test_mode=True)
         await client.http.aclose()
         client.http = httpx.AsyncClient(transport=httpx.MockTransport(handler),
                                         follow_redirects=False)
