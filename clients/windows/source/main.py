@@ -19,7 +19,7 @@ from rich.text import Text
 from core.client import KingoClient, parse_courses
 from core.inspector import inspect_html
 from core.scheduler import Scheduler
-from core.polling_policy import validate_rate_permission
+from core.monitor_policy import validate_limits
 from core.time_sync import TimeSync
 
 
@@ -37,7 +37,7 @@ def validate(config: dict, check_only: bool = False) -> None:
         raise ValueError("需核对官方只读课程列表的结构标识 protocol.table_marker，防止误读登录页")
     for name in ("identity_path", "identity_referer", "identity_selector",
                  "entry", "entry_referer", "list", "term_field", "columns"):
-        if protocol.get("verified") is True and not protocol.get(name):
+        if not check_only and protocol.get("verified") is True and not protocol.get(name):
             raise ValueError(f"真实只读协议配置不完整：protocol.{name}")
     if protocol.get("list_method", "GET").upper() not in ("GET", "POST"):
         raise ValueError("课程列表查询仅支持 GET / 已核实只读 POST")
@@ -47,13 +47,13 @@ def validate(config: dict, check_only: bool = False) -> None:
         raise ValueError("当前安全版只能运行 dry_run: true，不提供自动选课写入")
     if strategy["mode"] == "burst":
         TimeSync.parse(strategy["target_time"])
-    validate_rate_permission(strategy, config["base_url"])
-    cycles = strategy["max_cycles"]
-    if not isinstance(cycles, int) or isinstance(cycles, bool) or cycles not in range(1, 101):
-        raise ValueError("max_cycles 范围为 1–100")
+    validate_limits(strategy, config["base_url"])
     targets = config["courses"]
-    if not isinstance(targets, list) or not 1 <= len(targets) <= 30:
-        raise ValueError("请配置 1–30 门目标课程")
+    minimum_courses = 0 if check_only else 1
+    if not isinstance(targets, list) or not minimum_courses <= len(targets) <= 30:
+        raise ValueError("离线草稿可以为空；真实监测必须配置 1–30 门目标课程")
+    if any(not isinstance(t, dict) for t in targets):
+        raise ValueError("课程条目必须是对象")
     keys = [t["key"] for t in targets]
     if any(not isinstance(key, str) or not (1 <= len(key) <= 100) for key in keys):
         raise ValueError("志愿键必须是 1–100 字符的字符串")

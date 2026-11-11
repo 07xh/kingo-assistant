@@ -25,16 +25,18 @@ from core.client import KingoClient, parse_courses
 from core.desktop_settings import load_config, quick_copy_value, resolve_state_file, status_changes
 from core.demo import DemoReport, run_demo
 from desktop_editor import SettingsEditor
+from desktop_plans import PlanManager
 from core.inspector import inspect_html
 from core.har_audit import summarize_har, format_summary
 from tools.catalog_evidence import inspect_local_file
 from core.scheduler import Scheduler
-from core.preflight import inspect_readiness
+from core.preflight import inspect_readiness, split_checks, format_checks
 from core.offline_selftest import run_selftest
+from core.offline_benchmark import format_benchmark, run_offline_benchmark
 from core.time_sync import TimeSync
 from main import _read_local_html, validate
 
-APP_TITLE = "青果选课辅助 · Windows 独立版（只读）"
+APP_TITLE = "青果选课辅助 · Windows V4.9（只读）"
 OFFICIAL_PORTAL = "https://jwmis.ncwu.edu.cn"  # Confirmed by school notices; NOT an API endpoint.
 
 
@@ -185,6 +187,7 @@ class Application(tk.Tk):
         self._demo_report: DemoReport | None = None
         self._demo_index = 0
         self._closing = False
+        self._benchmark_in_progress = False
         self.path = tk.StringVar(value=str(ensure_config()))
         self.status = tk.StringVar(value="未启动｜本机离线检查可直接使用")
         self._build()
@@ -192,6 +195,7 @@ class Application(tk.Tk):
         tools_menu = tk.Menu(menu, tearoff=False)
         tools_menu.add_command(label="本机 HAR 结构检查（脱敏统计）", command=self.audit_local_har)
         tools_menu.add_command(label="选课目录证据对照（离线 JSON）", command=self.review_catalog_evidence)
+        tools_menu.add_command(label="北化课表参数 · 离线调度测速", command=self.benchmark_offline)
         menu.add_cascade(label="离线工具", menu=tools_menu)
         self.configure(menu=menu)
         self.after(300, self.poll)
@@ -201,7 +205,7 @@ class Application(tk.Tk):
     def _build(self) -> None:
         top = ttk.Frame(self, padding=(16, 14))
         top.pack(fill="x")
-        ttk.Label(top, text="青果选课辅助 · Windows", font=("Microsoft YaHei UI", 16, "bold")).pack(anchor="w")
+        ttk.Label(top, text="青果选课辅助 · Windows V4.9", font=("Microsoft YaHei UI", 16, "bold")).pack(anchor="w")
         ttk.Label(top, text="本机独立运行｜只读课程余量和提醒｜不代表选课成功", foreground="#666").pack(anchor="w", pady=(4, 0))
 
         cfg = ttk.Frame(self, padding=(16, 6))
@@ -215,6 +219,8 @@ class Application(tk.Tk):
         self.open_button.pack(side="left", padx=5)
         self.edit_button = ttk.Button(cfg, text="编辑课程和设置", command=self.edit_settings)
         self.edit_button.pack(side="left", padx=5)
+        self.plans_button = ttk.Button(cfg, text="课程方案", command=self.manage_plans)
+        self.plans_button.pack(side="left", padx=5)
 
         actions = ttk.Frame(self, padding=(16, 8))
         actions.pack(fill="x")
@@ -273,6 +279,17 @@ class Application(tk.Tk):
         except (ValueError, OSError, KeyError) as exc:
             self.log("配置编辑器无法启动：" + type(exc).__name__)
             messagebox.showerror("无法打开编辑器", "配置文件结构可能损坏，请先点击检查配置。")
+
+    def manage_plans(self) -> None:
+        if self.worker:
+            messagebox.showinfo("请先停止监测", "运行期间不能切换课程方案。")
+            return
+        try:
+            PlanManager(self, config_path=Path(self.path.get()),
+                        plans_dir=app_dir() / "plans", on_saved=self.check_config)
+        except (ValueError, OSError, KeyError) as exc:
+            self.log("课程方案管理器无法打开：" + type(exc).__name__)
+            messagebox.showerror("无法管理方案", "请先检查本机课程配置是否有效。")
 
     def export_log(self) -> None:
         destination = filedialog.asksaveasfilename(
@@ -369,11 +386,9 @@ class Application(tk.Tk):
         except Exception:
             messagebox.showerror("无法检查", "配置结构无效，请先修正 YAML 文件。")
             return
-        lines = [("√ " if item.passed else "× ") + item.label + "：" + item.detail
-                 for item in checks]
-        messagebox.showinfo("启动前检查（不联网）", "\n".join(lines))
-        incomplete = sum(not item.passed for item in checks)
-        self.log(f"离线准备度检查完成：{len(checks) - incomplete}/{len(checks)} 项；没有连接学校。")
+        blockers, warnings = split_checks(checks)
+        messagebox.showinfo("启动前检查（不联网）", format_checks(checks))
+        self.log(f"离线预检：{len(blockers)} 项阻止启动，{len(warnings)} 项待核对；没有连接学校。")
 
     def populate(self, config: dict) -> None:
         self.table.delete(*self.table.get_children())
@@ -459,6 +474,25 @@ class Application(tk.Tk):
             "不会自动将接口标记为已验证，更不会提交选课。"
         )
 
+    def benchmark_offline(self) -> None:
+        """Run a synthetic timing comparison in another thread, never campus HTTP."""
+        if self.worker or self._benchmark_in_progress:
+            messagebox.showinfo("离线调度测速", "请先结束当前监测或测速任务。")
+            return
+        self._benchmark_in_progress = True
+        self.status.set("北化课表参数离线对标中｜未连接学校")
+        self.log("离线对标启动：1.5 秒/工作线程、2 工作线程；不联网。")
+
+        def execute() -> None:
+            try:
+                result = asyncio.run(run_offline_benchmark())
+                self.events.put(MonitorEvent("benchmark_done", result))
+            except Exception:
+                self.events.put(MonitorEvent("benchmark_error"))
+
+        threading.Thread(target=execute, name="KingoOfflineBenchmark",
+                         daemon=True).start()
+
     def replay_local(self) -> None:
         if self.worker:
             return
@@ -491,9 +525,19 @@ class Application(tk.Tk):
             self.log("无法解析本机样本，请核对脱敏页面和表头列号。")
 
     def start_monitor(self) -> None:
-        if self.worker:
+        if self.worker or self._benchmark_in_progress:
             return
         try:
+            # First run offline checks so placeholders and missing authorization
+            # are explained before any attempt at a network connection.
+            config = read_config(Path(self.path.get()), offline=True)
+            checks = inspect_readiness(config)
+            blockers, warnings = split_checks(checks)
+            if blockers:
+                self.status.set(f"无法启动｜{len(blockers)} 项本地前提未完成")
+                messagebox.showwarning("先完成启动预检", format_checks(checks))
+                self.log(f"启动被本地预检拦截：{len(blockers)} 项；没有连接学校。")
+                return
             config = read_config(Path(self.path.get()), offline=False)
             config = resolve_state_file(config, app_dir())
             self.populate(config)
@@ -504,12 +548,16 @@ class Application(tk.Tk):
             self.status.set("无法启动监测：" + type(exc).__name__)
             self.log("真实模式未启用：官方接口参数、本人登录状态或权限尚未完成核验。")
             return
-        if not messagebox.askokcancel("确认只读操作", "仅在学校允许的频率与访问方式下使用。程序只查询课程信息和提醒，不会提交选课。确认开始？"):
+        warning_text = (f"本地预检发现 {len(warnings)} 项提示，请核对课程代码、节次与备选课程。\n\n"
+                        if warnings else "")
+        if not messagebox.askokcancel("确认只读操作", warning_text +
+                                      "仅在学校允许的频率与访问方式下使用。\n程序只查询课程信息和提醒，不会提交选课。确认开始？"):
             return
         self.worker = MonitorWorker(config, self.events)
         self.worker.start()
         self.start_button.configure(state="disabled")
         self.edit_button.configure(state="disabled")
+        self.plans_button.configure(state="disabled")
         self.config_entry.configure(state="disabled")
         self.pick_button.configure(state="disabled")
         self.open_button.configure(state="disabled")
@@ -538,6 +586,18 @@ class Application(tk.Tk):
                     for key, state in states.items():
                         if self.table.exists(key):
                             self.table.set(key, "status", str(state))
+                elif event.kind == "benchmark_done":
+                    self._benchmark_in_progress = False
+                    result = event.value
+                    self.status.set("离线对标完成｜未请求学校接口")
+                    self.log(f"本机离线测速完成：{result.started}/{result.finished} 模拟任务；"
+                             f"平均调度间隔 {result.mean_interval_ms:.1f} ms。")
+                    messagebox.showinfo("北化课表参数 · 离线调度测速",
+                                        format_benchmark(result))
+                elif event.kind == "benchmark_error":
+                    self._benchmark_in_progress = False
+                    self.status.set("离线对标失败｜未请求学校接口")
+                    self.log("离线调度测速发生内部错误；未连接学校。")
                 elif event.kind == "message":
                     self.log(str(event.value))
                 elif event.kind == "stop_reason":
@@ -550,6 +610,7 @@ class Application(tk.Tk):
                     self.worker = None
                     self.start_button.configure(state="normal")
                     self.edit_button.configure(state="normal")
+                    self.plans_button.configure(state="normal")
                     self.config_entry.configure(state="normal")
                     self.pick_button.configure(state="normal")
                     self.open_button.configure(state="normal")
@@ -602,6 +663,14 @@ def run_packaged_gui_smoke() -> None:
                         raise AssertionError("Second demo snapshot is invalid")
                 app.check_config()
                 app.update()
+                with patch.object(messagebox, "showwarning") as warning, \
+                     patch.object(sys.modules[__name__], "MonitorWorker",
+                                  side_effect=AssertionError("network attempt")):
+                    app.start_monitor()
+                warning.assert_called_once()
+                if app.worker is not None:
+                    raise AssertionError("Placeholder plan unexpectedly started monitoring")
+                app.check_config()
                 if app.table.set("A", "course") != "FILL_FROM_OFFICIAL_PAGE":
                     raise AssertionError("Demo did not restore the real local configuration")
                 app.table.selection_set("A")
@@ -618,6 +687,40 @@ def run_packaged_gui_smoke() -> None:
                 with patch("webbrowser.open", return_value=True) as opened:
                     app.prepare_selected_course()
                     opened.assert_called_once_with(OFFICIAL_PORTAL)
+
+                # Exercise the packaged, offline-only benchmark through the
+                # real GUI event queue without visiting school endpoints.
+                from core.offline_benchmark import run_offline_benchmark as real_benchmark
+
+                async def short_offline_benchmark():
+                    return await real_benchmark(
+                        interval_seconds=0.02,
+                        workers=2,
+                        cycles_per_worker=3,
+                        simulated_processing_ms=35,
+                    )
+
+                with patch("httpx.AsyncClient", side_effect=AssertionError("benchmark used HTTP")):
+                    with patch.object(sys.modules[__name__], "run_offline_benchmark",
+                                      side_effect=short_offline_benchmark):
+                        with patch("tkinter.messagebox.showinfo") as dialogs:
+                            app.benchmark_offline()
+                            if not app._benchmark_in_progress:
+                                raise AssertionError("GUI benchmark did not start")
+                            deadline = time.monotonic() + 3.0
+                            while app._benchmark_in_progress and time.monotonic() < deadline:
+                                app.update()
+                                time.sleep(0.02)
+                            if app._benchmark_in_progress:
+                                raise AssertionError("GUI benchmark did not finish")
+                            dialogs.assert_called_once()
+                            report = str(dialogs.call_args.args[1])
+                            if ("模拟启动/完成：6/6" not in report or
+                                    "没有发起 HTTP 请求" not in report or
+                                    "并非 HTTP RPS" not in report):
+                                raise AssertionError("Packaged benchmark report is missing")
+                            if app.status.get() != "离线对标完成｜未请求学校接口":
+                                raise AssertionError("GUI benchmark did not report completion")
             finally:
                 app.destroy()
 

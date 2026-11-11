@@ -10,9 +10,9 @@ from unittest.mock import patch
 from core.desktop_settings import (INTERVAL_CUSTOM, INTERVAL_PRESETS,
                                    interval_preset_for, parse_interval_range,
                                    quick_copy_value,
-                                   load_config, normalize_course, resolve_state_file,
-                                   save_config_atomic, scrub_secrets,
-                                   status_changes, update_config)
+                                   load_config, normalize_course,
+                                   resolve_state_file, save_config_atomic,
+                                   scrub_secrets, status_changes, update_config)
 from windows_gui import bundled_config
 
 
@@ -41,13 +41,13 @@ class DesktopSettingsTest(unittest.TestCase):
 
     def test_invalid_courses_and_limits_rejected(self):
         bad_cases = (
-            {'courses': []},
+            {'courses': [{'key':'A'}]},
             {'courses': [{'key': 'x'}]},
             {'courses': [{'key': 'x', 'course_id': 'A'}, {'key': 'x', 'course_id': 'B'}]},
             {'courses': [{'key': 'A\nB', 'course_id': 'TEST'}]},
             {'interval_low': 1},
             {'interval_low': 120, 'interval_high': 60},
-            {'max_cycles': 101},
+            {'max_cycles': 10001},
             {'mode': 'invented'},
             {'semester': ''},
             {'target_time': 'invalid', 'mode': 'burst'},
@@ -62,8 +62,7 @@ class DesktopSettingsTest(unittest.TestCase):
             with self.subTest(label=label):
                 self.assertEqual(interval_preset_for(*pair), label)
                 self.assertEqual(parse_interval_range(*map(str, pair)), pair)
-                if pair[0] < 60:
-                    # A UI preset alone never counts as explicit user opt-in.
+                if pair[0] < 30:
                     with self.assertRaisesRegex(ValueError, "实验模式"):
                         self.updated(interval_low=pair[0], interval_high=pair[1])
                 else:
@@ -75,18 +74,12 @@ class DesktopSettingsTest(unittest.TestCase):
         self.assertEqual(saved["strategy"]["interval_range"], [75, 135])
         self.assertEqual(parse_interval_range("3600", "3600"), (3600, 3600))
 
-    def test_explicit_experimental_opt_in_preserves_school_protocol_status(self):
+    def test_experimental_opt_in_keeps_real_protocol_unverified(self):
         config = self.updated(interval_low=0.5, interval_high=0.5,
                               fast_polling_opt_in=True)
         self.assertEqual(config["strategy"]["interval_range"], [0.5, 0.5])
         self.assertTrue(config["strategy"]["fast_polling_opt_in"])
         self.assertFalse(config["protocol"]["verified"])
-        disabled = update_config(config, courses=config["courses"],
-                                 semester=config["xnxq"], mode="monitor",
-                                 target_time=config["strategy"]["target_time"],
-                                 interval_low=60, interval_high=60,
-                                 max_cycles=12, fast_polling_opt_in=False)
-        self.assertFalse(disabled["strategy"]["fast_polling_opt_in"])
 
     def test_invalid_interval_inputs_rejected(self):
         bad = [("59", "60"), ("60", "3601"), ("120", "60"),

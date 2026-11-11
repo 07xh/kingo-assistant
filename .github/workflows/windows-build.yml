@@ -4,12 +4,8 @@ on:
   pull_request:
     branches:
       - main
-    paths:
-      - "clients/windows/**"
-      - ".github/workflows/windows-build.yml"
   push:
     branches:
-      - import/windows-v4.6
       - main
     tags:
       - "v*"
@@ -24,7 +20,11 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: windows-build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-windows:
@@ -36,25 +36,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
-      - name: Expand V4.6 source snapshot (first run only)
-        shell: pwsh
-        run: |
-          $sourcePath = "clients/windows/source"
-          if (-not (Test-Path "$sourcePath/requirements.txt")) {
-            New-Item -ItemType Directory -Force -Path $sourcePath | Out-Null
-            python -c "import tarfile; tarfile.open('clients/windows/kingo-windows-v4.6.tar.xz','r:xz').extractall('clients/windows/source', filter='data')"
-            if ($LASTEXITCODE -ne 0) { throw "Could not extract the Windows source snapshot" }
-            if (-not (Test-Path "$sourcePath/requirements.txt")) { throw "The extracted source is incomplete" }
-
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add $sourcePath
-            git commit -m "chore: expand Windows V4.6 source snapshot"
-            if ($LASTEXITCODE -ne 0) { throw "Could not commit the expanded source tree" }
-            git push origin "HEAD:$env:GITHUB_REF_NAME"
-            if ($LASTEXITCODE -ne 0) { throw "Could not push the expanded source tree" }
-          }
 
       - name: Install dependencies
         shell: pwsh
@@ -73,6 +54,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Offline unit tests failed" }
           python windows_gui.py --self-test
           if ($LASTEXITCODE -ne 0) { throw "Source self-test failed" }
+          python -c "from windows_gui import run_packaged_gui_smoke; run_packaged_gui_smoke()"
+          if ($LASTEXITCODE -ne 0) { throw "Source GUI smoke failed" }
 
       - name: Build standalone GUI
         shell: pwsh

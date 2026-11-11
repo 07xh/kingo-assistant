@@ -18,7 +18,7 @@ import httpx
 from bs4 import BeautifulSoup
 from loguru import logger
 
-from .polling_policy import validate_rate_permission
+from .monitor_policy import validate_limits
 
 
 class Status(str, Enum):
@@ -60,6 +60,8 @@ def encode_gbk_form(pairs: list[tuple[str, str]]) -> bytes:
 
 
 _ROW = re.compile(rb"<tr\b[^>]*>.*?</tr\s*>", re.IGNORECASE | re.DOTALL)
+_TABLE = re.compile(rb"<table\b[^>]*>.*?</table\s*>", re.IGNORECASE | re.DOTALL)
+_TABLE_START = re.compile(rb"<table\b[^>]*>", re.IGNORECASE | re.DOTALL)
 _ALERT = re.compile(r"<script\b|验证码|选课成功|非法访问|请先登录", re.IGNORECASE)
 _INTEGER = re.compile(r"\d{1,5}")
 _LOGIN = re.compile(r"登录超时|请先登录|重新登录|登录已失效|无权访问")
@@ -140,10 +142,19 @@ def parse_courses(raw: bytes, config: dict, course_ids: list[str] | None = None,
         raise ProtocolError("课程列表编码无效，拒绝有损解析") from error
     marker = config.get("table_marker")
     if marker:
-        if not isinstance(marker, str) or len(marker) > 160:
+        if not isinstance(marker, str) or not marker or len(marker) > 160:
             raise ProtocolError("table_marker 无效")
-        if marker.encode(codec) not in raw:
-            raise ProtocolError("列表标识未找到，可能不是选课页面")
+        # A page-global marker is NOT enough: only parse rows from the
+        # exact table whose opening tag contains the verified marker.
+        matching_tables = []
+        needle = marker.encode(codec)
+        for table in _TABLE.finditer(raw):
+            opening = _TABLE_START.match(table.group(0))
+            if opening is not None and needle in opening.group(0):
+                matching_tables.append(table.group(0))
+        if len(matching_tables) != 1:
+            raise ProtocolError("课程表标识必须唯一且位于 table 起始标签；拒绝读取无关表格")
+        raw = matching_tables[0]
     targets = set(course_ids or ())
     patterns = tuple(re.compile(re.escape(code.encode(codec)), re.IGNORECASE)
                      for code in targets if code)
@@ -215,10 +226,9 @@ def parse_courses(raw: bytes, config: dict, course_ids: list[str] | None = None,
 class KingoClient:
     def __init__(self, config: dict):
         self.config = config
-        low, _ = validate_rate_permission(config["strategy"], config["base_url"])
-        # Preserve normal startup performance at existing 60s+ default.
-        # Fast mode paces EVERY official request (identity, entry, list, retries).
-        self._minimum_request_gap = float(low) if low < 60 else 0.0
+        limits = validate_limits(config["strategy"], config["base_url"])
+        # Read-only fast intervals require serial pacing of ALL client reads.
+        self._minimum_request_gap = limits.low if limits.low < 60 else 0.0
         self._request_lock = asyncio.Lock()
         self._last_request_at: float | None = None
         self.p = config["protocol"]
@@ -282,8 +292,8 @@ class KingoClient:
         for attempt in range(3):
             started = time.perf_counter()
             try:
-                # No parallel requests or sub-minimum gaps in authorized fast mode.
-                # Lock covers the actual network call, not just reservation.
+                # No parallel HTTP reads, including navigation and bounded retries.
+                # The lock covers the actual transport request.
                 async with self._request_lock:
                     if self._minimum_request_gap and self._last_request_at is not None:
                         remaining = self._minimum_request_gap - (

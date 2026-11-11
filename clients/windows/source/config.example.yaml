@@ -8,18 +8,15 @@ auth:
 strategy:
   mode: monitor       # monitor or burst; burst means ONE scheduled read-only check
   target_time: "2026-12-21 08:00:00" # timezone: Asia/Shanghai; confirm official announcement
-  interval_range: [60, 60]     # conservative client default; NOT a verified school rate limit.
-  fast_polling_opt_in: false # user must explicitly enable experimental fast monitoring
-  # 0.5/1/1.5-second options are not verified NCWU rates; do NOT label them safe/approved.
-  # Real institutional limits, if known, take precedence over experimental opt-in.
-  # Do not fill the following from generic QPS estimates or app benchmarks.
-  # rate_permission:
-  #   confirmed: false
-  #   host: "jwmis.ncwu.edu.cn"  # MUST match base_url host and the actual approval
-  #   scope: "read-only-course-catalog"
-  #   minimum_interval_seconds: 1.0
-  #   evidence_ref: "校方书面审批链接或可核对的正式批准编号"
-  max_cycles: 20
+  interval_range: [60, 60]     # fastest local default; NOT a verified school frequency limit
+  fast_polling_opt_in: false    # explicit experimental user choice; NOT school approval
+  # No real NCWU frequency evidence has been established for 0.5/1/1.5 seconds.
+  # Any actual published university limit overrides this experimental option.
+  max_cycles: 20              # 0 = no cycle-count limit; duration ALWAYS applies
+  max_duration_minutes: 480   # 1–1440 minutes; protects unattended runs
+  # Lower intervals require manually checking the school's published permission.
+  # Do not change this without official evidence. 30 s is the absolute hard floor.
+  official_frequency_policy: {manually_confirmed: false}
   # Only hashes of observed course+class IDs are stored; no Cookie or HTML.
   state_file: "data/notification-state.json"
   dry_run: true       # always read-only: no enrollment POST

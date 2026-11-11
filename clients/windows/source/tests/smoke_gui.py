@@ -31,6 +31,16 @@ def main():
                 app.demo_next()  # Replays from snapshot 1, not a fourth fake sample.
                 assert app.table.set('target-B', 'status') == '虚构样例：已满'
             app.check_config()  # Restores user's configured table, not fictional data.
+            with patch('windows_gui.messagebox.showinfo') as preflight_dialog:
+                app.preflight()
+            assert '阻止启动' in preflight_dialog.call_args.args[1]
+            with patch('windows_gui.messagebox.showwarning') as warning, \
+                 patch('windows_gui.MonitorWorker', side_effect=AssertionError('network worker started')):
+                app.start_monitor()
+            warning.assert_called_once()
+            assert app.worker is None
+            assert '无法启动' in app.status.get()
+            app.check_config()
             assert len(app.table.get_children()) == 2
             assert app.table.set('A', 'course') == 'FILL_FROM_OFFICIAL_PAGE'
             app.table.selection_set('A')
@@ -57,12 +67,11 @@ def main():
                 editor.save()
                 showerror.assert_called_once()
             editor.interval_low.set('75')
-            # Exercise fast preset as an opt-in without making a school request.
             editor.interval_preset.set('加速（1 秒，需确认）')
             editor._apply_interval_preset()
-            with patch('desktop_editor.messagebox.showerror') as no_opt_in:
+            with patch('desktop_editor.messagebox.showerror') as missing_opt_in:
                 editor.save()
-                no_opt_in.assert_called_once()
+                missing_opt_in.assert_called_once()
             editor.fast_polling_opt_in.set(True)
             with patch('desktop_editor.messagebox.showinfo'):
                 editor.save()
