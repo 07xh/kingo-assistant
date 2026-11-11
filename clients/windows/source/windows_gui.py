@@ -36,6 +36,7 @@ from core.preflight import inspect_readiness, split_checks, format_checks
 from core.offline_selftest import run_selftest
 from core.offline_benchmark import format_benchmark, run_offline_benchmark
 from core.official_portal_schedule import OfficialPortalAppointment, prepare_appointment, format_countdown
+from core.session_probe import SessionProbeResult, probe_own_session
 from core.official_entries import OFFICIAL_ENTRIES, probe_official_login_surfaces
 from core.scheduled_ui_bridge import prepare_scheduled_plan
 from core.time_sync import TimeSync
@@ -216,6 +217,8 @@ class Application(tk.Tk):
         self._benchmark_in_progress = False
         self._entry_probe_in_progress = False
         self._official_portal_appointment: OfficialPortalAppointment | None = None
+        self._portal_prelogin_opened = False
+        self._session_check_in_progress = False
         self.portal_appointment_status = tk.StringVar(value="官网预约未启动（与自动提交无关）")
         self.path = tk.StringVar(value=str(ensure_config()))
         self.status = tk.StringVar(value="未启动｜本机离线检查可直接使用")
@@ -292,6 +295,11 @@ class Application(tk.Tk):
             command=self.toggle_portal_appointment,
         )
         self.portal_appointment_button.pack(side="left", padx=(0, 8))
+        ttk.Button(self.portal_panel, text="现在打开官网登录",
+                   command=self.open_official_portal).pack(side="left", padx=(0, 8))
+        self.session_check_button = ttk.Button(
+            self.portal_panel, text="核验应用会话（只读）", command=self.check_script_session)
+        self.session_check_button.pack(side="left", padx=(0, 8))
         ttk.Label(
             self.portal_panel, textvariable=self.portal_appointment_status,
             foreground="#666", wraplength=650,
@@ -419,6 +427,37 @@ class Application(tk.Tk):
         if self.copy_selected_field("course_id"):
             self.open_official_portal()
 
+    def check_script_session(self) -> None:
+        """Check only the application's own approved read-only identity session.
+
+        The UI never imports browser cookies or sends school enrollment requests.
+        Any permitted session check runs off the Tk main thread.
+        """
+        if self.worker or self._session_check_in_progress or self._closing:
+            return
+        try:
+            config = read_config(Path(self.path.get()), offline=True)
+        except (ValueError, TypeError, KeyError, OSError):
+            messagebox.showwarning("无法核验会话", "本机配置无效，请先修正。")
+            return
+        self._session_check_in_progress = True
+        self.session_check_button.configure(state="disabled")
+        self.status.set("正在核验应用会话｜只读操作，不会提交选课")
+
+        def execute() -> None:
+            try:
+                result = asyncio.run(probe_own_session(config))
+            except Exception:
+                result = SessionProbeResult("unavailable", False)
+            self.events.put(MonitorEvent("session_probe", result))
+
+        try:
+            threading.Thread(target=execute, name="KingoSessionProbe", daemon=True).start()
+        except RuntimeError:
+            self._session_check_in_progress = False
+            self.session_check_button.configure(state="normal")
+            self.status.set("会话核验线程无法启动；未请求学校")
+
     def inspect_scheduled_runner(self) -> None:
         """Validate the real runner's local admission contract, never start it."""
         if self.worker:
@@ -449,6 +488,7 @@ class Application(tk.Tk):
         """Schedule the official browser page only; never submit enrollment."""
         if self._official_portal_appointment is not None:
             self._official_portal_appointment = None
+            self._portal_prelogin_opened = False
             self.portal_appointment_button.configure(text="预约按时打开官网（辅助）")
             self.portal_appointment_status.set("官网预约已取消")
             self.log("已取消本机官网预约；不会打开任何学校页面。")
@@ -466,12 +506,14 @@ class Application(tk.Tk):
             f"已填写的真实课程志愿：{appointment.target_count} 门。\n\n"
             "注意：配置模板中的日期和时刻不是官方确认的开放时刻。"
             "请先核对学校针对本人年级及校区的最新专项通知。\n\n"
-            "软件必须保持运行，届时只会打开华水教务官网。"
-            "登录、查找教学班、提交和最终核验仍须在官方页面完成。\n\n"
+            "软件须保持运行：提前 15 分钟自动打开官网供本人登录，"
+            "到点再次打开官网。不会自动登录或读取浏览器 Cookie。"
+            "课程查找、提交和核验仍须本人在官方页面完成。\n\n"
             "确认你已核对准确时间并开始预约？",
         ):
             return
         self._official_portal_appointment = appointment
+        self._portal_prelogin_opened = False
         self.portal_appointment_button.configure(text="取消官网预约")
         self.portal_appointment_status.set(
             f"官网预约：{appointment.local_start}（北京时间）；仅打开官方页面"
@@ -492,11 +534,16 @@ class Application(tk.Tk):
             )
             self.bell()
             self.open_official_portal()
-            self.log("计划时刻已到；仅执行了一次打开官网操作，不代表成功选课。")
+            self.log("计划时刻已到；仅打开官方页面，不代表成功选课。")
             return
+        if not self._portal_prelogin_opened and appointment.prelogin_is_due(now):
+            self._portal_prelogin_opened = True  # one early browser launch at most
+            self.open_official_portal()
+            self.log("提前登录时段已到；打开官网不代表已经登录。")
         remaining = appointment.seconds_remaining(now)
+        prelogin = "｜已尝试提前打开官网登录" if self._portal_prelogin_opened else ""
         self.portal_appointment_status.set(
-            f"官网预约倒计时：{format_countdown(remaining)}"
+            f"官网预约倒计时：{format_countdown(remaining)}{prelogin}"
             "｜须保持程序运行，按官方通知核对开放时刻"
         )
 
@@ -813,6 +860,12 @@ class Application(tk.Tk):
                     self._entry_probe_in_progress = False
                     self.status.set("官网登录页检测失败｜不影响正常监测配置")
                     self.log("官方入口检测未完成；没有启动选课任务。")
+                elif event.kind == "session_probe":
+                    self._session_check_in_progress = False
+                    self.session_check_button.configure(state="normal")
+                    result = event.value
+                    self.status.set(result.message)
+                    self.log(result.message)
                 elif event.kind == "benchmark_done":
                     self._benchmark_in_progress = False
                     result = event.value
@@ -878,6 +931,7 @@ class Application(tk.Tk):
             return
         self._closing = True
         self._official_portal_appointment = None
+        self._portal_prelogin_opened = False
         self._tray.stop()
         if self.worker:
             self.status.set("正在安全停止后台任务并退出…")
