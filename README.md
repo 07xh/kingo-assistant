@@ -55,6 +55,8 @@ and any actual enrollment POST are **not enabled**. See
 
 ## Windows client
 
+启动只读监测时，点击一次“启动只读监测”即可明确启动当次任务；本机预检会在同一份配置快照上完成，非关键的人工节次提示不会弹出二次确认框。本人会话、已核实只读协议和请求预算仍是启动前提；这不代表自动提交已接入。
+
 - Course plans are stored locally and do not include credentials or school protocol settings.
 - Course editor order is the preference order (top to bottom); courses in the same non-empty alternative group are mutually exclusive alternatives. Use the editor's **上移 / 下移** controls to change priority; saved plans preserve this order.
 - Current live client remains read-only and enforces a minimum local polling interval of 60 seconds. This is a client-side safety floor, not a claim about the school's allowed maximum. Follow any stricter official policy.
