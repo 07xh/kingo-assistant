@@ -100,9 +100,11 @@ async def probe_official_login_surfaces(
                 continue
             started = time.perf_counter()
             try:
-                response = await client.get(entry.launch_url, headers={"Accept": "text/html,*/*"})
+                # Read only headers/status; do not download or parse login-page bodies.
+                async with client.stream("GET", entry.launch_url,
+                                         headers={"Accept": "text/html,*/*"}) as response:
+                    code = response.status_code
                 duration = (time.perf_counter() - started) * 1000
-                code = response.status_code
                 if code == 429:
                     state = ProbeState.RATE_LIMITED
                     halted = True
