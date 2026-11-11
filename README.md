@@ -33,6 +33,26 @@ A separate scheduled runner now waits for the configured start time and checks o
 
 Windows V5.2 adds an **official-site appointment**: after you enter a personally confirmed opening time, the running app counts down and opens the fixed official NCWU page once. You can copy your stored first-choice course code, move between ordered alternatives, and submit through the official website. This does **not** submit automatically or claim a verified live selection interface. Keep the computer awake and the client running; see [official-site fallback guide](docs/acceptance/official-portal-appointment.md).
 
+## Official entry diagnostics (manual; phase 1)
+
+NCWU's official selection notice lists the direct academic-system website,
+unified authentication and the official 喜鹊儿 app. Those are *login
+surfaces*, not evidence of three independent catalog/selection servers.
+
+The Windows source CLI offers `--official-entries` (offline inventory, no
+config required) and `--probe-official-entries` (explicit one-shot login-page
+reachability checks; at most two requests, no credentials or redirect
+following). Login-page HTTP success does **not** verify school catalog access.
+
+The Windows standalone GUI also exposes **离线工具 → 华水官方入口清单**
+and **离线工具 → 检测官方登录页可达性** (the latter requires confirmation
+and uses a background thread so the desktop stays responsive).
+
+A guarded read-only route planner and synthetic tests are present, but only
+one documented web catalog candidate is registered. Live automatic failover
+and any actual enrollment POST are **not enabled**. See
+[the route design and acceptance gates](docs/architecture/official-entry-routing.md).
+
 ## Windows client
 
 - Course plans are stored locally and do not include credentials or school protocol settings.

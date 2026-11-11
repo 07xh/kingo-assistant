@@ -22,6 +22,7 @@ from core.scheduler import Scheduler
 from core.monitor_policy import validate_limits
 from core.request_budget import read_verified_policy_config
 from core.time_sync import TimeSync
+from core.official_entries import OFFICIAL_ENTRIES, probe_official_login_surfaces
 
 
 def validate(config: dict, check_only: bool = False) -> None:
@@ -67,6 +68,38 @@ def validate(config: dict, check_only: bool = False) -> None:
     if not check_only:
         # No network operation may begin with an unspecified or unverified budget.
         read_verified_policy_config(config, (url.scheme, url.netloc))
+
+
+def display_official_entries(*, probe: bool = False) -> None:
+    """Show official login routes; unverified live probe budgets fail closed."""
+    measurements = {}
+    if probe:
+        measurements = {
+            record.entry_id: record
+            for record in asyncio.run(probe_official_login_surfaces())
+        }
+    table = Table(title="华水官方登录方式｜不是选课接口验收", expand=True)
+    for heading in ("入口", "方式", "官方地址/客户端", "登录页可达性"):
+        table.add_column(heading)
+    for entry in OFFICIAL_ENTRIES:
+        host = urlsplit(entry.launch_url).hostname if entry.launch_url else "使用官方喜鹊儿 App"
+        observation = measurements.get(entry.identifier)
+        if observation is None:
+            result = "未检测（无自动联网）" if entry.launch_url else "仅供手动使用"
+        else:
+            code = str(observation.http_status) if observation.http_status else "无响应码"
+            latency = (
+                f"{observation.elapsed_ms:.0f} ms"
+                if observation.elapsed_ms is not None else "未计时"
+            )
+            result = f"{observation.state.value} / {code} / {latency}"
+        table.add_row(entry.name, entry.kind.value, host or "未知", result)
+    Console().print(table)
+    Console().print(
+        "[yellow]网页是否能打开 ≠ 本人会话有效 ≠ 课程列表可读取 ≠ 可提交选课。"
+        "仅按学校公开入口展示；没有尝试备用节点、IP 或 App 内部 API。[/yellow]"
+    )
+    Console().print(f"学校选课通知：{OFFICIAL_ENTRIES[0].evidence_url}")
 
 
 def replay_html(config: dict, filename: str) -> None:
@@ -208,6 +241,10 @@ def main() -> int:
     offline.add_argument("--inspect-html", metavar="FILE", help="只输出脱敏 HTML 表格结构提示")
     offline.add_argument("--replay-sequence", nargs="+", metavar="FILE",
                          help="多个本机 HTML 快照的余量状态演练，不发通知")
+    offline.add_argument("--official-entries", action="store_true",
+                         help="显示学校官方登录方式（不访问网络，不需要配置）")
+    offline.add_argument("--probe-official-entries", action="store_true",
+                         help="官网登录页只读探测（无已核实请求预算时跳过联网）")
     args = parser.parse_args()
     messages = deque(maxlen=5)
     logger.remove()
@@ -217,6 +254,9 @@ def main() -> int:
                format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}")
     logger.add(lambda msg: messages.append(str(msg).strip()), format="{time:HH:mm:ss} | {message}")
     try:
+        if args.official_entries or args.probe_official_entries:
+            display_official_entries(probe=args.probe_official_entries)
+            return 0
         with open(args.config, encoding="utf-8") as source:
             config = yaml.safe_load(source)
         offline_mode = bool(args.replay_html or args.inspect_html or args.replay_sequence)

@@ -34,6 +34,7 @@ from core.preflight import inspect_readiness, split_checks, format_checks
 from core.offline_selftest import run_selftest
 from core.offline_benchmark import format_benchmark, run_offline_benchmark
 from core.official_portal_schedule import OfficialPortalAppointment, prepare_appointment, format_countdown
+from core.official_entries import OFFICIAL_ENTRIES, probe_official_login_surfaces
 from core.time_sync import TimeSync
 from main import _read_local_html, validate
 
@@ -192,6 +193,7 @@ class Application(tk.Tk):
         self._demo_index = 0
         self._closing = False
         self._benchmark_in_progress = False
+        self._entry_probe_in_progress = False
         self._official_portal_appointment: OfficialPortalAppointment | None = None
         self.portal_appointment_status = tk.StringVar(value="官网预约未启动（与自动提交无关）")
         self.path = tk.StringVar(value=str(ensure_config()))
@@ -202,6 +204,8 @@ class Application(tk.Tk):
         tools_menu.add_command(label="本机 HAR 结构检查（脱敏统计）", command=self.audit_local_har)
         tools_menu.add_command(label="选课目录证据对照（离线 JSON）", command=self.review_catalog_evidence)
         tools_menu.add_command(label="北化课表参数 · 离线调度测速", command=self.benchmark_offline)
+        tools_menu.add_command(label="华水官方入口清单（离线）", command=self.show_official_entries)
+        tools_menu.add_command(label="检测官方登录页可达性（手动）", command=self.probe_official_entries)
         menu.add_cascade(label="离线工具", menu=tools_menu)
         self.configure(menu=menu)
         self.after(300, self.poll)
@@ -503,6 +507,47 @@ class Application(tk.Tk):
             self.status.set("虚构样例无法读取：" + type(exc).__name__)
             self.log("内置离线样例读取失败；请重新安装完整软件包。")
 
+    def show_official_entries(self) -> None:
+        """Display documented login surfaces without creating any HTTP requests."""
+        lines = []
+        for entry in OFFICIAL_ENTRIES:
+            address = entry.launch_url or "在手机上使用官方喜鹊儿 App"
+            lines.append(f"{entry.name}\n{address}")
+        messagebox.showinfo(
+            "华水官方入口（无联网）",
+            "\n\n".join(lines) +
+            "\n\n登录方式不是独立选课服务器的证据。"
+            "当前只有网页教务入口可能成为已核验课程查询源。"
+        )
+        self.log("已查看华水官方入口清单；无网络请求。")
+
+    def probe_official_entries(self) -> None:
+        """One opt-in, unauthenticated GET per web login surface in a worker."""
+        if self.worker or self._entry_probe_in_progress:
+            messagebox.showinfo("入口检测", "请先结束监测或当前入口检测。")
+            return
+        if not messagebox.askyesno(
+            "手动检测官网登录页",
+            "仅在核实并提供了对应域名的请求预算时，才允许执行单次 HTTPS GET。"
+            "当前版本未配置入口探测预算，将跳过联网请求；不读取课程，不提交选课。"
+            "\n\n仅用于比较登录页可达性，不代表选课接口可用。确认执行？"
+        ):
+            return
+        self._entry_probe_in_progress = True
+        self.status.set("正在手动检测官方登录页｜不是课程查询")
+        self.log("官网登录页检测已启动；无已核实域名预算时不联网。")
+
+        def execute() -> None:
+            try:
+                result = asyncio.run(probe_official_login_surfaces())
+                self.events.put(MonitorEvent("official_probe_done", result))
+            except Exception:
+                self.events.put(MonitorEvent("official_probe_error"))
+
+        threading.Thread(
+            target=execute, name="KingoOfficialLoginProbe", daemon=True
+        ).start()
+
     def audit_local_har(self) -> None:
         """Inspect a previously captured HAR locally without network or replay."""
         if self.worker:
@@ -660,6 +705,31 @@ class Application(tk.Tk):
                     for key, state in states.items():
                         if self.table.exists(key):
                             self.table.set(key, "status", str(state))
+                elif event.kind == "official_probe_done":
+                    self._entry_probe_in_progress = False
+                    results = event.value
+                    names = {entry.identifier: entry.name for entry in OFFICIAL_ENTRIES}
+                    lines = []
+                    for item in results:
+                        if item.elapsed_ms is None:
+                            elapsed = "—"
+                        else:
+                            elapsed = f"{item.elapsed_ms:.0f} ms"
+                        lines.append(
+                            f"{names.get(item.entry_id, '未知入口')}："
+                            f"{item.state.value} / HTTP {item.http_status or '—'} / {elapsed}"
+                        )
+                    self.status.set("官网登录页检测完毕｜未验证课程查询接口")
+                    self.log("本次官网登录页检测结束；不代表本人已登录或课程余量可读取。")
+                    messagebox.showinfo(
+                        "官方登录页可达性（非选课接口）",
+                        "\n".join(lines) +
+                        "\n\n登录页响应速度不能用于证明选课后端速度或名额。"
+                    )
+                elif event.kind == "official_probe_error":
+                    self._entry_probe_in_progress = False
+                    self.status.set("官网登录页检测失败｜不影响正常监测配置")
+                    self.log("官方入口检测未完成；没有启动选课任务。")
                 elif event.kind == "benchmark_done":
                     self._benchmark_in_progress = False
                     result = event.value
@@ -725,6 +795,11 @@ def run_packaged_gui_smoke() -> None:
             try:
                 app.withdraw()  # No visible desktop interference in CI.
                 app.update()
+                with patch.object(messagebox, "showinfo") as entries_dialog:
+                    app.show_official_entries()
+                    entries_dialog.assert_called_once()
+                    if "喜鹊儿" not in str(entries_dialog.call_args.args):
+                        raise AssertionError("Official entry inventory missing mobile app")
                 if len(app.table.get_children()) != 2:
                     raise AssertionError("Expected two placeholder courses in packaged template")
                 with patch("core.client.httpx.AsyncClient", side_effect=AssertionError("network attempted")):
