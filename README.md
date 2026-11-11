@@ -7,8 +7,8 @@ KingoAssistant is an independent personal course-selection assistant for the NCW
 ## Current status
 
 - **Windows:** V5.1 includes local course plans, editable priority order, preflight checks, read-only monitoring, and a hardened fail-closed automatic-enrollment state machine.
-- **Windows verification:** V5.1 passed 150 offline tests, a native Windows EXE build, the packaged offline self-test, and the native Tk GUI smoke test.
-- **Latest successful V5.1 build:** [Windows standalone EXE workflow](https://github.com/07xh/kingo-assistant/actions/runs/42994226060).
+- **Windows verification:** V5.1 with the scheduled window runner passed 161 offline tests, a native Windows EXE build, the packaged offline self-test, and the native Tk GUI smoke test.
+- **Latest successful V5.1 build:** [Windows standalone EXE workflow](https://github.com/07xh/kingo-assistant/actions/runs/42995506355).
 - **Android:** planned separately; no APK is implemented or released.
 - **School integration:** the 2026-11-11 HAR confirms a timetable JSON response and selection-related metadata, but does not verify a live elective catalog, a remaining-seat field, or a permitted write/confirmation contract.
 - **Automatic enrollment:** orchestration logic exists and is tested with synthetic gateways. **No NCWU live write adapter is implemented or enabled.** The Windows client remains read-only; do not interpret a build or offline test as a successful real enrollment.
