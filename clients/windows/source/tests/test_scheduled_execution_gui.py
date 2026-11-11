@@ -91,6 +91,24 @@ class ScheduledGuiTests(unittest.TestCase):
         app.scheduled_stop_button.configure.assert_called_with(state="normal")
         app.start_button.configure.assert_called_with(state="disabled")
 
+    def test_inprocess_run_rejects_concurrent_session_probe(self):
+        app = stub()
+        app._engine_factory = Mock()
+        app._session_check_in_progress = True
+        with patch("windows_gui.DesktopScheduledWorker") as worker, \
+             patch("windows_gui.messagebox.showinfo") as dialog:
+            Application.start_scheduled_enrollment(app)
+        worker.assert_not_called()
+        dialog.assert_called_once()
+
+    def test_script_session_probe_rejects_concurrent_native_run(self):
+        app = stub()
+        app.scheduled_worker = Mock()
+        app._session_check_in_progress = False
+        with patch("windows_gui.threading.Thread") as thread:
+            Application.check_script_session(app)
+        thread.assert_not_called()
+
     def test_verified_execution_cancels_existing_browser_fallback(self):
         app = stub()
         app._engine_factory = Mock()
