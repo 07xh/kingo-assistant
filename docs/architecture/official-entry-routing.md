@@ -30,6 +30,11 @@ python main.py --probe-official-entries
 The first command only prints the allowlisted inventory and performs **zero**
 school requests; no `config.yaml` or account is required.
 
+The packaged Windows GUI provides the equivalent actions under the **离线工具**
+menu: **华水官方入口清单（离线）** and
+**检测官方登录页可达性（手动）**. The network action prompts for consent,
+runs separately from the UI thread, and is disabled during monitoring.
+
 The second command is **explicitly initiated by the user** and performs at
 most one unauthenticated HTTPS GET per known web login surface (two total).
 It never follows redirects, sends cookies/passwords, retries, downloads
