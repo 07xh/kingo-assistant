@@ -6,9 +6,9 @@ KingoAssistant is an independent personal course-selection assistant for the NCW
 
 ## Current status
 
-- **Windows:** V5.2 builds on V5.1 and includes local course plans, editable priority order, preflight checks, read-only monitoring, and a hardened fail-closed automatic-enrollment state machine.
-- **Windows verification:** V5.1 with the scheduled window runner passed 161 offline tests, a native Windows EXE build, the packaged offline self-test, and the native Tk GUI smoke test.
-- **Latest successful V5.1 build:** [Windows standalone EXE workflow](https://github.com/07xh/kingo-assistant/actions/runs/42995506355).
+- **Windows:** Desktop course plans, read-only monitoring, native tray minimization, an offline automatic-enrollment plan preflight, and a separately tested enrollment state machine. Closing the window keeps the current task; explicit tray quit stops it.
+- **Windows verification:** Run the latest Windows Actions CI for the current commit; past passing PRs do not prove their combined GUI works. GUI smoke now asserts the scheduled-preflight control exists after merging UI changes.
+- **Build downloads:** [Windows Actions history](https://github.com/07xh/kingo-assistant/actions/workflows/windows-build.yml); choose a successful run built from the commit you intend to use.
 - **Android:** planned separately; no APK is implemented or released.
 - **School integration:** the 2026-11-11 HAR confirms a timetable JSON response and selection-related metadata, but does not verify a live elective catalog, a remaining-seat field, or a permitted write/confirmation contract.
 - **Automatic enrollment:** orchestration logic exists and is tested with synthetic gateways. **No NCWU live write adapter is implemented or enabled.** The Windows client remains read-only; do not interpret a build or offline test as a successful real enrollment.
@@ -27,7 +27,7 @@ The engine requires all of the following before a school adapter can be used:
 
 The 2026-11-11 HAR included an explicit “current time is not a valid selection window” response. Timetable data and `zxinfo.zxxq` records are not an elective catalog or seat count. See [the sanitized HAR audit](docs/acceptance/ncwu-xiqueer-har-2026-11-11.md) and [the execution architecture](docs/architecture/automatic-enrollment.md).
 
-A separate scheduled runner now waits for the configured start time and checks only the official selection-window state at a bounded 60–3600 second interval. It is offline-tested but not yet connected to the Windows UI or a live NCWU adapter; see [scheduled-runner design](docs/architecture/scheduled-enrollment.md).
+A separate scheduled runner can wait for a configured time and check a verified selection-window state at a bounded 60–3600 second interval. The Windows UI now exposes **offline plan validation only**, not a launch action or a live NCWU adapter. Local waiting uses coarse sleeps until the final seconds to reduce needless CPU wakeups. See [scheduled-runner design](docs/architecture/scheduled-enrollment.md).
 
 ## Official browser fallback for the next selection round
 
@@ -75,6 +75,10 @@ and any actual enrollment POST are **not enabled**. See
 - Use the tray menu **显示主窗口** to restore the UI and **完全退出** to stop tasks and exit. If the tray backend cannot initialize, the application minimizes to the normal taskbar instead of becoming invisible.
 - The main screen separates course plans and **只读监测** from the **手动辅助** menu (official-site opening / copied course codes) and **离线工具**. Advanced YAML controls are hidden under **程序 → 显示/隐藏高级配置**; read-only polling knobs are collapsed by default in the course editor.
 - These UI improvements **do not enable automated school enrollment**. The NCWU live submission adapter is still unverified and disabled. Tray background operation also requires Windows to stay awake; it is not a background service or a reboot-persistent appointment.
+
+## Engineering audit
+
+The [2026-11-11 integration audit](docs/acceptance/windows-integration-audit-2026-11-11.md) distinguishes fixed integration defects from outstanding live-enrollment requirements. **Offline scheduling is not proof of a school-approved submission capability.**
 
 ## Windows build
 
