@@ -19,6 +19,10 @@ config.local.yaml
 *.har
 *.token
 secrets/
+# Keep locally captured or manually matched evidence out of public GitHub
+local-evidence/
+private-captures/
+*.raw.json
 
 # Runtime/build output
 logs/
