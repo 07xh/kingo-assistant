@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from datetime import datetime, timezone
 from pathlib import Path
 import tempfile
 import unittest
@@ -100,6 +101,23 @@ class ReadinessV49Test(unittest.TestCase):
             self.assertEqual(recovered['courses'][0]['course_id'], 'C100')
             files = '\n'.join(p.read_text(encoding='utf-8') for p in folder.glob('*.json'))
             self.assertNotIn('not-for-backup', files)
+
+    def test_backup_name_collision_is_resolved_without_overwriting(self):
+        cfg = self._ready_config()
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp) / 'plans'
+            clock = datetime(2026, 11, 11, 8, 43, 17, 890059, tzinfo=timezone.utc)
+            with patch('core.plan_store.datetime') as fake_datetime, \
+                 patch('core.plan_store.secrets.token_hex',
+                       side_effect=['aaaaaaaa', 'aaaaaaaa', 'bbbbbbbb']):
+                fake_datetime.now.return_value = clock
+                first = save_switch_backup(folder, cfg)
+                cfg['courses'][0]['course_id'] = 'CHANGED'
+                second = save_switch_backup(folder, cfg)
+            self.assertNotEqual(first, second)
+            self.assertEqual(len(list_plans(folder)), 2)
+            self.assertEqual(load_plan(folder, first, self.config)['courses'][0]['course_id'], 'C100')
+            self.assertEqual(load_plan(folder, second, self.config)['courses'][0]['course_id'], 'CHANGED')
 
     def test_gui_does_not_connect_on_template_start(self):
         # Exercise the handler without a Tk display, including on headless CI.
