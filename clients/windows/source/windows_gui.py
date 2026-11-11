@@ -394,10 +394,10 @@ class Application(tk.Tk):
         self.log("定时计划字段检查通过；学校课程目录、窗口和提交适配器仍未验收。")
         messagebox.showinfo(
             "本地定时计划检查完成（不是抢课启动）",
-            f"计划时间（北京时间）：{plan.target_time}\\n"
-            f"精确课程及教学班：{len(plan.targets)} 个\\n"
-            f"窗口检查间隔：{plan.poll_interval_range[0]}–{plan.poll_interval_range[1]} 秒\\n"
-            f"最长等待窗口：{plan.max_wait_minutes} 分钟\\n\\n"
+            f"计划时间（北京时间）：{plan.target_time}\n"
+            f"精确课程及教学班：{len(plan.targets)} 个\n"
+            f"窗口检查间隔：{plan.poll_interval_range[0]}–{plan.poll_interval_range[1]} 秒\n"
+            f"最长等待窗口：{plan.max_wait_minutes} 分钟\n\n"
             "这只代表本地字段和调度器参数有效。"
             "当前未提供经过独立验收的华水课程目录、窗口、已选记录及正式提交适配器；"
             "因此没有启动自动选课，也没有创建学校网络请求。"
