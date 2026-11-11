@@ -54,6 +54,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Offline unit tests failed" }
           python windows_gui.py --self-test
           if ($LASTEXITCODE -ne 0) { throw "Source self-test failed" }
+          python -c "from windows_gui import run_packaged_gui_smoke; run_packaged_gui_smoke()"
+          if ($LASTEXITCODE -ne 0) { throw "Source GUI smoke failed" }
 
       - name: Build standalone GUI
         shell: pwsh
