@@ -649,15 +649,20 @@ class Application(tk.Tk):
             # First run offline checks so placeholders and missing authorization
             # are explained before any attempt at a network connection.
             config = read_config(Path(self.path.get()), offline=True)
-            checks = inspect_readiness(resolve_state_file(config, app_dir()))
+            # Resolve once, then reuse this exact snapshot for all offline gates.
+            # Do not reread YAML after readiness: the file could change between
+            # two reads, and redundant disk I/O adds avoidable startup work.
+            config = resolve_state_file(config, app_dir())
+            checks = inspect_readiness(config)
             blockers, warnings = split_checks(checks)
             if blockers:
                 self.status.set(f"无法启动｜{len(blockers)} 项本地前提未完成")
                 messagebox.showwarning("先完成启动预检", format_checks(checks))
                 self.log(f"启动被本地预检拦截：{len(blockers)} 项；没有连接学校。")
                 return
-            config = read_config(Path(self.path.get()), offline=False)
-            config = resolve_state_file(config, app_dir())
+            # Full live-mode validation is still mandatory, but operates on
+            # the identical in-memory config without a second file load.
+            validate(config, check_only=False)
             self.populate(config)
             self._previous_states = {}
             self._demo_report = None
