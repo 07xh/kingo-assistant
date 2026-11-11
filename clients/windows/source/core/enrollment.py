@@ -199,6 +199,9 @@ class AttemptJournal:
                or any(c not in "0123456789abcdef" for c in key)
                for key in legacy):
             raise ValueError("历史提交指纹无效，拒绝执行")
+        # Validation accepts older V2 files without this optional list.
+        # Normalize in memory so status/reserve/recovery cannot KeyError.
+        value["legacy_attempts"] = legacy
         return value
 
     def _fingerprint(self, target: Target, data: dict) -> str:
