@@ -29,6 +29,13 @@ class PortalScheduleTest(unittest.TestCase):
         self.assertTrue(appointment.is_due(appointment.start_at_epoch))
         self.assertEqual(appointment.seconds_remaining(appointment.start_at_epoch), 0)
 
+    def test_prelogin_window_only_final_15_minutes_before_start(self):
+        appointment = prepare_appointment(self.config, now_epoch=self.now)
+        self.assertFalse(appointment.prelogin_is_due(appointment.start_at_epoch - 901))
+        self.assertTrue(appointment.prelogin_is_due(appointment.start_at_epoch - 900))
+        self.assertTrue(appointment.prelogin_is_due(appointment.start_at_epoch - 1))
+        self.assertFalse(appointment.prelogin_is_due(appointment.start_at_epoch))
+
     def test_invalid_and_unconfirmed_time_never_create_appointment(self):
         for value in ("", "2026-12-21", "2026/12/21 09:00:00",
                       "2026-12-21 9:00:00", "2026-02-30 09:00:00",
