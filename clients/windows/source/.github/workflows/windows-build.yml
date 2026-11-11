@@ -1,0 +1,53 @@
+name: Windows standalone EXE (offline checks)
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt "pyinstaller>=6,<7"
+      - name: Offline unit tests (no school network)
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -q
+          python windows_gui.py --self-test
+          if ($LASTEXITCODE -ne 0) { throw "Source self-test failed" }
+      - name: Build standalone GUI
+        shell: pwsh
+        run: |
+          python -m PyInstaller --noconfirm --clean --onefile --windowed --name KingoAssistant-Windows --add-data "config.example.yaml;." --add-data "demo;demo" windows_gui.py
+          if ($LASTEXITCODE -ne 0) { throw "PyInstaller build failed" }
+      - name: Verify real Windows EXE and initialize packaged Tk GUI (offline)
+        shell: pwsh
+        run: |
+          python tools/verify_windows_build.py "dist/KingoAssistant-Windows.exe"
+          if ($LASTEXITCODE -ne 0) { throw "Native build verification failed" }
+          Get-Content dist/build-verification.json
+      - name: Upload EXE build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: KingoAssistant-Windows-portable
+          path: |
+            dist/KingoAssistant-Windows.exe
+            dist/SHA256.txt
+            dist/build-verification.json
+          if-no-files-found: error
+          retention-days: 14

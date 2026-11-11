@@ -1,0 +1,51 @@
+# Kingosoft elective assistant: personal, read-only, rate-limited.
+# Copy from actual browser evidence. Values below are placeholders, NOT NCWU endpoints.
+base_url: "https://jwmis.ncwu.edu.cn"
+xnxq: "2026-2027-1"
+auth:
+  # Prefer environment variable KINGO_COOKIE. Do not store passwords/cookies in this file.
+  cookie: ""
+strategy:
+  mode: monitor       # monitor or burst; burst means ONE scheduled read-only check
+  target_time: "2026-12-21 08:00:00" # timezone: Asia/Shanghai; confirm official announcement
+  interval_range: [60, 90]     # enforced lower bound: 60 seconds
+  max_cycles: 20
+  # Only hashes of observed course+class IDs are stored; no Cookie or HTML.
+  state_file: "data/notification-state.json"
+  dry_run: true       # always read-only: no enrollment POST
+courses:
+  - key: A
+    course_name: ""
+    teacher: ""
+    course_id: "FILL_FROM_OFFICIAL_PAGE"
+    class_id: ""       # optional exact teaching-class ID; prefer when known
+    group: "example-choice"
+  - key: B
+    course_name: ""
+    teacher: ""
+    course_id: "SECOND_OPTION_ID"
+    group: "example-choice"
+notify:
+  enabled: false       # explicit opt-in before sending course details to third parties
+  include_teacher: false
+  pushplus_token: ""  # optional PUSHPLUS_TOKEN env
+  serverchan_token: "" # optional SERVERCHAN_TOKEN env
+protocol:
+  verified: false    # change to true ONLY after own authorized page validation
+  # [TODO: 抓包核对] F12 > Network > Doc/Fetch/XHR > Request URL/Headers.
+  identity_path: ""
+  identity_referer: "/"
+  identity_selector: ""
+  entry: ""
+  entry_referer: "/"
+  list: ""
+  list_method: GET
+  term_field: ""
+  list_fields: {}
+  form_selector: "form"
+  checkbox_selector: 'input[type="checkbox"]'
+  table_marker: ""     # optional confirmed table HTML marker; reject wrong pages
+  empty_marker: ""     # optional confirmed empty-list marker; otherwise fail closed
+  # Add class_id: N to columns only when the actual table exposes that column.
+  columns: {course_id: 1, course_name: 2, teacher: 3, remain: 4}
+  # The following are intentionally absent: no submit endpoint or CAPTCHA bypass.

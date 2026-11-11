@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.pyc
+logs/
+data/
+.env
+.env.*
+config.local.yaml
+config.yaml
+*.har
+*.cookie
+
+# Windows/packaging output
+build/
+dist/
+*.spec
