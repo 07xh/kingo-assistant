@@ -31,6 +31,7 @@ from tools.catalog_evidence import inspect_local_file
 from core.scheduler import Scheduler
 from core.preflight import inspect_readiness
 from core.offline_selftest import run_selftest
+from core.offline_benchmark import format_benchmark, run_offline_benchmark
 from core.time_sync import TimeSync
 from main import _read_local_html, validate
 
@@ -185,6 +186,7 @@ class Application(tk.Tk):
         self._demo_report: DemoReport | None = None
         self._demo_index = 0
         self._closing = False
+        self._benchmark_in_progress = False
         self.path = tk.StringVar(value=str(ensure_config()))
         self.status = tk.StringVar(value="未启动｜本机离线检查可直接使用")
         self._build()
@@ -192,6 +194,7 @@ class Application(tk.Tk):
         tools_menu = tk.Menu(menu, tearoff=False)
         tools_menu.add_command(label="本机 HAR 结构检查（脱敏统计）", command=self.audit_local_har)
         tools_menu.add_command(label="选课目录证据对照（离线 JSON）", command=self.review_catalog_evidence)
+        tools_menu.add_command(label="北化课表参数 · 离线调度测速", command=self.benchmark_offline)
         menu.add_cascade(label="离线工具", menu=tools_menu)
         self.configure(menu=menu)
         self.after(300, self.poll)
@@ -459,6 +462,25 @@ class Application(tk.Tk):
             "不会自动将接口标记为已验证，更不会提交选课。"
         )
 
+    def benchmark_offline(self) -> None:
+        """Run a synthetic timing comparison in another thread, never campus HTTP."""
+        if self.worker or self._benchmark_in_progress:
+            messagebox.showinfo("离线调度测速", "请先结束当前监测或测速任务。")
+            return
+        self._benchmark_in_progress = True
+        self.status.set("北化课表参数离线对标中｜未连接学校")
+        self.log("离线对标启动：1.5 秒/工作线程、2 工作线程；不联网。")
+
+        def execute() -> None:
+            try:
+                result = asyncio.run(run_offline_benchmark())
+                self.events.put(MonitorEvent("benchmark_done", result))
+            except Exception:
+                self.events.put(MonitorEvent("benchmark_error"))
+
+        threading.Thread(target=execute, name="KingoOfflineBenchmark",
+                         daemon=True).start()
+
     def replay_local(self) -> None:
         if self.worker:
             return
@@ -491,7 +513,7 @@ class Application(tk.Tk):
             self.log("无法解析本机样本，请核对脱敏页面和表头列号。")
 
     def start_monitor(self) -> None:
-        if self.worker:
+        if self.worker or self._benchmark_in_progress:
             return
         try:
             config = read_config(Path(self.path.get()), offline=False)
@@ -538,6 +560,18 @@ class Application(tk.Tk):
                     for key, state in states.items():
                         if self.table.exists(key):
                             self.table.set(key, "status", str(state))
+                elif event.kind == "benchmark_done":
+                    self._benchmark_in_progress = False
+                    result = event.value
+                    self.status.set("离线对标完成｜未请求学校接口")
+                    self.log(f"本机离线测速完成：{result.started}/{result.finished} 模拟任务；"
+                             f"平均调度间隔 {result.mean_interval_ms:.1f} ms。")
+                    messagebox.showinfo("北化课表参数 · 离线调度测速",
+                                        format_benchmark(result))
+                elif event.kind == "benchmark_error":
+                    self._benchmark_in_progress = False
+                    self.status.set("离线对标失败｜未请求学校接口")
+                    self.log("离线调度测速发生内部错误；未连接学校。")
                 elif event.kind == "message":
                     self.log(str(event.value))
                 elif event.kind == "stop_reason":
