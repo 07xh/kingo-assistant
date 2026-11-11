@@ -65,7 +65,7 @@ def main():
             assert config['courses'][0]['course_id'] == 'LOCAL_TEST_101'
             assert config['strategy']['interval_range'] == [75, 135]
             assert app.table.set('A', 'course') == 'LOCAL_TEST_101'
-            assert app.table.set('A', 'class_id') == ''
+            assert app.table.set('A', 'class_id') == '—'
             app.table.selection_set('A')
             assert app.copy_selected_field('course_id') is True
             assert app.clipboard_get() == 'LOCAL_TEST_101'
