@@ -122,7 +122,7 @@ class ReadinessV49Test(unittest.TestCase):
     def test_gui_does_not_connect_on_template_start(self):
         # Exercise the handler without a Tk display, including on headless CI.
         status = Mock()
-        app = SimpleNamespace(worker=None,
+        app = SimpleNamespace(worker=None, _benchmark_in_progress=False,
                               path=SimpleNamespace(get=lambda: str(bundled_config())),
                               status=status, log=Mock())
         with patch('windows_gui.messagebox.showwarning') as warning, \
