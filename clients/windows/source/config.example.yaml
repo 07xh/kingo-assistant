@@ -9,7 +9,9 @@ strategy:
   mode: monitor       # monitor or burst; burst means ONE scheduled read-only check
   target_time: "2026-12-21 08:00:00" # timezone: Asia/Shanghai; confirm official announcement
   interval_range: [60, 60]     # conservative client default; NOT a verified school rate limit.
-  # 0.5/1/1.5-second options require independently verified written school permission.
+  fast_polling_opt_in: false # user must explicitly enable experimental fast monitoring
+  # 0.5/1/1.5-second options are not verified NCWU rates; do NOT label them safe/approved.
+  # Real institutional limits, if known, take precedence over experimental opt-in.
   # Do not fill the following from generic QPS estimates or app benchmarks.
   # rate_permission:
   #   confirmed: false

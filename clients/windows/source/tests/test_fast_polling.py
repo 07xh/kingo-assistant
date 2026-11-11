@@ -31,7 +31,7 @@ class FastPolicyTest(unittest.TestCase):
         self.assertEqual(parse_interval_range("1", "1"), (1.0, 1.0))
         self.assertEqual(parse_interval_range("1.5", "1.5"), (1.5, 1.5))
         self.assertEqual(parse_interval_range("75", "135"), (75, 135))
-        self.assertEqual(INTERVAL_PRESETS["极速（0.5 秒，需授权）"], (0.5, 0.5))
+        self.assertEqual(INTERVAL_PRESETS["极速（0.5 秒，需确认）"], (0.5, 0.5))
         for low, high in (("0.1", "1"), ("59", "60"), ("60.5", "120"),
                           ("1", "0.5"), ("NaN", "1"), ("６０", "120")):
             with self.subTest(low=low, high=high), self.assertRaises(ValueError):
@@ -41,10 +41,33 @@ class FastPolicyTest(unittest.TestCase):
         normal = sample_config()
         self.assertEqual(validate_rate_permission(normal["strategy"], normal["base_url"]), (60, 90))
         normal["strategy"]["interval_range"] = [1, 1]
-        with self.assertRaisesRegex(ValueError, "校方许可"):
+        with self.assertRaisesRegex(ValueError, "实验模式"):
             validate(normal, check_only=True)
         with self.assertRaises(ValueError):
             KingoClient(normal)
+
+    def test_opt_in_allows_experimental_settings_without_claiming_school_approval(self):
+        config = sample_config()
+        config["strategy"]["interval_range"] = [0.5, 0.5]
+        config["strategy"]["fast_polling_opt_in"] = True
+        self.assertNotIn("rate_permission", config["strategy"])
+        validate(config, check_only=True)
+        self.assertEqual(validate_rate_permission(config["strategy"], config["base_url"]), (0.5, 0.5))
+        # No opt-in should ever be interpreted as protocol verification.
+        self.assertTrue(config["protocol"]["verified"])
+        no_protocol = sample_config()
+        no_protocol["protocol"]["verified"] = False
+        no_protocol["strategy"].update({"interval_range": [1, 1],
+                                        "fast_polling_opt_in": True})
+        with self.assertRaisesRegex(ValueError, "尚未核对官方"):
+            validate(no_protocol)
+
+    def test_opt_in_cannot_override_known_stricter_permission(self):
+        config = permitted(1)
+        config["strategy"]["interval_range"] = [0.5, 0.5]
+        config["strategy"]["fast_polling_opt_in"] = True
+        with self.assertRaisesRegex(ValueError, "低于"):
+            validate(config, check_only=True)
 
     def test_permission_host_scope_and_ceiling_guard(self):
         config = permitted(0.5)

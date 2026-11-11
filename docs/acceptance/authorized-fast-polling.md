@@ -1,24 +1,26 @@
-# Authorized fast polling — implementation / acceptance
+# Fast polling: explicit opt-in and verified protocol
 
-The Windows app now exposes **1.5s reference**, **1s acceleration**, and **0.5s fast** presets in addition to the unchanged 60/120/300-second default options. These rates are **theoretical client settings**, not known NCWU policy or demonstrated throughput.
+KingoAssistant Windows exposes 60/120/300-second ordinary presets and 1.5/1/0.5-second **experimental** read-only presets.
 
-## Permission gate
+## Important distinction
 
-All sub-60-second intervals fail validation unless a developer/operator has independently confirmed a **school-issued written authorization** for the exact base URL host and read-only catalog scope. Keep `strategy.rate_permission` absent while it is unknown. `confirmed: true` is a local record, **not proof** that permission exists. Do not use a hypothetical WAF limit, a benchmark of another app, inferred rate limits, or self-approval as evidence.
+The 1.5/1/0.5-second settings are *hypothetical client rates*, not established NCWU safe or authorized maxima. Opting in does not convert them into a confirmed school policy. Users must comply with actual university requirements.
 
-After independently verifying a real authorization, record the exact approved hostname, the lowest allowed gap in seconds, `scope: read-only-course-catalog`, `confirmed: true`, and a reference to the original written approval. The application checks the fields but **cannot establish authenticity**. Do not commit private approval messages or account information.
+Two mutually exclusive paths can enable sub-60-second configuration:
 
-## Runtime behavior
+1. A documented `strategy.rate_permission` record matching the official host and read-only scope, with an independently verifiable source and a permitted minimum interval.
+2. In the absence of a permission record, the user explicitly checks **experimental fast polling** (`strategy.fast_polling_opt_in: true`) in the editor. This is only an acknowledgement of unverified rates; it is not approval. An existing documented stricter permission always overrides the experimental opt-in.
 
-- Exactly one scheduler cycle at a time; one course-list fetch checks all configured targets.
-- Cycle-to-cycle pacing is based on start times; no catch-up bursts.
-- In approved fast mode, every HTTP request made through `KingoClient.read`, including identity and initial entry navigation, is serialized with at least the configured minimum spacing.
-- 403/429 stop immediately; the existing bounded 502/503 retry/backoff remains. This is not a mechanism to bypass server restrictions.
-- Existing protocol verification, authentication, read-only operation and no enrollment POST are unchanged.
-- Normal 60s+ configuration remains default; the request-level fast-mode gate is not applied to ordinary startup checks.
+Both paths keep the **separate school protocol validation** (`protocol.verified`) unchanged: the live catalog, remaining-seat meaning and login must be genuinely verified first. Saving local configuration is not equivalent to establishing actual access or successful enrollment.
 
-## Tests / limitations
+## Controls
 
-Use only offline `httpx.MockTransport` and synthetic fixtures to test pace, rejection, and 429 behavior. GitHub Windows CI must pass before merge; do not present an unverified artifact as a release. Live NCWU elective catalog/remaining-seat data remain unverified. No automatic enrollment writes, CAPTCHA bypass, or request-limit evasion are implemented.
+- Single client, serial school requests, no parallel spikes and no catch-up bursts.
+- Fast mode throttles every request made through `KingoClient.read` (identity, entry, catalog, retries), not merely catalog-loop cycles.
+- 403 and 429 stop without retry; persistent login/redirect challenges also stop.
+- Existing HTTP error backoff, read-only interface and dry-run enforcement are retained.
+- Never attempt CAPTCHA bypass, limit evasion or enrollment POSTs. Live NCWU elective catalogue and seat response semantics are still unverified.
 
-The 0.5-second interval corresponds to a **maximum theoretical** 120 scheduled catalog cycles/minute only if authorization exists and requests are consistently faster than the gap. Additional entry/auth checks, latency, server responses and policy gating reduce this rate.
+## Acceptance
+
+Offline unit tests and packaged Tk GUI smoke must pass in Windows CI for the new head commit. Validate the opt-in persists only when chosen and defaults to false. Synthetic fixtures use `httpx.MockTransport` and never contact an actual school. Do not present an unverified live integration as ready just because the EXE builds.

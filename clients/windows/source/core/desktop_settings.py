@@ -89,7 +89,8 @@ def normalize_course(entry: dict) -> dict:
 
 def update_config(config: dict, *, courses: list[dict], semester: str,
                   mode: str, target_time: str, interval_low: int | float,
-                  interval_high: int | float, max_cycles: int) -> dict:
+                  interval_high: int | float, max_cycles: int,
+                  fast_polling_opt_in: bool | None = None) -> dict:
     """Return a validated copy; nothing is written or sent over the network."""
     copy = deepcopy(config)
     if not isinstance(courses, list) or not 1 <= len(courses) <= 30:
@@ -111,6 +112,10 @@ def update_config(config: dict, *, courses: list[dict], semester: str,
     copy["strategy"]["target_time"] = _field(target_time, name="计划检查时间", limit=60)
     copy["strategy"]["interval_range"] = [interval_low, interval_high]
     copy["strategy"]["max_cycles"] = max_cycles
+    if fast_polling_opt_in is not None:
+        if type(fast_polling_opt_in) is not bool:
+            raise ValueError("实验模式确认选项必须为布尔值")
+        copy["strategy"]["fast_polling_opt_in"] = fast_polling_opt_in
     # Preserve the read-only invariant even for imported configurations.
     copy["strategy"]["dry_run"] = True
     from main import validate

@@ -9,9 +9,9 @@ INTERVAL_PRESETS = {
     "最快（60 秒）": (60, 60),
     "均衡（120 秒）": (120, 120),
     "低频（300 秒）": (300, 300),
-    "参考（1.5 秒，需授权）": (1.5, 1.5),
-    "加速（1 秒，需授权）": (1.0, 1.0),
-    "极速（0.5 秒，需授权）": (0.5, 0.5),
+    "参考（1.5 秒，需确认）": (1.5, 1.5),
+    "加速（1 秒，需确认）": (1.0, 1.0),
+    "极速（0.5 秒，需确认）": (0.5, 0.5),
 }
 FAST_INTERVALS = frozenset((Decimal("0.5"), Decimal("1"), Decimal("1.5")))
 
@@ -38,17 +38,17 @@ def parse_interval_range(low, high) -> tuple[int | float, int | float]:
         return value in FAST_INTERVALS or (
             value == value.to_integral_value() and 60 <= value <= 3600)
     if not allowed(start) or not allowed(end) or start > end:
-        raise ValueError("查询间隔限 0.5/1/1.5 秒授权档或 60–3600 整数秒，且下限不大于上限")
+        raise ValueError("查询间隔限 0.5/1/1.5 秒条件档或 60–3600 整数秒，且下限不大于上限")
     def normalized(value: Decimal) -> int | float:
         return float(value) if value < 60 else int(value)
     return normalized(start), normalized(end)
 
 
 def validate_rate_permission(strategy: dict, base_url: str) -> tuple[int | float, int | float]:
-    """Never enable sub-60s live requests without explicit recorded permission.
+    """Fast monitoring requires either a scoped approval record or user opt-in.
 
-    This checks a permission *record*, not the authenticity of its source.
-    Actual institutional permission must be checked outside the application.
+    User opt-in is NOT evidence of institutional permission or a safe server rate.
+    Users remain responsible for complying with the institution's rules.
     """
     raw = strategy.get("interval_range")
     if not isinstance(raw, (list, tuple)) or len(raw) != 2:
@@ -57,6 +57,12 @@ def validate_rate_permission(strategy: dict, base_url: str) -> tuple[int | float
     if low >= 60:
         return low, high
     record = strategy.get("rate_permission")
+    # Explicitly recorded institutional restrictions take precedence; a checkbox
+    # must NEVER be able to bypass a documented stricter site-specific limit.
+    if record is None:
+        if strategy.get("fast_polling_opt_in") is True:
+            return low, high
+        raise ValueError("低于 60 秒需明确勾选实验模式；校方频率许可尚未确认")
     host = urlsplit(base_url).hostname
     if (not isinstance(record, dict) or record.get("confirmed") is not True
             or record.get("host") != host
