@@ -705,14 +705,17 @@ class Application(tk.Tk):
             # First run offline checks so placeholders and missing authorization
             # are explained before any attempt at a network connection.
             config = read_config(Path(self.path.get()), offline=True)
-            checks = inspect_readiness(resolve_state_file(config, app_dir()))
+            # One exact snapshot for preflight and the running client. Avoid
+            # a second YAML read between authorization and worker construction.
+            config = resolve_state_file(config, app_dir())
+            checks = inspect_readiness(config)
             blockers, warnings = split_checks(checks)
             if blockers:
                 self.status.set(f"无法启动｜{len(blockers)} 项本地前提未完成")
                 messagebox.showwarning("先完成启动预检", format_checks(checks))
                 self.log(f"启动被本地预检拦截：{len(blockers)} 项；没有连接学校。")
                 return
-            config = read_config(Path(self.path.get()), offline=False)
+            validate(config, check_only=False)
             self.populate(config)
             self._previous_states = {}
             self._demo_report = None
@@ -721,11 +724,10 @@ class Application(tk.Tk):
             self.status.set("无法启动监测：" + type(exc).__name__)
             self.log("真实模式未启用：官方接口参数、本人登录状态或权限尚未完成核验。")
             return
-        warning_text = (f"本地预检发现 {len(warnings)} 项提示，请核对课程代码、节次与备选课程。\n\n"
-                        if warnings else "")
-        if not messagebox.askokcancel("确认只读操作", warning_text +
-                                      "仅在学校允许的频率与访问方式下使用。\n程序只查询课程信息和提醒，不会提交选课。确认开始？"):
-            return
+        # The explicit "启动只读监测" click is the opt-in for this run.
+        # Advisory hints are logged and remain available via readiness UI.
+        if warnings:
+            self.log(f"本地预检有 {len(warnings)} 项非阻断提示；可在运行准备度中查看。")
         self.worker = MonitorWorker(config, self.events)
         self.worker.start()
         self.start_button.configure(state="disabled")
