@@ -44,6 +44,10 @@ config required) and `--probe-official-entries` (explicit one-shot login-page
 reachability checks; at most two requests, no credentials or redirect
 following). Login-page HTTP success does **not** verify school catalog access.
 
+The Windows standalone GUI also exposes **离线工具 → 华水官方入口清单**
+and **离线工具 → 检测官方登录页可达性** (the latter requires confirmation
+and uses a background thread so the desktop stays responsive).
+
 A guarded read-only route planner and synthetic tests are present, but only
 one documented web catalog candidate is registered. Live automatic failover
 and any actual enrollment POST are **not enabled**. See
