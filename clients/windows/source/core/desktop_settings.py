@@ -17,6 +17,28 @@ import yaml
 
 MAX_CONFIG_SIZE = 256 * 1024
 COURSE_FIELDS = ("key", "course_id", "class_id", "course_name", "teacher")
+QUICK_COPY_FIELDS = ("course_id", "class_id", "course_name")
+PLACEHOLDER_COURSE_IDS = frozenset(("FILL_FROM_OFFICIAL_PAGE", "SECOND_OPTION_ID"))
+
+
+def quick_copy_value(target: dict, field: str) -> str:
+    """Return only an explicitly selected public course field, never credentials.
+
+    This helper performs no network request and does not claim a course is open.
+    """
+    if field not in QUICK_COPY_FIELDS:
+        raise ValueError("不支持复制该字段")
+    if not isinstance(target, dict):
+        raise ValueError("请先选择有效的目标课程")
+    value = target.get(field)
+    if not isinstance(value, str):
+        raise ValueError("目标课程信息未填写，请先编辑课程")
+    value = value.strip()
+    if (not value or len(value) > 120
+            or any(ord(char) < 32 for char in value)
+            or (field == "course_id" and value in PLACEHOLDER_COURSE_IDS)):
+        raise ValueError("目标课程信息未填写或仍为模板，请先从官网核对并编辑课程")
+    return value
 # Local app safety bounds; not a measured or authorized school rate limit.
 INTERVAL_MIN_SECONDS = 60
 INTERVAL_MAX_SECONDS = 3600

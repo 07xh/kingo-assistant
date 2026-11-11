@@ -22,6 +22,10 @@ def main():
                 assert app.table.set('target-B', 'status') == '虚构样例：已满'
                 app.demo_next()
                 assert '发现余量' in app.table.set('target-B', 'status')
+                app.table.selection_set('target-B')
+                with patch('windows_gui.messagebox.showinfo') as showinfo:
+                    assert app.copy_selected_field('course_id') is False
+                    showinfo.assert_called_once()
                 app.demo_next()
                 assert app.table.set('target-B', 'status') == '虚构样例：已满'
                 app.demo_next()  # Replays from snapshot 1, not a fourth fake sample.
@@ -29,6 +33,10 @@ def main():
             app.check_config()  # Restores user's configured table, not fictional data.
             assert len(app.table.get_children()) == 2
             assert app.table.set('A', 'course') == 'FILL_FROM_OFFICIAL_PAGE'
+            app.table.selection_set('A')
+            with patch('windows_gui.messagebox.showwarning') as showwarning:
+                assert app.copy_selected_field('course_id') is False
+                showwarning.assert_called_once()
             with patch('windows_gui.webbrowser.open', return_value=True) as web_open:
                 app.open_official_portal()
                 web_open.assert_called_once_with('https://jwmis.ncwu.edu.cn')
@@ -57,6 +65,14 @@ def main():
             assert config['courses'][0]['course_id'] == 'LOCAL_TEST_101'
             assert config['strategy']['interval_range'] == [75, 135]
             assert app.table.set('A', 'course') == 'LOCAL_TEST_101'
+            assert app.table.set('A', 'class_id') == '—'
+            app.table.selection_set('A')
+            assert app.copy_selected_field('course_id') is True
+            assert app.clipboard_get() == 'LOCAL_TEST_101'
+            with patch('windows_gui.webbrowser.open', return_value=True) as browser:
+                app.prepare_selected_course()
+                browser.assert_called_once_with('https://jwmis.ncwu.edu.cn')
+            assert app.clipboard_get() == 'LOCAL_TEST_101'
             app.close()
             print('PASS: Tk init + 3-step offline fictional demo + user config restore + school browser link + editor + atomic save + close')
 
