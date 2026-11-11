@@ -364,7 +364,7 @@ class Application(tk.Tk):
         self.log_box.configure(state="disabled")
 
     def edit_settings(self) -> None:
-        if self.worker or getattr(self, "scheduled_worker", None):
+        if self.worker or self.__dict__.get("scheduled_worker"):
             messagebox.showinfo("请先停止监测", "运行期间无法修改配置，请先停止当前任务。")
             return
         try:
@@ -374,7 +374,7 @@ class Application(tk.Tk):
             messagebox.showerror("无法打开编辑器", "配置文件结构可能损坏，请先点击检查配置。")
 
     def manage_plans(self) -> None:
-        if self.worker or getattr(self, "scheduled_worker", None):
+        if self.worker or self.__dict__.get("scheduled_worker"):
             messagebox.showinfo("请先停止监测", "运行期间不能切换课程方案。")
             return
         try:
@@ -449,7 +449,7 @@ class Application(tk.Tk):
         The UI never imports browser cookies or sends school enrollment requests.
         Any permitted session check runs off the Tk main thread.
         """
-        if (self.worker or getattr(self, "scheduled_worker", None)
+        if (self.worker or self.__dict__.get("scheduled_worker")
                 or self._session_check_in_progress or self._closing):
             return
         try:
@@ -477,7 +477,7 @@ class Application(tk.Tk):
 
     def inspect_scheduled_runner(self) -> None:
         """Validate the real runner's local admission contract, never start it."""
-        if self.worker or getattr(self, "scheduled_worker", None):
+        if self.worker or self.__dict__.get("scheduled_worker"):
             messagebox.showinfo("先停止监测", "运行期间无法变更或核对定时计划。")
             return
         try:
@@ -518,7 +518,7 @@ class Application(tk.Tk):
     def start_scheduled_enrollment(self) -> None:
         """Start a verified *in-process* engine; never open a browser."""
         if (self.worker or self.scheduled_worker
-                or getattr(self, "_session_check_in_progress", False)):
+                or self.__dict__.get("_session_check_in_progress", False)):
             messagebox.showinfo("已有任务", "请先完成当前监测、身份核验或预约任务")
             return
         factory = self._engine_factory
@@ -545,7 +545,7 @@ class Application(tk.Tk):
             return
         # Prevent a previous manual browser appointment from firing in the
         # middle of an explicitly confirmed in-process enrollment run.
-        if getattr(self, "_official_portal_appointment", None) is not None:
+        if self.__dict__.get("_official_portal_appointment") is not None:
             self._official_portal_appointment = None
             self._portal_prelogin_opened = False
             self.portal_appointment_button.configure(text="预约按时打开官网（辅助）")
@@ -568,7 +568,7 @@ class Application(tk.Tk):
         self.start_button.configure(state="disabled")
         self.edit_button.configure(state="disabled")
         self.plans_button.configure(state="disabled")
-        if hasattr(self, "session_check_button"):
+        if "session_check_button" in self.__dict__:
             self.session_check_button.configure(state="disabled")
         self.status.set("自动选课后台任务正在进行本地适配器核验")
         self.log("应用内后台执行器已启动；尚未向学校发出选课成功声明。")
@@ -584,7 +584,7 @@ class Application(tk.Tk):
 
     def toggle_portal_appointment(self) -> None:
         """Schedule the official browser page only; never submit enrollment."""
-        if getattr(self, "scheduled_worker", None) is not None:
+        if self.__dict__.get("scheduled_worker") is not None:
             messagebox.showinfo("应用内任务正在运行",
                                 "运行自动选课时不能另行启动官网预约。")
             return
@@ -627,7 +627,7 @@ class Application(tk.Tk):
         appointment = self._official_portal_appointment
         if appointment is None or self._closing:
             return
-        if getattr(self, "scheduled_worker", None) is not None:
+        if self.__dict__.get("scheduled_worker") is not None:
             self._official_portal_appointment = None
             self.portal_appointment_status.set("应用内执行期间已取消手动官网预约")
             return
@@ -666,7 +666,7 @@ class Application(tk.Tk):
             messagebox.showerror("无法打开网站", "请手动在浏览器打开 https://jwmis.ncwu.edu.cn")
 
     def check_config(self) -> None:
-        if self.worker or getattr(self, "scheduled_worker", None):
+        if self.worker or self.__dict__.get("scheduled_worker"):
             return
         try:
             config = read_config(Path(self.path.get()), offline=True)
@@ -681,7 +681,7 @@ class Application(tk.Tk):
             self.log("配置检查失败，请检查 YAML 中缺失或非法的设置。")
 
     def preflight(self) -> None:
-        if self.worker or getattr(self, "scheduled_worker", None):
+        if self.worker or self.__dict__.get("scheduled_worker"):
             return
         try:
             config = read_config(Path(self.path.get()), offline=True)
@@ -706,7 +706,7 @@ class Application(tk.Tk):
 
     def demo_next(self) -> None:
         """Step through 3 bundled fictional snapshots; never touch the school."""
-        if self.worker or getattr(self, "scheduled_worker", None):
+        if self.worker or self.__dict__.get("scheduled_worker"):
             messagebox.showinfo("请先停止监测", "监测运行期间无法切换到离线示例。")
             return
         try:
@@ -749,7 +749,7 @@ class Application(tk.Tk):
 
     def probe_official_entries(self) -> None:
         """One opt-in, unauthenticated GET per web login surface in a worker."""
-        if self.worker or getattr(self, "scheduled_worker", None) or self._entry_probe_in_progress:
+        if self.worker or self.__dict__.get("scheduled_worker") or self._entry_probe_in_progress:
             messagebox.showinfo("入口检测", "请先结束监测或当前入口检测。")
             return
         if not messagebox.askyesno(
@@ -776,7 +776,7 @@ class Application(tk.Tk):
 
     def audit_local_har(self) -> None:
         """Inspect a previously captured HAR locally without network or replay."""
-        if self.worker or getattr(self, "scheduled_worker", None):
+        if self.worker or self.__dict__.get("scheduled_worker"):
             messagebox.showinfo("请先停止监测", "监测运行期间请勿切换离线分析。")
             return
         filename = filedialog.askopenfilename(title="选择本人已授权导出的 HAR（仅本地统计）",
@@ -792,7 +792,7 @@ class Application(tk.Tk):
 
     def review_catalog_evidence(self) -> None:
         """Compare a locally redacted evidence pair; never enable live catalog mode."""
-        if self.worker or getattr(self, "scheduled_worker", None):
+        if self.worker or self.__dict__.get("scheduled_worker"):
             messagebox.showinfo("请先停止监测", "监测期间请勿切换离线分析。")
             return
         filename = filedialog.askopenfilename(
@@ -820,7 +820,7 @@ class Application(tk.Tk):
 
     def benchmark_offline(self) -> None:
         """Run a synthetic timing comparison in another thread, never campus HTTP."""
-        if self.worker or getattr(self, "scheduled_worker", None) or self._benchmark_in_progress:
+        if self.worker or self.__dict__.get("scheduled_worker") or self._benchmark_in_progress:
             messagebox.showinfo("离线调度测速", "请先结束当前监测或测速任务。")
             return
         self._benchmark_in_progress = True
@@ -838,7 +838,7 @@ class Application(tk.Tk):
                          daemon=True).start()
 
     def replay_local(self) -> None:
-        if self.worker or getattr(self, "scheduled_worker", None):
+        if self.worker or self.__dict__.get("scheduled_worker"):
             return
         filename = filedialog.askopenfilename(title="选择已脱敏的本机课程 HTML", filetypes=[("HTML 文件", "*.html *.htm")])
         if not filename:
@@ -869,7 +869,7 @@ class Application(tk.Tk):
             self.log("无法解析本机样本，请核对脱敏页面和表头列号。")
 
     def start_monitor(self) -> None:
-        if self.worker or getattr(self, "scheduled_worker", None) or self._benchmark_in_progress:
+        if self.worker or self.__dict__.get("scheduled_worker") or self._benchmark_in_progress:
             return
         try:
             # First run offline checks so placeholders and missing authorization
@@ -925,7 +925,7 @@ class Application(tk.Tk):
                     self.restore_window()
                 elif event.kind == "tray_quit":
                     self.quit_application()
-                    if not self.worker and not getattr(self, "scheduled_worker", None):
+                    if not self.worker and not self.__dict__.get("scheduled_worker"):
                         return
                 elif event.kind == "tray_error":
                     self.restore_window()
@@ -1031,7 +1031,7 @@ class Application(tk.Tk):
                     self.start_button.configure(state="normal")
                     self.edit_button.configure(state="normal")
                     self.plans_button.configure(state="normal")
-                    if (hasattr(self, "session_check_button")
+                    if ("session_check_button" in self.__dict__
                             and not self._session_check_in_progress):
                         self.session_check_button.configure(state="normal")
                     if self._closing and not self.worker:
@@ -1053,12 +1053,12 @@ class Application(tk.Tk):
                             self.status.set("已完成｜本次只读监测已结束")
                         # A prior stop_reason/error remains visible when failed.
                     self.log("监测任务已结束；未提交任何选课请求。")
-                    if self._closing and not getattr(self, "scheduled_worker", None):
+                    if self._closing and not self.__dict__.get("scheduled_worker"):
                         self.destroy()
                         return
         except queue.Empty:
             pass
-        if not self._closing or self.worker or getattr(self, "scheduled_worker", None):
+        if not self._closing or self.worker or self.__dict__.get("scheduled_worker"):
             self.after(300, self.poll)
 
     def restore_window(self) -> None:
@@ -1086,7 +1086,7 @@ class Application(tk.Tk):
         self._tray.stop()
         if self.worker:
             self.worker.stop()
-        scheduled = getattr(self, "scheduled_worker", None)
+        scheduled = self.__dict__.get("scheduled_worker")
         if scheduled:
             scheduled.stop()
         if self.worker or scheduled:
