@@ -19,6 +19,7 @@ from rich.text import Text
 from core.client import KingoClient, parse_courses
 from core.inspector import inspect_html
 from core.scheduler import Scheduler
+from core.polling_policy import validate_rate_permission
 from core.time_sync import TimeSync
 
 
@@ -46,9 +47,7 @@ def validate(config: dict, check_only: bool = False) -> None:
         raise ValueError("当前安全版只能运行 dry_run: true，不提供自动选课写入")
     if strategy["mode"] == "burst":
         TimeSync.parse(strategy["target_time"])
-    low, high = strategy["interval_range"]
-    if not (60 <= float(low) <= float(high) <= 3600):
-        raise ValueError("连续监测间隔必须为 60 至 3600 秒")
+    validate_rate_permission(strategy, config["base_url"])
     cycles = strategy["max_cycles"]
     if not isinstance(cycles, int) or isinstance(cycles, bool) or cycles not in range(1, 101):
         raise ValueError("max_cycles 范围为 1–100")

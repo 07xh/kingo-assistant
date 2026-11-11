@@ -100,7 +100,7 @@ class SettingsEditor(tk.Toplevel):
         ttk.Combobox(settings, textvariable=self.mode,
                      values=("monitor", "burst"), state="readonly", width=22).grid(
                          row=1, column=1, sticky="ew", padx=6, pady=5)
-        ttk.Label(settings, text="monitor=低频监测；burst=到点只查询一次，不会自动选课。",
+        ttk.Label(settings, text="monitor=只读监测；burst=到点只查询一次，不会自动选课。",
                   foreground="#666").grid(row=1, column=2, columnspan=2, sticky="w", padx=6)
         ttk.Label(settings, text="监测间隔方案").grid(row=2, column=0, sticky="w", pady=5)
         presets = ttk.Combobox(settings, textvariable=self.interval_preset,
@@ -108,14 +108,14 @@ class SettingsEditor(tk.Toplevel):
                                state="readonly", width=22)
         presets.grid(row=2, column=1, sticky="ew", padx=6, pady=5)
         presets.bind("<<ComboboxSelected>>", self._apply_interval_preset)
-        ttk.Label(settings, text="60–3600 秒；直接修改数字即可自定义。",
+        ttk.Label(settings, text="常规 60–3600 秒；0.5/1/1.5 秒需校方明确许可。",
                   foreground="#666").grid(row=2, column=2, columnspan=2,
                                            sticky="w", padx=6)
         for label, var, row, col in fields:
             ttk.Label(settings, text=label).grid(row=row, column=col, sticky="w", pady=5)
             ttk.Entry(settings, textvariable=var, width=23).grid(
                 row=row, column=col + 1, sticky="ew", padx=6, pady=5)
-        ttk.Label(settings, text="60 秒是客户端最短间隔，不是学校许可上限；若校方要求更长间隔，请遵守官方规定。课程查询仍为单链路，不提供并发请求爆发。",
+        ttk.Label(settings, text="默认 60 秒不是学校允许的最高频率。低于 60 秒须在配置中记录校方书面许可；不符合许可将拒绝保存和启动。单链路串行查询，无并发突发。",
                   foreground="#666", wraplength=720).grid(
                       row=5, column=0, columnspan=4, sticky="w", pady=(7, 2))
 

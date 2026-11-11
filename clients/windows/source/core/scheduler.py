@@ -167,9 +167,17 @@ class Scheduler:
             for i in range(limit):
                 if self.client.stop.is_set():
                     break
+                started = asyncio.get_running_loop().time()
                 await self.cycle()
-                if i + 1 < limit and not await self._sleep_or_stop(random.uniform(low, high)):
-                    break
+                # Cycle-start pacing: avoid adding response latency to every
+                # interval. The HTTP client's own gate enforces fast-mode
+                # request-to-request spacing across identity/entry/list/retries.
+                if i + 1 < limit:
+                    target_gap = random.uniform(low, high)
+                    elapsed = asyncio.get_running_loop().time() - started
+                    remaining = max(0.0, target_gap - elapsed)
+                    if remaining and not await self._sleep_or_stop(remaining):
+                        break
         except AuthenticationError:
             self.last_error = "本人会话无效或登录已过期；请在官方页面重新登录并核验授权"
             logger.warning("监测已停止：AuthenticationError")
