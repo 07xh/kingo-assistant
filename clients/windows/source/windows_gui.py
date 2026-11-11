@@ -19,7 +19,6 @@ import tkinter as tk
 import webbrowser
 from tkinter import filedialog, messagebox, ttk
 
-from loguru import logger
 
 from core.client import KingoClient, parse_courses
 from core.desktop_settings import load_config, quick_copy_value, resolve_state_file, status_changes
@@ -40,7 +39,7 @@ from core.scheduled_ui_bridge import prepare_scheduled_plan
 from core.time_sync import TimeSync
 from main import _read_local_html, validate
 
-APP_TITLE = "青果选课辅助 · Windows V5.2（官网备战辅助版）"
+APP_TITLE = "KingoAssistant · Windows（只读监测｜自动提交尚未接入）"
 OFFICIAL_PORTAL = "https://jwmis.ncwu.edu.cn"  # Confirmed by school notices; NOT an API endpoint.
 
 
@@ -231,7 +230,7 @@ class Application(tk.Tk):
     def _build(self) -> None:
         top = ttk.Frame(self, padding=(16, 14))
         top.pack(fill="x")
-        ttk.Label(top, text="青果选课辅助 · Windows V5.2", font=("Microsoft YaHei UI", 16, "bold")).pack(anchor="w")
+        ttk.Label(top, text="KingoAssistant · Windows", font=("Microsoft YaHei UI", 16, "bold")).pack(anchor="w")
         ttk.Label(top, text="本机独立运行｜当前只读监测｜自动执行核心已加入，官方接口待验收", foreground="#666").pack(anchor="w", pady=(4, 0))
 
         cfg = ttk.Frame(self, padding=(16, 6))
@@ -262,6 +261,11 @@ class Application(tk.Tk):
         self.start_button.pack(side="left", padx=(0, 8))
         self.stop_button = ttk.Button(self.action_panel, text="停止", command=self.stop_monitor, state="disabled")
         self.stop_button.pack(side="left")
+        self.scheduled_preflight_button = ttk.Button(
+            self.action_panel, text="检查自动选课计划（离线）",
+            command=self.inspect_scheduled_runner,
+        )
+        self.scheduled_preflight_button.pack(side="right")
 
         self.portal_panel = ttk.LabelFrame(self, text="手动官网备用（不自动提交）", padding=8)
         self.portal_appointment_button = ttk.Button(
@@ -269,10 +273,6 @@ class Application(tk.Tk):
             command=self.toggle_portal_appointment,
         )
         self.portal_appointment_button.pack(side="left", padx=(0, 8))
-        ttk.Button(
-            portal_row, text="自动选课计划预检（离线）",
-            command=self.inspect_scheduled_runner,
-        ).pack(side="left", padx=(0, 8))
         ttk.Label(
             self.portal_panel, textvariable=self.portal_appointment_status,
             foreground="#666", wraplength=650,
@@ -711,7 +711,6 @@ class Application(tk.Tk):
                 self.log(f"启动被本地预检拦截：{len(blockers)} 项；没有连接学校。")
                 return
             config = read_config(Path(self.path.get()), offline=False)
-            config = resolve_state_file(config, app_dir())
             self.populate(config)
             self._previous_states = {}
             self._demo_report = None
