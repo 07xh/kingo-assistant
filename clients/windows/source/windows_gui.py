@@ -502,6 +502,13 @@ class Application(tk.Tk):
             "确认启动本次自动选课任务？",
         ):
             return
+        # Prevent a previous manual browser appointment from firing in the
+        # middle of an explicitly confirmed in-process enrollment run.
+        if getattr(self, "_official_portal_appointment", None) is not None:
+            self._official_portal_appointment = None
+            self.portal_appointment_button.configure(text="预约按时打开官网（辅助）")
+            self.portal_appointment_status.set("手动官网预约已取消；改用应用内执行")
+            self.log("自动任务已取代同一窗口的手动官网预约。")
         sender = lambda item: self.events.put(
             MonitorEvent("scheduled_" + item.kind, item.value)
         )
@@ -533,6 +540,10 @@ class Application(tk.Tk):
 
     def toggle_portal_appointment(self) -> None:
         """Schedule the official browser page only; never submit enrollment."""
+        if getattr(self, "scheduled_worker", None) is not None:
+            messagebox.showinfo("应用内任务正在运行",
+                                "运行自动选课时不能另行启动官网预约。")
+            return
         if self._official_portal_appointment is not None:
             self._official_portal_appointment = None
             self.portal_appointment_button.configure(text="预约按时打开官网（辅助）")
@@ -568,6 +579,10 @@ class Application(tk.Tk):
         """Called on Tk's event loop; no extra threads or school requests."""
         appointment = self._official_portal_appointment
         if appointment is None or self._closing:
+            return
+        if getattr(self, "scheduled_worker", None) is not None:
+            self._official_portal_appointment = None
+            self.portal_appointment_status.set("应用内执行期间已取消手动官网预约")
             return
         now = time.time()
         if appointment.is_due(now):
@@ -944,6 +959,8 @@ class Application(tk.Tk):
                 elif event.kind == "scheduled_blocked":
                     self.status.set("自动选课未启动｜接口或身份授权条件未通过")
                     self.log("执行器校验失败；未进入预约等待。")
+                elif event.kind == "scheduled_cleanup_warning":
+                    self.log("教务适配器资源清理产生本地告警：" + str(event.value))
                 elif event.kind == "scheduled_error":
                     self.status.set("自动选课任务异常终止")
                     self.log("自动执行器发生本地异常：" + str(event.value))
