@@ -35,8 +35,12 @@ menu: **华水官方入口清单（离线）** and
 **检测官方登录页可达性（手动）**. The network action prompts for consent,
 runs separately from the UI thread, and is disabled during monitoring.
 
-The second command is **explicitly initiated by the user** and performs at
-most one unauthenticated HTTPS GET per known web login surface (two total).
+The second command is **explicitly initiated by the user**, but in the
+shipped client it **skips every real network probe** until independently verified
+per-origin request budgets are passed to the probe coordinator. It reports
+`policy_unverified` for those web entries; an HTTP status is not fabricated.
+A future properly budgeted coordinator may perform at most one unauthenticated
+HTTPS GET per known web login surface (two total).
 It never follows redirects, sends cookies/passwords, retries, downloads
 response bodies, scans additional ports/IPs or contacts a mobile app API.
 On HTTP 403 or 429 it stops subsequent web probes. It does not run
