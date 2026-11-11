@@ -37,13 +37,14 @@ class StartupPreflightEfficiencyTest(unittest.TestCase):
                    return_value=[Check("本地配置", True, "通过")]), \
              patch("windows_gui.validate") as validate, \
              patch("windows_gui.MonitorWorker") as worker, \
-             patch("windows_gui.messagebox.askokcancel", return_value=True):
+             patch("windows_gui.messagebox.askokcancel") as ask:
             Application.start_monitor(app)
         read.assert_called_once_with(Path("example.yaml"), offline=True)
         resolve.assert_called_once()
         validate.assert_called_once_with(config, check_only=False)
         worker.assert_called_once_with(config, app.events)
         worker.return_value.start.assert_called_once()
+        ask.assert_not_called()
 
     def test_advisory_manual_timetable_does_not_prevent_read_only_start(self):
         app = app_stub()
@@ -56,13 +57,14 @@ class StartupPreflightEfficiencyTest(unittest.TestCase):
                                        "仅影响本地冲突初筛", "warning")]), \
              patch("windows_gui.validate"), \
              patch("windows_gui.MonitorWorker") as worker, \
-             patch("windows_gui.messagebox.askokcancel",
-                   return_value=True) as ask, \
+             patch("windows_gui.messagebox.askokcancel") as ask, \
              patch("windows_gui.messagebox.showwarning") as block_dialog:
             Application.start_monitor(app)
         block_dialog.assert_not_called()
         ask.assert_called_once()
-        self.assertIn("1 项提示", ask.call_args.args[1])
+        ask.assert_not_called()
+        self.assertTrue(any("1 项非阻断提示" in str(call)
+                            for call in app.log.call_args_list))
         worker.return_value.start.assert_called_once()
 
     def test_blockers_skip_live_validation_and_worker(self):
