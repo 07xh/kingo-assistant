@@ -1,18 +1,22 @@
 # Acceptance status
 
-Last source baseline: Windows V4.6.
+Last source baseline: Windows V4.6, plus offline course-catalog evidence comparison tests.
 
 | Gate | Status | Evidence |
 |---|---|---|
-| Offline unit tests | Passed | 72 tests passed on the Windows 2022 GitHub Actions runner, 2026-11-11 |
+| Offline unit tests | Passed | **82 tests** passed on Windows 2022 GitHub Actions runner, 2026-11-11 |
 | Windows-native EXE build | Passed | PyInstaller one-file GUI build succeeded |
 | Packaged EXE offline self-test | Passed | `offline_self_test: passed` |
 | Packaged Tk GUI smoke test | Passed | `native_tk_gui_smoke: passed` |
-| Artifact | Generated | [Download from Actions](https://github.com/07xh/kingo-assistant/actions/runs/42976926321/artifacts/13835991252); expires 2026-11-25 |
-| Artifact SHA-256 | Verified | `df1b028efccaf54d269fa8de68b0f2e0e01ada0cf498fb52dd2fdc9612523da2` |
-| NCWU live read-only course catalog | Unverified | Compare with a current authorized official session |
-| Remaining-seat field semantics | Unverified | Confirm against official page and response |
+| Native build and artifact | Generated | [Successful Actions run](https://github.com/07xh/kingo-assistant/actions/runs/42979757018) and [artifact](https://github.com/07xh/kingo-assistant/actions/runs/42979757018/artifacts/13836713308), expires 2026-11-25 |
+| EXE SHA-256 | Recorded | `27f328fb2c92137b08b183e12f50127241696cbdb9dee7a88b8105a76ff84f2e` |
+| Offline read-only catalog evidence helper | Ready for manual use | [Verification guide](catalog-readonly-verification.md); 10 new synthetic unit tests |
+| NCWU official selection window | Not yet confirmed open for user | School's 2026-2027 second-term plan lists December 21–25, 2026 for elective/sports selection; precise grade/time depends on later announcements |
+| NCWU live read-only course catalog | **Unverified** | Need to compare authorized official UI against a permitted response during the actual window |
+| Remaining-seat field semantics | **Unverified** | A selected-course record, course capacity or HTTP 200 is not an available-seat field |
 | Automatic enrollment submission | Not implemented | Outside current read-only baseline |
 | Android client | Planned | No APK yet |
 
-The native build verifies Windows packaging and GUI startup only. It does not verify school login, live course retrieval, seat-count semantics, or enrollment. A successful HTTP response or an observed seat count alone is not a successful enrollment.
+The **offline evidence checker never sets a verified API flag**. Even two matching anonymous samples remain `ready_for_manual_review`, not proof of an official course-catalog API. The native build verifies Windows packaging and GUI startup only, not live school login, course availability or enrollment.
+
+No original HAR, student data, cookies, tokens, signed parameters, or private course evidence was added to this public repository.
