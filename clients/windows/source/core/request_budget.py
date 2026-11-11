@@ -12,6 +12,8 @@ import asyncio
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 import math
+import os
+import threading
 from pathlib import Path
 import sqlite3
 import time
@@ -50,17 +52,22 @@ class RequestPolicy:
             raise PolicyError("窗口类型错误")
         if len(set(w.window_seconds for w in self.windows)) != len(self.windows):
             raise PolicyError("窗口长度重复")
-        if type(self.max_concurrency) is not int or self.max_concurrency <= 0:
-            raise PolicyError("并发上限无效")
+        if type(self.max_concurrency) is not int or self.max_concurrency != 1:
+            raise PolicyError("当前跨进程串行实现只支持 max_concurrency=1")
         if not isinstance(self.source, str) or not self.source.strip():
             raise PolicyError("缺少策略来源")
 
 
-class GlobalRequestBudget:
-    """Shared reservations across processes; concurrency is per instance.
+_PROCESS_LOCKS: dict[str, threading.Lock] = {}
+_PROCESS_LOCKS_GUARD = threading.Lock()
 
-    Use a single instance per process for each policy scope. Cross-process
-    concurrency additionally requires an OS-level single-run lock or a broker.
+
+class GlobalRequestBudget:
+    """Shared sliding-log reservations and one cross-process HTTP lease.
+
+    OS-backed advisory lock serializes requests across cooperating clients
+    using the same absolute local database path. A different device or
+    deliberately separate database is outside this client's guarantees.
     """
 
     def __init__(self, policy: RequestPolicy, database: Path):
@@ -68,6 +75,9 @@ class GlobalRequestBudget:
         self.database = Path(database)
         self._concurrency = asyncio.Semaphore(policy.max_concurrency)
         self._lock = asyncio.Lock()
+        self.lock_path = self.database.with_name(self.database.name + '.request.lock')
+        if self.lock_path.is_symlink():
+            raise PolicyError('请求锁文件不允许符号链接')
         if self.database.parent.is_symlink() or self.database.is_symlink():
             raise PolicyError("预算数据库不允许符号链接")
         self.database.parent.mkdir(parents=True, exist_ok=True)
@@ -159,14 +169,83 @@ class GlobalRequestBudget:
                 return
             await asyncio.sleep(wait)
 
+    def _try_process_lease(self):
+        if self.lock_path.is_symlink():
+            raise PolicyError('请求锁文件不允许符号链接')
+        key = str(self.lock_path.resolve())
+        with _PROCESS_LOCKS_GUARD:
+            local = _PROCESS_LOCKS.setdefault(key, threading.Lock())
+        if not local.acquire(blocking=False):
+            return None
+        stream = None
+        try:
+            stream = self.lock_path.open('a+b')
+            if os.name == 'nt':
+                import msvcrt
+                stream.seek(0, os.SEEK_END)
+                if stream.tell() == 0:
+                    stream.write(b'\\0')
+                    stream.flush()
+                stream.seek(0)
+                try:
+                    msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
+                except OSError as exc:
+                    if getattr(exc, 'winerror', None) not in (32, 33, 36) and exc.errno not in (13, 11):
+                        raise
+                    stream.close()
+                    local.release()
+                    return None
+            else:
+                import fcntl
+                try:
+                    fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError:
+                    stream.close()
+                    local.release()
+                    return None
+            return stream, local
+        except BaseException:
+            if stream is not None and not stream.closed:
+                stream.close()
+            local.release()
+            raise
+
+    async def _process_lease(self):
+        while True:
+            lease = self._try_process_lease()
+            if lease is not None:
+                return lease
+            await asyncio.sleep(0.025)
+
+    @staticmethod
+    def _release_process_lease(lease) -> None:
+        stream, local = lease
+        try:
+            try:
+                if os.name == 'nt':
+                    import msvcrt
+                    stream.seek(0)
+                    msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    import fcntl
+                    fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
+            finally:
+                stream.close()
+        finally:
+            local.release()
+
     @asynccontextmanager
     async def request(self) -> AsyncIterator[None]:
-        """Counts one attempted send; concurrency lease spans actual request."""
+        """Count an attempted send; hold cross-process lease during I/O."""
         if self.policy.verified is not True:
             raise PolicyError("没有独立核实的允许频率策略，拒绝请求")
         async with self._concurrency:
-            await self._reserve()
-            yield
+            lease = await self._process_lease()
+            try:
+                await self._reserve()
+                yield
+            finally:
+                self._release_process_lease(lease)
 
 
 class SingleFlight:
