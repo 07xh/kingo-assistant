@@ -449,7 +449,8 @@ class Application(tk.Tk):
         The UI never imports browser cookies or sends school enrollment requests.
         Any permitted session check runs off the Tk main thread.
         """
-        if self.worker or self._session_check_in_progress or self._closing:
+        if (self.worker or getattr(self, "scheduled_worker", None)
+                or self._session_check_in_progress or self._closing):
             return
         try:
             config = read_config(Path(self.path.get()), offline=True)
@@ -545,6 +546,7 @@ class Application(tk.Tk):
         # middle of an explicitly confirmed in-process enrollment run.
         if getattr(self, "_official_portal_appointment", None) is not None:
             self._official_portal_appointment = None
+            self._portal_prelogin_opened = False
             self.portal_appointment_button.configure(text="预约按时打开官网（辅助）")
             self.portal_appointment_status.set("手动官网预约已取消；改用应用内执行")
             self.log("自动任务已取代同一窗口的手动官网预约。")
