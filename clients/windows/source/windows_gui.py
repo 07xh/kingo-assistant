@@ -652,6 +652,41 @@ def run_packaged_gui_smoke() -> None:
                 with patch("webbrowser.open", return_value=True) as opened:
                     app.prepare_selected_course()
                     opened.assert_called_once_with(OFFICIAL_PORTAL)
+
+                # Verify the packaged GUI actually starts and displays the
+                # synthetic benchmark. Run a faster local-only sample so CI
+                # stays quick; no school/network path is exercised.
+                from core.offline_benchmark import run_offline_benchmark as real_benchmark
+
+                async def short_offline_benchmark():
+                    return await real_benchmark(
+                        interval_seconds=0.02,
+                        workers=2,
+                        cycles_per_worker=3,
+                        simulated_processing_ms=35,
+                    )
+
+                with patch("httpx.AsyncClient", side_effect=AssertionError("benchmark used HTTP")):
+                    with patch.object(sys.modules[__name__], "run_offline_benchmark",
+                                      side_effect=short_offline_benchmark):
+                        with patch("tkinter.messagebox.showinfo") as dialogs:
+                            app.benchmark_offline()
+                            if not app._benchmark_in_progress:
+                                raise AssertionError("GUI benchmark did not start")
+                            deadline = time.monotonic() + 3.0
+                            while app._benchmark_in_progress and time.monotonic() < deadline:
+                                app.update()
+                                time.sleep(0.02)
+                            if app._benchmark_in_progress:
+                                raise AssertionError("GUI benchmark did not finish")
+                            dialogs.assert_called_once()
+                            report = str(dialogs.call_args.args[1])
+                            if ("模拟启动/完成：6/6" not in report or
+                                    "没有发起 HTTP 请求" not in report or
+                                    "并非 HTTP RPS" not in report):
+                                raise AssertionError("Packaged benchmark report is missing")
+                            if app.status.get() != "离线对标完成｜未请求学校接口":
+                                raise AssertionError("GUI benchmark did not report completion")
             finally:
                 app.destroy()
 
