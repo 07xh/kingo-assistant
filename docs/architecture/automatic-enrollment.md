@@ -1,30 +1,42 @@
-# 全自动选课：执行核心与真实接入门槛
+# Automatic enrollment workflow and acceptance gates
 
-2026-11-11：已新增 \`core/enrollment.py\`，仅为**离线可测试的自动化工作流核心**。没有华水真实选课写入适配器，当前 Windows 客户端仍是只读版；不要把模拟单测视作提交成功。
+## Current implementation status
 
-## 完整流程（待学校真实授权接口核实后接入）
+The Windows V5.0 mainline includes a fail-closed automatic-enrollment state machine, but **there is no NCWU live enrollment adapter**. The client remains read-only. Offline tests prove only the orchestration logic against synthetic data.
 
-1. 本地设置课程和精确教学班、志愿组及优先顺序，用户明确允许本次自动提交。
-2. 官方规定的选课时间内，通过**官方允许方式**访问本人已授权页面，读取课程及已选记录；无法确认时停止，不猜测。
-3. 只对唯一匹配、明确有余量的教学班尝试一次提交；写入前本机持久记录尝试指纹。
-4. 写入后必须重新读取官方已选记录。HTTP 200、弹窗或客户端已发出请求均不能视为成功。
-5. 若已有同组已选课程则不尝试备选；确认明确拒绝后可尝试下一个志愿；提交结果不明确时立即停止，重启也不会自动重发。
-6. 结果可供界面展示，但学校实际接入前不能产生“已选成功”的真实状态。
+The 2026-11-11 HAR audit confirms timetable JSON and Xiqueer selection-related metadata, but not a verified elective catalog, live remaining-seat field, or authorized submission/confirmation contract. One response explicitly reports that the current time is outside a valid selection window. Do not map timetable or \`zxinfo.zxxq\` records into available elective courses or seats.
 
-## 已完成的离线逻辑
+## Execution state machine
 
-- 顺序执行、志愿组备选、课程和教学班精确匹配、先查询已有记录。
-- 单目标至多一次写入；落盘指纹防重复；本机双进程锁。
-- 明确拒绝与不明确结果分开；只有官方记录能确认成功。
-- 校方许可、用户主动授权、已核验适配器三项缺一不可。
-- 无 HTTP 调用、无账户凭据、无学校提交 URL、无验证码自动处理；单元测试使用虚构 FakeOfficialGateway。
+1. Validate a strict ordered list of exact course + teaching-class identities.
+2. Require explicit user opt-in, school permission, and four independently reviewed adapter capabilities: official catalog, current enrollment records, selection-window state, and write contract.
+3. Read the official selection-window state. Only \`OPEN\` may proceed; \`CLOSED\` and \`UNKNOWN\` stop before catalog or write work.
+4. Read official enrollments before acting. Existing enrollments suppress duplicate writes.
+5. Read a uniquely matching offering with a validated remaining-seat field. Unknown, missing, duplicate, or zero-seat entries are not submitted.
+6. Re-check the official selection window immediately before each write.
+7. Persist a pending intent, then issue at most one serial submission for that exact teaching class.
+8. Re-read official enrollments. Only the official record confirms success; a transport acknowledgement does not.
+9. An explicit rejection may advance to the next preference after refreshing the catalog. A pending/ambiguous result stops and must be reconciled against official records before any retry.
+10. A previously rejected target is never resubmitted automatically. A previously confirmed target missing from the current official record is a discrepancy and stops the run.
 
-## 真实能力尚需核实
+## Local journal
 
-- 本人有权访问的选课开放时间、实际课程目录与剩余名额字段。
-- 官方允许的写入方式、完整请求/响应契约及业务错误类型。
-- 本人选课记录查询的真实性、最终一致性与取消/退选规则。
-- 学校明确的请求频率；遇访问限制立即停，不绕过安全控制。
-- 接入适配器后再做受控真实验收、Windows GUI 与安装包发布。
+- Version 2 uses a per-install random HMAC key and a non-PII account scope supplied transiently by the adapter. The journal stores only fingerprints and \`pending/rejected/confirmed\` states.
+- Version 1 fingerprints migrate to \`legacy_pending\` and require reconciliation.
+- The process lock uses an OS file lock. The lock file intentionally remains after normal exit; an orphaned file is reusable once the OS releases the lock.
+- No account identifier, course ID, class ID, cookie, token, response body, or raw HAR is persisted in the journal.
 
-适配器必须作为独立审查的实现编写，不允许把 HAR 内的原始 Cookie、签名、学生记录或个人信息提交到仓库。自动化目标不等于已经上线自动写入能力。
+## UI priority configuration
+
+The course editor's list order is the preference order: top to bottom. Courses with the same non-empty alternative group are mutually exclusive alternatives. The editor must provide explicit move-up/move-down actions and preserve order in saved plans.
+
+## Required live acceptance before activation
+
+- Verify official permission and current published request limits.
+- Verify real course catalog and seat fields against the official UI during a valid selection window.
+- Verify the official window indicator, exact enrollment transaction contract, and final enrollment-list readback.
+- Verify login/session reuse through an approved authorization flow; never publish raw HAR credentials or signatures.
+- Implement a school-specific adapter with fixed allowlisted hosts and paths, no arbitrary URL from YAML, no CAPTCHA or rate-limit bypass, no concurrent write bursts, and immediate stop on 403/429 or unknown response.
+- Run a controlled end-to-end acceptance using a low-impact test selection or another institution-approved test procedure before enabling production writes.
+
+Until every gate passes, no production write adapter is constructed or activated.
