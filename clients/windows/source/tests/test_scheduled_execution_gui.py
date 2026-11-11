@@ -91,6 +91,37 @@ class ScheduledGuiTests(unittest.TestCase):
         app.scheduled_stop_button.configure.assert_called_with(state="normal")
         app.start_button.configure.assert_called_with(state="disabled")
 
+    def test_verified_execution_cancels_existing_browser_fallback(self):
+        app = stub()
+        app._engine_factory = Mock()
+        app._official_portal_appointment = object()
+        app.portal_appointment_button = Mock()
+        app.portal_appointment_status = Mock()
+        plan = SimpleNamespace(
+            target_time="2026-12-21 09:00:00", targets=[object()]
+        )
+        with patch("windows_gui.read_config", return_value={}), \
+             patch("windows_gui.prepare_scheduled_plan", return_value=plan), \
+             patch("windows_gui.messagebox.askyesno", return_value=True), \
+             patch("windows_gui.DesktopScheduledWorker"):
+            Application.start_scheduled_enrollment(app)
+        self.assertIsNone(app._official_portal_appointment)
+        self.assertIn("已取消", str(app.portal_appointment_status.set.call_args))
+
+    def test_cleanup_warning_does_not_replace_official_result(self):
+        app = stub()
+        app.scheduled_worker = object()
+        app.events.put(MonitorEvent("scheduled_cleanup_warning", "RuntimeError"))
+        app.events.put(MonitorEvent("scheduled_result", ScheduledRunReport(
+            "engine_halted", RunReport({"A": "unknown"}, True), 2, 0.0
+        )))
+        app.events.put(MonitorEvent("scheduled_finished"))
+        Application.poll(app)
+        self.assertTrue(any("适配器资源清理" in str(c)
+                            for c in app.log.call_args_list))
+        self.assertTrue(any("保护性停止" in str(c)
+                            for c in app.status.set.call_args_list))
+
     def test_stop_is_cooperative_and_not_a_kill(self):
         app = stub()
         app.scheduled_worker = Mock()
