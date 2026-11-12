@@ -11,6 +11,8 @@ import json
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from .ncwu_timetable_schema import TimetableSchemaError, inspect_timetable_json
+
 MAX_HAR_BYTES = 25 * 1024 * 1024
 MAX_ENTRIES = 3000
 MAX_RESPONSE_TEXT = 1024 * 1024
@@ -27,25 +29,18 @@ def _canonical_path(value: str) -> str:
 
 
 def _is_timetable_schema(response: dict) -> bool:
-    """Validate the *shape* of the known NCWU timetable response, never values."""
-    if response.get('status') != 200:
+    """Accept only an offline-validated personal timetable shape, not seats."""
+    if type(response.get('status')) is not int or response['status'] != 200:
         return False
     content = response.get('content')
     if not isinstance(content, dict) or content.get('encoding') not in (None, ''):
         return False
     raw = content.get('text')
-    if not isinstance(raw, str) or len(raw) > MAX_RESPONSE_TEXT:
-        return False
     try:
-        obj = json.loads(raw)
-    except (ValueError, TypeError):
+        inspect_timetable_json(raw)
+    except TimetableSchemaError:
         return False
-    if not isinstance(obj, dict):
-        return False
-    if not all(isinstance(obj.get(key), str) for key in ('xn', 'xq', 'zc')):
-        return False
-    return (all(isinstance(obj.get(f'week{n}'), list) for n in range(1, 8))
-            and isinstance(obj.get('sjhjinfo'), list))
+    return True
 
 
 def _closed_window_observed(response: dict) -> bool:
