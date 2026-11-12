@@ -31,7 +31,7 @@ The capture contains non-empty `token`, `xqerSign`, `encrptSecretKey`, `param`, 
 
 ## Next acceptance gates
 
-1. **Offline JSON schema tests:** create synthetic timetable fixtures, test shape validation and missing/empty states without private data or network calls.
+1. **Offline JSON schema tests (implemented in this follow-up):** `core/ncwu_timetable_schema.py` validates only the observed personal-timetable top-level keys, types, JSON uniqueness, and bounded sizes. Synthetic regression tests cover missing/invalid days, duplicate keys, encoded HAR content, privacy-safe summaries, and the distinction from elective catalog evidence. No personal records or university requests are used.
 2. **Official UI comparison:** during a permitted selection window, compare a personally authorized, read-only course-catalog screen against a sanitized response schema; identify genuine course identity, teaching-class identity, capacity and remaining-seat meanings.
 3. **Authentication and access verification:** confirm a supported, permission-compliant read-only access path. Do not reuse credentials or signed request material from HAR.
 4. **Fail closed:** preserve explicit `unverified`, `selection window closed`, `authentication expired` and `unknown availability` states. Do not equate a successful HTTP status with available capacity or successful enrollment.
