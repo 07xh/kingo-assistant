@@ -11,6 +11,7 @@ import json
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from .har_schema import inspect_offline_readonly_shape
 from .ncwu_timetable_schema import TimetableSchemaError, inspect_timetable_json
 
 MAX_HAR_BYTES = 25 * 1024 * 1024
@@ -63,6 +64,10 @@ class HarSummary:
     xiqueer_gateway_requests: int = 0
     ncwu_timetable_schema_matches: int = 0
     selection_window_closed_observations: int = 0
+    catalog_json_candidate_signals: int = 0
+    catalog_fields_incomplete_signals: int = 0
+    catalog_timetable_exclusions: int = 0
+    catalog_window_exclusions: int = 0
 
 
 def summarize_har(path: Path, *, official_domain: str = 'ncwu.edu.cn') -> HarSummary:
@@ -86,6 +91,10 @@ def summarize_har(path: Path, *, official_domain: str = 'ncwu.edu.cn') -> HarSum
     gateway_count = 0
     timetable_hits = 0
     closed_hits = 0
+    candidate_hits = 0
+    fields_missing = 0
+    excluded_timetable = 0
+    excluded_window = 0
     official_domain = official_domain.casefold().strip('.')
     for entry in entries:
         if not isinstance(entry, dict):
@@ -117,12 +126,25 @@ def summarize_har(path: Path, *, official_domain: str = 'ncwu.edu.cn') -> HarSum
         mime = str(mime).split(';', 1)[0].lower().strip()
         types[mime if mime in ('text/html', 'application/json', 'text/plain',
                                'application/xml', 'text/xml') else 'other/unknown'] += 1
+        # kingo-live shape discovery is kept strictly offline/read-only:
+        # fixed classifications only, no endpoint/field/identity export.
+        shape = inspect_offline_readonly_shape(path_only, method, response)
+        if shape == 'candidate_requires_manual_review':
+            candidate_hits += 1
+        elif shape == 'fields_incomplete':
+            fields_missing += 1
+        elif shape == 'timetable_excluded':
+            excluded_timetable += 1
+        elif shape == 'window_closed_excluded':
+            excluded_window += 1
         if host == _TIMETABLE_HOST and path_only == _TIMETABLE_PATH:
             if _is_timetable_schema(response):
                 timetable_hits += 1
     return HarSummary(len(entries), matched, dict(sorted(methods.items())),
                       dict(sorted(statuses.items())), dict(sorted(types.items())),
-                      gateway_count, timetable_hits, closed_hits)
+                      gateway_count, timetable_hits, closed_hits,
+                      candidate_hits, fields_missing, excluded_timetable,
+                      excluded_window)
 
 
 def format_summary(summary: HarSummary) -> str:
@@ -137,6 +159,11 @@ def format_summary(summary: HarSummary) -> str:
             f'喜鹊儿统一业务入口请求：{summary.xiqueer_gateway_requests} 条\n'
             f'华水个人课表 JSON 结构匹配：{summary.ncwu_timetable_schema_matches} 条\n'
             f'选课时段关闭提示：{summary.selection_window_closed_observations} 条\n\n'
+            f'只读 GET JSON 课程目录结构候选：{summary.catalog_json_candidate_signals} 条\n'
+            f'字段不足（未能识别余量）：{summary.catalog_fields_incomplete_signals} 条\n'
+            f'排除课表形状：{summary.catalog_timetable_exclusions} 条\n'
+            f'排除时段关闭响应：{summary.catalog_window_exclusions} 条\n'
+            '仅是离线结构线索；未经官方人工对照，不能认定接口或名额已验证。\n\n'
             '真实可选课程目录：未核验；剩余名额字段：未核验。\n'
             '只分析本地已获得的 HAR，不重放请求、解析签名或展示原文。\n'
             'POST 也可能触发写入；课表或选课记录不等于可选课程目录。')
