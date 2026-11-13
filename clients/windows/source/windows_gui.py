@@ -178,16 +178,25 @@ class MonitorWorker:
                     # A long scheduled wait should not enqueue identical Tk
                     # updates twice a second for hours. Emit only on change.
                     snapshot = (scheduler.cycles, tuple(sorted(scheduler.states.items())),
-                                client.last_ms, client.parse_ms)
+                                client.last_ms, client.parse_ms, scheduler.last_cycle_ms,
+                                scheduler.last_cycle_requests, client.total_requests,
+                                client.last_status_code, client.last_response_bytes,
+                                client.last_transport_error)
                     if snapshot != last_snapshot:
                         self.updates.put(MonitorEvent(
                             "status", (scheduler.cycles, dict(scheduler.states),
-                                       client.last_ms, client.parse_ms)))
+                                       client.last_ms, client.parse_ms,
+                                       scheduler.last_cycle_ms, scheduler.last_cycle_requests,
+                                       client.total_requests, client.last_status_code,
+                                       client.last_response_bytes, client.last_transport_error)))
                         last_snapshot = snapshot
                     await asyncio.sleep(0.5)
                 await running
                 self.updates.put(MonitorEvent("status", (scheduler.cycles, dict(scheduler.states),
-                                                                  client.last_ms, client.parse_ms)))
+                                                                  client.last_ms, client.parse_ms,
+                                                                  scheduler.last_cycle_ms, scheduler.last_cycle_requests,
+                                                                  client.total_requests, client.last_status_code,
+                                                                  client.last_response_bytes, client.last_transport_error)))
                 if scheduler.last_error:
                     self._had_scheduler_error = True
                     self.updates.put(MonitorEvent("stop_reason", scheduler.last_error))
@@ -931,8 +940,13 @@ class Application(tk.Tk):
                     self.restore_window()
                     self.log("系统托盘不可用，主窗口已恢复；任务未被静默终止。")
                 elif event.kind == "status":
-                    cycles, states, request_ms, parse_ms = event.value
-                    self.status.set(f"只读监测｜查询 {cycles} 次｜最近请求 {request_ms:.0f} ms｜解析 {parse_ms:.1f} ms｜请以官网为准")
+                    (cycles, states, request_ms, parse_ms, cycle_ms, cycle_requests,
+                     total_requests, status_code, response_bytes, transport_error) = event.value
+                    http_state = f"HTTP {status_code}" if status_code is not None else (transport_error or "无响应码")
+                    self.status.set(
+                        f"只读监测｜查询 {cycles} 次｜本轮 {cycle_ms:.0f} ms/{cycle_requests} 请求｜"
+                        f"最近 HTTP {request_ms:.0f} ms / {http_state} / {response_bytes} B｜"
+                        f"累计 {total_requests} 次｜解析 {parse_ms:.1f} ms｜请以官网为准")
                     newly_available = status_changes(self._previous_states, states)
                     if newly_available:
                         self.bell()

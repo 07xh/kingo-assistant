@@ -254,6 +254,10 @@ class KingoClient:
         self.student = ""
         self.last_ms = 0.0
         self.parse_ms = 0.0
+        self.total_requests = 0
+        self.last_status_code: int | None = None
+        self.last_response_bytes = 0
+        self.last_transport_error = ""
         self.stop = asyncio.Event()
         self.lock = asyncio.Lock()
         self._single_flight = SingleFlight()
@@ -326,8 +330,14 @@ class KingoClient:
             headers["Content-Type"] = "application/x-www-form-urlencoded; charset=GBK"
         for attempt in range(3):
             started = time.perf_counter()
+            self.total_requests += 1
+            self.last_status_code = None
+            self.last_response_bytes = 0
+            self.last_transport_error = ""
             try:
                 response = await self._budgeted_request(method, self.url(path), headers, body)
+                self.last_status_code = response.status_code
+                self.last_response_bytes = len(response.content)
                 if response.status_code in (401, 403, 429):
                     if response.status_code == 401:
                         raise AuthenticationError("会话无效")
@@ -340,6 +350,7 @@ class KingoClient:
                 response.raise_for_status()
                 return response
             except (httpx.TimeoutException, httpx.ConnectError) as error:
+                self.last_transport_error = type(error).__name__
                 if attempt >= 2:
                     raise ProtocolError("查询连接超时") from error
                 await asyncio.sleep(2 ** (attempt + 1))
