@@ -195,7 +195,10 @@ def dashboard(client: KingoClient, scheduler: Scheduler, clock: TimeSync, logs) 
                       target.get("teacher") or "不限", Text(status, style=color))
     status = (f"已核实身份：{client.student} | 模式：{scheduler.strategy['mode']}（只读）"
               f" | 已查询：{scheduler.cycles} 次\n"
-              f"最近 HTTP 请求：{client.last_ms:.1f} ms | 行解析：{client.parse_ms:.2f} ms\n"
+              f"最近 HTTP：{client.last_ms:.1f} ms | 状态：{client.last_status_code or '—'} | "
+              f"响应：{client.last_response_bytes} B | 累计请求：{client.total_requests} | "
+              f"行解析：{client.parse_ms:.2f} ms\n"
+              f"最近监测周期：{scheduler.last_cycle_ms:.1f} ms / {scheduler.last_cycle_requests} HTTP 请求\n"
               f"本机校时偏移估计：{clock.offset_ms:+.1f} ms | 不确定度：±{clock.uncertainty_ms:.1f} ms\n"
               f"{clock.source} | 余量只是某次查询快照，并非选课成功")
     return Panel(Group(Text(status), table, Text("\n".join(logs))), title="青果选课辅助｜本人授权只读版")

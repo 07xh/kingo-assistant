@@ -27,6 +27,8 @@ class Scheduler:
         self.strategy = config["strategy"]
         self.cycles = 0
         self.last_error: str | None = None
+        self.last_cycle_ms = 0.0
+        self.last_cycle_requests = 0
         self.states = {item["key"]: "待监测" for item in config["courses"]}
         state_file = self.strategy.get("state_file", "")
         self._state_store = MonitorStateStore(state_file) if state_file else None
@@ -98,12 +100,24 @@ class Scheduler:
         return accepted
 
     async def cycle(self) -> None:
+        started = time.perf_counter()
+        requests_before = getattr(self.client, "total_requests", None)
         self.cycles += 1
-        target_ids = [str(c["course_id"]) for c in self.config["courses"] if c.get("course_id")]
-        # ONE read for ALL configured targets: no redundant per-course requests.
-        catalog = await self.client.fetch_course_list(
-            self.config["xnxq"], target_ids if len(target_ids) == len(self.config["courses"]) else None)
-        notifications = []
+        try:
+            target_ids = [str(c["course_id"]) for c in self.config["courses"] if c.get("course_id")]
+            # ONE read for ALL configured targets: no redundant per-course requests.
+            catalog = await self.client.fetch_course_list(
+                self.config["xnxq"], target_ids if len(target_ids) == len(self.config["courses"]) else None)
+            notifications = []
+            await self._process_catalog(catalog, notifications)
+        finally:
+            self.last_cycle_ms = (time.perf_counter() - started) * 1000
+            requests_after = getattr(self.client, "total_requests", None)
+            self.last_cycle_requests = (
+                max(0, requests_after - requests_before)
+                if requests_before is not None and requests_after is not None else 0)
+
+    async def _process_catalog(self, catalog, notifications) -> None:
         previous = self._already_notified.copy()
         for target in self.config["courses"]:
             key = target["key"]
