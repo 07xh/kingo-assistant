@@ -12,6 +12,7 @@ KingoAssistant is an independent personal course-selection assistant for the NCW
 - **Login preparation (Windows):** appointment fallback can open the fixed official website 15 minutes early for the student to log in and again at the confirmed time. A separate **user-triggered, read-only application-session check** is available only for a verified official identity endpoint. Browser sessions are never silently imported; this does not submit enrollment. See [login preparation](docs/architecture/login-preparation.md).
 - **Android:** planned separately; no APK is implemented or released.
 - **School integration:** the 2026-11-11 HAR confirms a timetable JSON response and selection-related metadata, but does not verify a live elective catalog, a remaining-seat field, or a permitted write/confirmation contract.
+- **Kingo-live research integration (offline only):** the Windows **local HAR structure check** now reuses bounded JSON list-shape detection and field-role hints from `07xh/kingo-live`, displaying only anonymous counts and timetable/closed-window exclusions. No live protocol parameters, account data or automatic enrollment actions are imported. [Scope and acceptance notes](docs/architecture/kingo-live-integration.md).
 - **Automatic enrollment:** orchestration logic exists and is tested with synthetic gateways. **No NCWU live write adapter is implemented or enabled.** The Windows client remains read-only; do not interpret a build or offline test as a successful real enrollment.
 
 ## Automatic enrollment architecture

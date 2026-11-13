@@ -779,14 +779,14 @@ class Application(tk.Tk):
         if self.worker or self.__dict__.get("scheduled_worker"):
             messagebox.showinfo("请先停止监测", "监测运行期间请勿切换离线分析。")
             return
-        filename = filedialog.askopenfilename(title="选择本人已授权导出的 HAR（仅本地统计）",
+        filename = filedialog.askopenfilename(title="选择本人已授权导出的 HAR（仅本地分析）",
                                               filetypes=[("HAR 文件", "*.har")])
         if not filename:
             return
         try:
             summary = summarize_har(Path(filename))
-            messagebox.showinfo("HAR 本机结构统计（不代表接口已验证）", format_summary(summary))
-            self.log(f"本机 HAR 结构统计完成：包含 {summary.matching_school_origin} 条华水 HTTPS 请求；未连接学校。")
+            messagebox.showinfo("HAR 结构与 JSON 线索（不代表接口已验证）", format_summary(summary))
+            self.log(f"本机 HAR 结构与只读 JSON 线索分析完成：包含 {summary.matching_school_origin} 条华水 HTTPS 请求；未连接学校。")
         except (OSError, ValueError):
             messagebox.showerror("HAR 检查失败", "文件结构无效、文件过大或无法读取；请勿上传未经脱敏的 HAR。")
 
