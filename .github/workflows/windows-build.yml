@@ -4,6 +4,15 @@ on:
   pull_request:
     branches:
       - main
+    paths:
+      # Only changes that can affect the packaged GUI build should run a
+      # 30-minute PyInstaller job. tools/** is research-only and is covered by
+      # kingo-live-research.yml instead.
+      - "clients/windows/**"
+      - "clients/android/**"
+      - "docs/**"
+      - "README.md"
+      - "SECURITY.md"
   push:
     branches:
       - main

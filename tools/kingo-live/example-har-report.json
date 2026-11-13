@@ -1,0 +1,221 @@
+{
+  "kind": "har_schema_report",
+  "source": "browser HAR (redacted)",
+  "strict": false,
+  "entry_count": 4,
+  "picks": {
+    "catalog": 0,
+    "submit": 1,
+    "enrollment": 2
+  },
+  "column_notes": [
+    "course_id <- 'kcid' (exact key)",
+    "class_id <- 'skbj' (exact key)",
+    "course_name <- 'kcmc' (exact key)",
+    "teacher <- 'jsxm' (exact key)",
+    "remain <- 'kyl' (exact key)"
+  ],
+  "stage_split_headers": [
+    "server-timing"
+  ],
+  "warnings": [
+    "latency-split header ['server-timing'] present: queue_ms / tx_ms can be separated from the real server",
+    "submit field 'token' looks like a per-session ticket -> mapped to {token}",
+    "entry #3 /hsjw/wap/mycourseschedule.action is a TIMETABLE/schedule response; it is not a selectable-course catalog and must not be used as catalog.path",
+    "entry #3 shows prohibit/window-closed text; capture was made outside the selection window"
+  ],
+  "credential_note": "Cookie / Authorization / token values are replaced with <REDACTED:len=N>. Do not paste raw HAR into chat; pass the local file path instead.",
+  "candidates": [
+    {
+      "idx": 0,
+      "method": "GET",
+      "host": "jw.example.edu.cn",
+      "path": "/xsxk/course/list",
+      "query": [
+        [
+          "xnxq",
+          "2026-2027-1"
+        ]
+      ],
+      "status": 200,
+      "mime": "application/json",
+      "post_mime": "",
+      "post_params": [],
+      "request_headers": {
+        "Cookie": "<REDACTED:len=42>",
+        "Accept": "application/json"
+      },
+      "response_headers": {
+        "Date": "Fri, 13 Nov 2026 02:48:00 GMT",
+        "Content-Type": "application/json",
+        "Server-Timing": "queue;dur=8.5, db;dur=22.1"
+      },
+      "scores": {
+        "catalog": 11,
+        "submit": 1,
+        "enrollment": 4
+      },
+      "reasons": {
+        "catalog": [
+          "2 rows with keys ['kcid', 'skbj', 'kcmc', 'jsxm', 'kyl']",
+          "URL looks like a course query"
+        ],
+        "submit": [],
+        "enrollment": []
+      },
+      "json_list_path": "data.rows",
+      "row_keys": [
+        "kcid",
+        "skbj",
+        "kcmc",
+        "jsxm",
+        "kyl"
+      ],
+      "row_count": 2,
+      "tags": [],
+      "body_preview": "{\"data\":{\"rows\":[{\"kcid\":\"K001\",\"skbj\":\"01\",\"kcmc\":\"工程制图\",\"jsxm\":\"张三\",\"kyl\":3},{\"kcid\":\"K002\",\"skbj\":\"01\",\"kcmc\":\"线性代数\",\"jsxm\":\"李四\",\"kyl\":0}]}}"
+    },
+    {
+      "idx": 1,
+      "method": "POST",
+      "host": "jw.example.edu.cn",
+      "path": "/xsxk/course/save",
+      "query": [],
+      "status": 200,
+      "mime": "application/json",
+      "post_mime": "application/x-www-form-urlencoded",
+      "post_params": [
+        [
+          "kcid",
+          "K001"
+        ],
+        [
+          "skbj",
+          "01"
+        ],
+        [
+          "xnxq",
+          "2026-2027-1"
+        ],
+        [
+          "token",
+          "<REDACTED:len=23>"
+        ]
+      ],
+      "request_headers": {
+        "Cookie": "<REDACTED:len=42>",
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      "response_headers": {
+        "Date": "Fri, 13 Nov 2026 02:48:01 GMT",
+        "Content-Type": "application/json"
+      },
+      "scores": {
+        "catalog": 5,
+        "submit": 13,
+        "enrollment": 3
+      },
+      "reasons": {
+        "catalog": [
+          "course/class field names present"
+        ],
+        "submit": [
+          "URL looks like a write action",
+          "POST",
+          "has postData (4 fields)"
+        ],
+        "enrollment": []
+      },
+      "json_list_path": "",
+      "row_keys": [],
+      "row_count": 0,
+      "tags": [],
+      "body_preview": "{\"ok\":true,\"msg\":\"选课成功\"}"
+    },
+    {
+      "idx": 2,
+      "method": "GET",
+      "host": "jw.example.edu.cn",
+      "path": "/xsxk/selected/list",
+      "query": [],
+      "status": 200,
+      "mime": "application/json",
+      "post_mime": "",
+      "post_params": [],
+      "request_headers": {
+        "Cookie": "<REDACTED:len=42>"
+      },
+      "response_headers": {
+        "Date": "Fri, 13 Nov 2026 02:48:02 GMT",
+        "Content-Type": "application/json"
+      },
+      "scores": {
+        "catalog": 10,
+        "submit": 3,
+        "enrollment": 8
+      },
+      "reasons": {
+        "catalog": [
+          "1 rows with keys ['kcid', 'skbj', 'kcmc']",
+          "URL looks like a course query"
+        ],
+        "submit": [
+          "URL looks like a write action"
+        ],
+        "enrollment": [
+          "URL looks like an enrolled-course list"
+        ]
+      },
+      "json_list_path": "data.rows",
+      "row_keys": [
+        "kcid",
+        "skbj",
+        "kcmc"
+      ],
+      "row_count": 1,
+      "tags": [],
+      "body_preview": "{\"data\":{\"rows\":[{\"kcid\":\"K001\",\"skbj\":\"01\",\"kcmc\":\"工程制图\"}]}}"
+    },
+    {
+      "idx": 3,
+      "method": "GET",
+      "host": "jw.example.edu.cn",
+      "path": "/hsjw/wap/mycourseschedule.action",
+      "query": [],
+      "status": 200,
+      "mime": "application/json",
+      "post_mime": "",
+      "post_params": [],
+      "request_headers": {
+        "Cookie": "<REDACTED:len=42>"
+      },
+      "response_headers": {
+        "Date": "Fri, 13 Nov 2026 02:48:03 GMT",
+        "Content-Type": "application/json"
+      },
+      "scores": {
+        "catalog": 0,
+        "submit": 2,
+        "enrollment": 5
+      },
+      "reasons": {
+        "catalog": [
+          "timetable/schedule response is NOT a selectable-course catalog"
+        ],
+        "submit": [],
+        "enrollment": [
+          "URL looks like an enrolled-course list"
+        ]
+      },
+      "json_list_path": "",
+      "row_keys": [],
+      "row_count": 0,
+      "tags": [
+        "window_marker:不是有效的选课时间",
+        "window_closed_evidence",
+        "NOT_CATALOG:timetable_or_schedule"
+      ],
+      "body_preview": "{\"sjhjinfo\":[],\"prohibit\":\"1\",\"msg\":\"当前时间不是有效的选课时间区段!\"}"
+    }
+  ]
+}

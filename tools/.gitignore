@@ -1,0 +1,14 @@
+# Local-only rules for the research tooling. The root .gitignore already
+# ignores *.har / *.cookie / *.token; this file adds the local session
+# artifacts produced by tools/kingo-live/ and keeps the synthetic HAR fixture
+# trackable (a deeper .gitignore overrides the parent *.har pattern).
+!kingo-live/capture.example.har
+
+config.json
+config.local.json
+config.merged.json
+schema-draft.json
+har-report.json
+records.jsonl
+probe-body.txt
+*.sqlite
