@@ -1,0 +1,62 @@
+{
+  "clock": {
+    "header": "Date",
+    "precision_ms": 1000,
+    "headers_seen": [
+      "date"
+    ],
+    "path": "/xsxk/course/list?xnxq=2026-2027-1",
+    "method": "GET"
+  },
+  "business": {
+    "full_markers": [
+      "已满",
+      "名额已满",
+      "无余量",
+      "人数已满"
+    ],
+    "window_markers": [
+      "不是有效的选课时间"
+    ]
+  },
+  "catalog": {
+    "path": "/xsxk/course/list?xnxq=2026-2027-1",
+    "method": "GET",
+    "format": "json",
+    "encoding": "utf-8",
+    "json_list_path": "data.rows",
+    "columns": {
+      "course_id": "kcid",
+      "class_id": "skbj",
+      "course_name": "kcmc",
+      "teacher": "jsxm",
+      "remain": "kyl"
+    }
+  },
+  "warmup": {
+    "path": "/xsxk/course/list?xnxq=2026-2027-1",
+    "method": "GET"
+  },
+  "submit": {
+    "path": "/xsxk/course/save",
+    "method": "POST",
+    "encoding": "form",
+    "fields": {
+      "kcid": "{course_id}",
+      "skbj": "{class_id}",
+      "xnxq": "{xnxq}",
+      "token": "{token}"
+    }
+  },
+  "enrollment": {
+    "path": "/xsxk/selected/list",
+    "method": "GET",
+    "format": "json",
+    "json_list_path": "data.rows",
+    "columns": {
+      "course_id": "kcid",
+      "class_id": "skbj",
+      "course_name": "kcmc"
+    }
+  }
+}

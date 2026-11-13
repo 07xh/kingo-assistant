@@ -1,0 +1,69 @@
+name: kingo-live research checks
+
+# Isolated from "Windows standalone EXE": this workflow only reacts to tools/**
+# changes, and windows-build.yml no longer runs on tools-only pull requests.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "tools/kingo-live/**"
+      - "tools/bench/**"
+      - "tools/README.md"
+      - "tools/.gitignore"
+      - ".github/workflows/kingo-live-research.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "tools/kingo-live/**"
+      - "tools/bench/**"
+      - "tools/README.md"
+      - "tools/.gitignore"
+      - ".github/workflows/kingo-live-research.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kingo-live-research-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Windows runners default to cp1252; catalog bodies contain Chinese text.
+  PYTHONUTF8: "1"
+  PYTHONIOENCODING: utf-8
+
+jobs:
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.12"]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Compile
+        shell: bash
+        run: python -m py_compile tools/kingo-live/*.py tools/bench/*.py
+      - name: Real loopback HTTP end-to-end
+        shell: bash
+        working-directory: tools/kingo-live
+        run: |
+          python selftest.py
+          python test_optimizations.py
+          python cli_smoke.py
+          python har_to_schema.py --self-test
+      - name: Offline simulation and P5 matrix
+        shell: bash
+        working-directory: tools/bench
+        run: |
+          python academic_latency_sim.py --self-test
+          python academic_latency_sim.py --all
+          python academic_latency_sim.py --p5-matrix --repeats 5

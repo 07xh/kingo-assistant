@@ -1,0 +1,107 @@
+{
+  "base_url": "https://TARGET_HOST",
+  "xnxq": "2026-2027-1",
+  "cookie": "",
+  "verify_tls": true,
+  "headers": {},
+  "catalog": {
+    "path": "/TARGET_CATALOG_PATH",
+    "method": "GET",
+    "format": "json",
+    "encoding": "utf-8",
+    "json_list_path": "data.rows",
+    "columns": {
+      "course_id": "kcid",
+      "class_id": "skbj",
+      "course_name": "kcmc",
+      "teacher": "jsxm",
+      "remain": "kyl"
+    }
+  },
+  "submit": {
+    "path": "/TARGET_SUBMIT_PATH",
+    "method": "POST",
+    "encoding": "form",
+    "fields": {
+      "kcid": "{course_id}",
+      "skbj": "{class_id}",
+      "xnxq": "{xnxq}"
+    }
+  },
+  "enrollment": {
+    "path": "/TARGET_ENROLLMENT_PATH",
+    "method": "GET",
+    "format": "json",
+    "json_list_path": "data.rows",
+    "columns": {
+      "course_id": "kcid",
+      "class_id": "skbj"
+    }
+  },
+  "clock": {
+    "header": "Date",
+    "samples": 5,
+    "path": "/TARGET_CATALOG_PATH",
+    "method": "GET",
+    "window_epoch": 0,
+    "lead_ms": 50,
+    "max_wait_s": 600
+  },
+  "warmup": {
+    "path": "/TARGET_CATALOG_PATH",
+    "method": "GET",
+    "auth_ok_status": [200],
+    "login_markers": ["登录", "请先登录", "login", "session expired"],
+    "probes": 2,
+    "keep_alive": false
+  },
+  "business": {
+    "success_field": "ok",
+    "success_values": [true, 1, "1", "true", "success", "ok"],
+    "full_markers": ["已满", "名额已满", "无余量", "no seat", "full"],
+    "window_markers": ["不是有效的选课时间", "未开放", "尚未开始", "not in selection time"],
+    "backoff_ms": 200
+  },
+  "budget": {
+    "rate": 20,
+    "burst": 5,
+    "retry_after_ms": 1000,
+    "database": "kingo-budget.sqlite"
+  },
+  "journal": {
+    "path": "kingo-intents.jsonl"
+  },
+  "strategy": {
+    "poll_interval_ms": 60000.0,
+    "concurrency": 1,
+    "burst": 0,
+    "sessions": 1,
+    "proxies": [],
+    "respect_retry_after": true,
+    "prebuild": false,
+    "race_repeat": 1,
+    "direct_api": false,
+    "timeout": 5.0,
+    "cycles": 1
+  },
+  "targets": [
+    {
+      "course_id": "TARGET_COURSE_ID",
+      "class_id": "TARGET_CLASS_ID",
+      "priority": 1,
+      "enabled": true
+    },
+    {
+      "course_id": "TARGET_COURSE_ID_ALT",
+      "class_id": "TARGET_CLASS_ID_ALT",
+      "priority": 2,
+      "enabled": true
+    },
+    {
+      "course_id": "TARGET_COURSE_ID_3",
+      "class_id": "",
+      "priority": 3,
+      "enabled": false
+    }
+  ]
+}
