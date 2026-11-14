@@ -139,7 +139,7 @@ def main() -> int:
     for sha in sorted(results):
         classes = ",".join(sorted(results[sha]))
         path = names[sha].replace("\t", "_").replace("\n", "_")
-        print(f"AUDIT_FINDING path={path} blob_sha={sha[:12]} classes={classes}")
+        print(f"AUDIT_FINDING path={path} blob_sha={sha} classes={classes}")
     print("AUDIT_SCOPE all locally fetched reachable branch/tag/PR refs; "
           "excludes external clones, GitHub caches and unreachable objects")
     if any(any(not x.startswith("candidate_") for x in hits) for hits in results.values()):
