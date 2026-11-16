@@ -481,24 +481,8 @@ class Application(tk.Tk):
         self.tools_operations = ttk.LabelFrame(
             self.tab_tools, text="本机诊断（不发起选课提交）", padding=10)
         self.tools_operations.pack(fill="x", padx=10, pady=(2, 6))
-        for text, command in (
-            ("检查本机配置", self.check_config),
-            ("检查自动选课计划（仅离线）", self.inspect_scheduled_runner),
-            ("分析登录 HAR（仅本机）", self.audit_auth_route_har),
-            ("分析课程 HAR（仅本机）", self.audit_local_har),
-            ("课程目录证据对照", self.review_catalog_evidence),
-            ("离线 HTML 演练", self.replay_local),
-            ("运行虚构示例", self.demo_next),
-            ("本机离线调度测速", self.benchmark_offline),
-            ("查看学校官方入口", self.show_official_entries),
-            ("检查官方登录页可达性", self.probe_official_entries),
-        ):
-            # Buttons are evenly placed without requiring scrolling on a
-            # typical Windows screen; callbacks remain unchanged.
-            pass
         groups = (
             (("检查本机配置", self.check_config),
-             ("课程计划检查（离线）", self.inspect_scheduled_runner),
              ("登录 HAR 分析（离线）", self.audit_auth_route_har),
              ("课程 HAR 分析（离线）", self.audit_local_har)),
             (("课程目录证据对照", self.review_catalog_evidence),
@@ -515,15 +499,11 @@ class Application(tk.Tk):
             for label, callback in group:
                 ttk.Button(row, text=label, command=callback).pack(
                     side="left", padx=(0, 8))
-        self.scheduled_preflight_button = None
-        # Keep the existing public button reference for regression tests and
-        # any automation that checks whether the plan preflight is mounted.
+        # Keep the existing public reference for GUI tests and automation.
         self.scheduled_preflight_button = ttk.Button(
             self.tools_operations, text="检查自动选课计划（离线）",
             command=self.inspect_scheduled_runner)
-        self.scheduled_preflight_button.pack_forget()
-        # Expose the real button, not an inert duplicate.
-        self.scheduled_preflight_button.pack(anchor="w", pady=(2, 0))
+        self.scheduled_preflight_button.pack(anchor="w", pady=(3, 0))
 
         self.advanced_panel = ttk.LabelFrame(
             self.tab_tools, text="高级协议配置 · 仅适合调试",
