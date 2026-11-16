@@ -8,7 +8,10 @@ export type Snapshot = {
   semester: string;
   courses: Course[];
   mode: string;
+  target_time: string;
   interval_seconds: number[];
+  max_cycles: number;
+  max_duration_minutes: number;
   protocol_verified: boolean;
   login_status: "not_checked";
   catalog_status: "not_checked";
@@ -33,3 +36,27 @@ export async function saveCourses(courses: Course[]): Promise<Snapshot> {
 export async function windowAction(action: "minimize" | "maximize" | "close"): Promise<void> {
   if (isDesktop()) await invoke("kingo_window_action", {action});
 }
+
+export type LocalCheck = {label:string;passed:boolean;detail:string;severity:"blocker"|"warning"};
+export type Preflight = {source:"local_only";checks:LocalCheck[];blockers:number;warnings:number;school_verified:false};
+export type Plans = {plans:string[]};
+export type AppliedPlan = Snapshot & {backup_name:string;plans:string[]};
+export type Strategy = {
+  semester:string;
+  mode:"monitor"|"burst";
+  target_time:string;
+  interval_low:number;
+  interval_high:number;
+  max_cycles:number;
+  max_duration_minutes:number;
+};
+async function action<T>(operation:string,payload?:unknown):Promise<T> {
+  if (!isDesktop()) throw new Error("仅 Windows 桌面版支持本机操作");
+  return invoke<T>("kingo_local_action", {action:operation, payload:payload??null});
+}
+export const preflight = () => action<Preflight>("preflight");
+export const listPlans = () => action<Plans>("plans");
+export const createPlan = (name:string) => action<Plans>("save-plan",{name});
+export const applyPlan = (name:string) => action<AppliedPlan>("apply-plan",{name});
+export const deletePlan = (name:string) => action<Plans>("delete-plan",{name});
+export const saveStrategy = (settings:Strategy) => action<Snapshot>("save-strategy",settings);
