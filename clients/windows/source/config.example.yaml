@@ -22,6 +22,10 @@ auth:
     # Choosing mode: cas disables form submission until a reviewed CAS adapter exists.
     mode: direct_form
     verified: false
+    # HAR observed PLAIN 2026-11-03 and SIGNED 2026-11-14 forms on SAME URL.
+    # plain_20261103 only after independently verifying applicable official mode;
+    # signed_20261114 is explicitly unsupported (no stale token replay).
+    contract_variant: ""
     method: POST
     # Captured in the separately sanitized 2026-11-03 NCWU HAR.
     # The endpoint and field NAMES were observed; values, loginmethod
@@ -78,10 +82,19 @@ known_school_pages:
     query_verified: false
     query_mode: unverified
 
+# 2026-11-03 and 2026-11-14 captures consistently show an EMPTY-BODY POST
+# returning text/plain JSON with year/semester and a user-scoped marker.
+# An observed route is not independently verified third-party permission.
+known_year_term:
+  verified: false
+  method: POST
+  path: "/hsjw/jw/common/showYearTerm.action"
+  request_mode: empty
+
 # Previously observed real NCWU personal timetable POST (2026-11-11 HAR).
-# Only the URL/method and JSON response shape are confirmed. Body fields,
-# authorization and rate limits MUST be checked from an authorized read-only
-# request before enabling. Empty placeholders never trigger network calls.
+# URL/method and text/plain JSON response confirmed. Request body includes
+# dynamic param/param2 fields, NOT safe to copy from HAR or store statically.
+# No live request until a permitted, tested dynamic builder exists.
 known_timetable:
   verified: false
   method: POST
