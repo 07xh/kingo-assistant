@@ -45,3 +45,10 @@
 .section .table-wrap table{min-width:660px}
 .section .table-wrap th{position:sticky;top:0;z-index:1}
 @media(max-width:650px){.login-actions .status{margin-right:0}.login-actions .button{width:100%}}
+
+/* Read-only monitor status always remains secondary to the official account. */
+.monitor-actions{display:flex;gap:10px;flex-wrap:wrap;margin:18px 0}
+.monitor-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin-bottom:16px}
+.monitor-metrics span{background:var(--surface-2);padding:11px;border:1px solid var(--stroke);border-radius:9px;font-size:11px;color:var(--muted)}
+.monitor-metrics strong{color:var(--text);font-size:12px}
+@media(max-width:650px){.monitor-metrics{grid-template-columns:1fr}.monitor-actions .button{width:100%}}
