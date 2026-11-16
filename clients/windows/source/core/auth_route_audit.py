@@ -67,27 +67,27 @@ def _is_school_service(candidate: str) -> bool:
         return False
     try:
         address = urlsplit(candidate)
+        return (
+            address.scheme == "https"
+            and address.hostname == _SCHOOL_HOST
+            and address.port in (None, 443)
+            and address.path.rstrip("/") == _SCHOOL_CALLBACK
+            and address.username is None and address.password is None
+        )
     except ValueError:
         return False
-    return (
-        address.scheme == "https"
-        and address.hostname == _SCHOOL_HOST
-        and address.port in (None, 443)
-        and address.path.rstrip("/") == _SCHOOL_CALLBACK
-        and address.username is None and address.password is None
-    )
 
 
 def _is_auth_route(value: str) -> bool:
     try:
         address = urlsplit(value)
+        return (address.scheme == "https"
+                and address.hostname == _AUTH_HOST
+                and address.port in (None, 443)
+                and address.path.rstrip("/") == _AUTH_PATH
+                and address.username is None and address.password is None)
     except (TypeError, ValueError):
         return False
-    return (address.scheme == "https"
-            and address.hostname == _AUTH_HOST
-            and address.port in (None, 443)
-            and address.path.rstrip("/") == _AUTH_PATH
-            and address.username is None and address.password is None)
 
 
 def _contains_service(url: str) -> bool:
