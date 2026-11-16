@@ -40,6 +40,7 @@ class TimetableReadResult:
         return {
             "route_unverified": "已知华水课表接口尚缺少经过核验的请求参数；未访问学校",
             "invalid_contract": "课表请求配置无效或包含可能的会话字段；未访问学校",
+            "dynamic_request_unsupported": "抓包中的课表参数 param/param2 需要动态生成，不能复制旧值重放；未访问学校",
             "missing_session": "EXE 尚无自己的教务会话；浏览器登录不能自动算作软件登录",
             "policy_unverified": "没有经过核实的华水请求预算；未访问学校",
             "expired": "教务服务要求重新认证；未读取课表",
@@ -78,6 +79,12 @@ def validate_timetable_contract(config: Mapping) -> str | None:
     fields = route.get("request_fields")
     if body_mode not in ("form", "json") or not isinstance(fields, dict) or len(fields) > 20:
         return "invalid_contract"
+    # The real 2026-11-07 capture used param+param2: values were
+    # encoded / dynamic. Statically storing or replaying them is not a
+    # supported request builder, even if a user toggles 'verified'.
+    if any(isinstance(key, str) and key.casefold() in ("param", "param2")
+           for key in fields):
+        return "dynamic_request_unsupported"
     for key, value in fields.items():
         if (not isinstance(key, str) or not key or len(key) > 64
                 or any(c in key for c in "\r\n=;&")
@@ -160,7 +167,9 @@ async def read_known_timetable(
             if len(response.content) > 1024 * 1024:
                 return TimetableReadResult("invalid_response")
             content_type = response.headers.get("content-type", "").split(";", 1)[0].strip().lower()
-            if content_type not in ("application/json", "text/json") and not content_type.endswith("+json"):
+            # The actual school response was text/plain with JSON content.
+            # Shape validation, not the mislabeled MIME, determines success.
+            if content_type not in ("application/json", "text/json", "text/plain") and not content_type.endswith("+json"):
                 return TimetableReadResult("invalid_response")
             try:
                 raw = response.content.decode("utf-8-sig", errors="strict")

@@ -43,6 +43,7 @@ from core.session_probe import SessionProbeResult, probe_own_session
 from core.native_preparation import NativePreparationResult, prepare_native_api
 from core.native_timetable import TimetableReadResult, read_known_timetable
 from core.known_school_pages import KnownSchoolPageResult, read_known_school_page, validate_known_page_contract
+from core.ncwu_term_probe import TermProbeResult, probe_known_year_term, validate_term_contract
 from core.native_login import NativeLoginResult, login_with_verified_form, validate_login_contract
 from core.official_entries import OFFICIAL_ENTRIES, probe_official_login_surfaces
 from core.scheduled_ui_bridge import prepare_scheduled_plan
@@ -253,6 +254,7 @@ class Application(tk.Tk):
         self._native_preparation_in_progress = False
         self._timetable_read_in_progress = False
         self._school_page_read_in_progress = False
+        self._term_probe_in_progress = False
         self._native_login_in_progress = False
         self._native_session_cookie: str | None = None
         self._native_session_origin: str | None = None
@@ -260,6 +262,7 @@ class Application(tk.Tk):
         self.native_preparation_status = tk.StringVar(value="尚未通过 EXE 接口核验身份与课程目录")
         self.timetable_read_status = tk.StringVar(value="此前 HAR 已确认课表 JSON 路径；请求参数和 EXE 会话待核验")
         self.school_page_status = tk.StringVar(value="旧 HAR 已确认网页地址；已选结果的动态查询参数仍待核验")
+        self.term_probe_status = tk.StringVar(value="11月3日及14日 HAR 均观察到无需表单参数的学年学期接口")
         self.portal_appointment_status = tk.StringVar(value="官网预约未启动（与自动提交无关）")
         self.path = tk.StringVar(value=str(ensure_config()))
         self.status = tk.StringVar(value="未启动｜本机离线检查可直接使用")
@@ -541,6 +544,15 @@ class Application(tk.Tk):
         self.school_page_button.pack(side="left", padx=(0, 8))
         ttk.Label(result_row, textvariable=self.school_page_status,
                   foreground="#666", wraplength=670).pack(side="left", fill="x", expand=True)
+        term_row = ttk.Frame(self.tools_operations)
+        term_row.pack(fill="x", pady=(4, 1))
+        self.term_probe_button = ttk.Button(
+            term_row, text="核验学期接口（已抓包 · 只读）",
+            command=self.check_known_year_term,
+        )
+        self.term_probe_button.pack(side="left", padx=(0, 8))
+        ttk.Label(term_row, textvariable=self.term_probe_status,
+                  foreground="#666", wraplength=670).pack(side="left", fill="x", expand=True)
 
         self.advanced_panel = ttk.LabelFrame(
             self.tab_tools, text="高级协议配置 · 仅适合调试",
@@ -692,7 +704,8 @@ class Application(tk.Tk):
         if (self.worker or self.__dict__.get("scheduled_worker")
                 or self._session_check_in_progress or self._closing
                 or self.__dict__.get("_timetable_read_in_progress", False)
-                or self.__dict__.get("_school_page_read_in_progress", False)):
+                or self.__dict__.get("_school_page_read_in_progress", False)
+                or self.__dict__.get("_term_probe_in_progress", False)):
             return
         try:
             config = read_config(Path(self.path.get()), offline=True)
@@ -724,7 +737,8 @@ class Application(tk.Tk):
                 or self._native_login_in_progress or self._native_preparation_in_progress
                 or self._session_check_in_progress
                 or self.__dict__.get("_timetable_read_in_progress", False)
-                or self.__dict__.get("_school_page_read_in_progress", False)):
+                or self.__dict__.get("_school_page_read_in_progress", False)
+                or self.__dict__.get("_term_probe_in_progress", False)):
             return
         try:
             config = read_config(Path(self.path.get()), offline=True)
@@ -770,7 +784,8 @@ class Application(tk.Tk):
                 or self._native_login_in_progress
                 or self._native_preparation_in_progress or self._session_check_in_progress
                 or self.__dict__.get("_timetable_read_in_progress", False)
-                or self.__dict__.get("_school_page_read_in_progress", False)):
+                or self.__dict__.get("_school_page_read_in_progress", False)
+                or self.__dict__.get("_term_probe_in_progress", False)):
             return
         self._native_session_cookie = None
         self._native_session_origin = None
@@ -784,7 +799,8 @@ class Application(tk.Tk):
                 or self._native_preparation_in_progress
                 or self._session_check_in_progress
                 or self._timetable_read_in_progress
-                or self.__dict__.get("_school_page_read_in_progress", False)):
+                or self.__dict__.get("_school_page_read_in_progress", False)
+                or self.__dict__.get("_term_probe_in_progress", False)):
             return
         try:
             config = read_config(Path(self.path.get()), offline=True)
@@ -815,6 +831,49 @@ class Application(tk.Tk):
             self.timetable_read_button.configure(state="normal")
             self.timetable_read_status.set("课表读取线程启动失败；没有联网")
 
+    def check_known_year_term(self) -> None:
+        """One no-body POST to an observed school term API; never enrollment."""
+        if (self.worker or self.__dict__.get("scheduled_worker")
+                or self._closing or self._native_login_in_progress
+                or self._native_preparation_in_progress
+                or self._session_check_in_progress
+                or self._timetable_read_in_progress
+                or self._school_page_read_in_progress
+                or self._term_probe_in_progress):
+            return
+        try:
+            config = read_config(Path(self.path.get()), offline=True)
+        except (OSError, ValueError, TypeError, KeyError):
+            self.term_probe_status.set("配置无效，未向学校发送请求")
+            return
+        code = validate_term_contract(config)
+        if code is not None:
+            result = TermProbeResult(code)
+            self.term_probe_status.set(result.message)
+            self.status.set(result.message)
+            return
+        cookie = scoped_native_cookie(self, config)
+        self._term_probe_in_progress = True
+        self.term_probe_button.configure(state="disabled")
+        self.term_probe_status.set("正在通过 EXE 的独立会话核验学年学期接口")
+
+        def execute() -> None:
+            try:
+                result = asyncio.run(probe_known_year_term(
+                    config, session_cookie=cookie))
+            except Exception:
+                result = TermProbeResult("unavailable")
+            self.events.put(MonitorEvent("known_year_term", result))
+
+        try:
+            threading.Thread(
+                target=execute, name="KingoKnownYearTerm", daemon=True,
+            ).start()
+        except RuntimeError:
+            self._term_probe_in_progress = False
+            self.term_probe_button.configure(state="normal")
+            self.term_probe_status.set("线程启动失败；未访问学校")
+
     def check_known_school_results(self) -> None:
         """Check the HAR-observed selected-course HTML page, never submit."""
         if (self.worker or self.__dict__.get("scheduled_worker")
@@ -822,7 +881,8 @@ class Application(tk.Tk):
                 or self._native_preparation_in_progress
                 or self._session_check_in_progress
                 or self._timetable_read_in_progress
-                or self._school_page_read_in_progress):
+                or self._school_page_read_in_progress
+                or self.__dict__.get("_term_probe_in_progress", False)):
             return
         try:
             config = read_config(Path(self.path.get()), offline=True)
@@ -866,7 +926,8 @@ class Application(tk.Tk):
                 or self.__dict__.get("_native_login_in_progress", False)
                 or self._native_preparation_in_progress or self._closing
                 or self.__dict__.get("_timetable_read_in_progress", False)
-                or self.__dict__.get("_school_page_read_in_progress", False)):
+                or self.__dict__.get("_school_page_read_in_progress", False)
+                or self.__dict__.get("_term_probe_in_progress", False)):
             return
         try:
             config = read_config(Path(self.path.get()), offline=True)
@@ -1451,6 +1512,17 @@ class Application(tk.Tk):
                         self._native_session_cookie = None
                         self._native_session_origin = None
                         self.native_login_status.set("课表接口提示登录失效，请重新授权")
+                elif event.kind == "known_year_term":
+                    self._term_probe_in_progress = False
+                    self.term_probe_button.configure(state="normal")
+                    result = event.value
+                    self.term_probe_status.set(result.message)
+                    self.status.set(result.message)
+                    self.log(result.message)
+                    if result.code == "expired":
+                        self._native_session_cookie = None
+                        self._native_session_origin = None
+                        self.native_login_status.set("学期接口提示会话过期，请重新授权")
                 elif event.kind == "known_school_results":
                     self._school_page_read_in_progress = False
                     self.school_page_button.configure(state="normal")
@@ -1638,6 +1710,8 @@ def run_packaged_gui_smoke() -> None:
                     raise AssertionError("Known timetable API must be distinguished from elective catalog")
                 if app.school_page_button.winfo_manager() != "pack":
                     raise AssertionError("Observed school results readback must be mounted under tools")
+                if app.term_probe_button.winfo_manager() != "pack":
+                    raise AssertionError("Observed no-body YearTerm EXE probe missing")
                 if app.school_page_button.winfo_ismapped():
                     raise AssertionError("Advanced readback action must stay off the home tab")
                 with patch("core.known_school_pages.httpx.AsyncClient",
@@ -1645,6 +1719,11 @@ def run_packaged_gui_smoke() -> None:
                     app.check_known_school_results()
                 if "旧 HAR" not in app.school_page_status.get():
                     raise AssertionError("Unverified school query must stop with an explicit message")
+                with patch("core.ncwu_term_probe.httpx.AsyncClient",
+                           side_effect=AssertionError("unverified term probe attempted network")):
+                    app.check_known_year_term()
+                if "旧 HAR" not in app.term_probe_status.get():
+                    raise AssertionError("Unverified term probe must stop without network")
                 # Placeholder auth contract must not open a password prompt or
                 # contact the network, even when clicked in a packaged EXE.
                 with patch.object(simpledialog, "askstring",
