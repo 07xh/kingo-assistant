@@ -54,6 +54,18 @@ class PasswordlessRestoreTests(TestCase):
         self.assertFalse(reply["session"]["saved_session_available"])
         self.assertEqual(vault.cleared, 1)
 
+    def test_switch_account_does_not_keep_previous_saved_cookie(self):
+        vault = MemoryVault(SavedSchoolSession("other-student", "JSESSIONID=old", 0.0))
+        session = LiteSession(vault=vault)
+        with patch("lite_session.login_ncwusigned", new_callable=AsyncMock,
+                   return_value=NativeLoginResult("login_rejected")):
+            result = session.login({}, "student01", "incorrect-password", remember=True)
+        self.assertEqual(result["code"], "login_rejected")
+        self.assertIsNone(vault.saved)
+        self.assertGreaterEqual(vault.cleared, 1)
+        self.assertEqual(result["session"]["status"], "not_logged_in")
+        self.assertFalse(result["session"]["saved_session_available"])
+
     def test_app_restart_requires_explicit_independent_identity_read(self):
         vault = MemoryVault(SavedSchoolSession("student01", "JSESSIONID=sensitive", 0.0))
         session = LiteSession(vault=vault)
