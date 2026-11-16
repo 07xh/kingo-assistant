@@ -83,6 +83,30 @@ class LiteSession:
             self.clear(forget=True)
         return {"code": proof.code, "message": proof.message, "session": self.info()}
 
+    def check(self, config: Mapping) -> dict[str, Any]:
+        """User-triggered identity recheck of the existing in-memory session."""
+        if self.status != "verified" or self.origin != HOST or not self.cookie or not self.username:
+            return {"code": "missing_session", "message": "当前没有可复核的已登录教务会话",
+                    "session": self.info()}
+        contract = config.get("known_year_term", {})
+        if (not isinstance(contract, Mapping)
+                or contract.get("identity_binding_verified") is not True
+                or validate_term_contract(config) is not None):
+            return {"code": "verification_unavailable",
+                    "message": "官方账号一致性回读协议尚未核验；未访问学校",
+                    "session": self.info()}
+        proof = asyncio.run(probe_known_year_term(
+            config, session_cookie=self.cookie, expected_user_code=self.username,
+            environment={},
+        ))
+        if proof.code in ("expired", "identity_mismatch"):
+            self.clear(forget=True)
+        return {
+            "code": proof.code,
+            "message": proof.message,
+            "session": self.info(),
+        }
+
     def login(self, config: Mapping, username: str, password: str, *,
               remember: bool = False) -> dict[str, Any]:
         # One manual action. The original signed login module enforces its
