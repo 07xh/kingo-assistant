@@ -40,6 +40,7 @@ export default function App() {
   const [dirty,setDirty]=useState(false);
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState("");
+  const [editError,setEditError]=useState("");
   const [events,setEvents]=useState<EventEntry[]>([]);
   const [editing,setEditing]=useState<number|null>(null);
   const [draft,setDraft]=useState<Course>(blankCourse());
@@ -62,6 +63,7 @@ export default function App() {
   useEffect(()=>{localStorage.setItem("kingo-lite.theme",theme);},[theme]);
   useEffect(()=>{localStorage.setItem("kingo-lite.nav.collapsed",String(collapsed));},[collapsed]);
   function openEditor(index:number) {
+    setEditError("");
     setEditing(index);
     setDraft(index < 0 ? blankCourse() : {...courses[index]});
   }
@@ -71,14 +73,14 @@ export default function App() {
   function acceptEdit(event:FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if(!draft.key.trim() || ![draft.course_id,draft.course_name,draft.teacher].some(x=>x.trim())) {
-      setError("请填写志愿标识，以及课程代码、课程名称或任课教师中的至少一项");return;
+      setEditError("请填写志愿标识，以及课程代码、课程名称或任课教师中的至少一项");return;
     }
     if(courses.some((course,index)=>index!==editing && course.key===draft.key.trim())) {
-      setError("志愿标识不能重复");return;
+      setEditError("志愿标识不能重复");return;
     }
     const value={...draft,key:draft.key.trim()};
     setCourses(current=>editing===-1?[...current,value]:current.map((course,index)=>index===editing?value:course));
-    setDirty(true);setEditing(null);setError("");
+    setDirty(true);setEditing(null);setEditError("");
   }
   async function persist() {
     if(!snapshotData || loading) return;
@@ -97,8 +99,8 @@ export default function App() {
   function go(next:Page) {setPage(next);setError("");}
   return (
     <div className={"app "+theme}>
-      <header className="titlebar">
-        <div className="brand"><GraduationCap size={18}/><strong>KingoAssistant</strong><span>Lite</span></div>
+      <header className="titlebar" data-tauri-drag-region>
+        <div className="brand" data-tauri-drag-region><GraduationCap size={18}/><strong data-tauri-drag-region>KingoAssistant</strong><span data-tauri-drag-region>Lite</span></div>
         <div className="window-actions">
           <button title="主题切换" aria-label="主题切换" onClick={()=>setTheme(x=>x==="dark"?"light":"dark")}>{theme==="dark"?<Sun size={16}/>:<Moon size={16}/>}</button>
           <button title="设置" aria-label="设置" onClick={()=>setSettingsOpen(true)}><Settings size={16}/></button>
@@ -207,6 +209,7 @@ export default function App() {
         <form className="modal edit-modal" role="dialog" aria-modal="true" aria-label="编辑目标课程" onSubmit={acceptEdit}>
           <div className="modal-heading"><h2>{editing===-1?"添加课程":"编辑课程"}</h2><button type="button" aria-label="取消编辑" onClick={()=>setEditing(null)}><X size={19}/></button></div>
           <p>以下字段仅用于本机课程计划，不会直接向教务系统提交。</p>
+          {editError&&<div role="alert" className="notice error">{editError}</div>}
           <div className="form-grid">{courseFields.map(({key,label})=><label key={key}>{label}<input value={draft[key]} maxLength={key==="time_slots"?200:120} onChange={e=>updateDraft(key,e.target.value)} placeholder={label}/></label>)}</div>
           <div className="modal-actions"><button type="button" className="button" onClick={()=>setEditing(null)}>取消</button><button type="submit" className="button primary"><Check size={16}/>应用到草稿</button></div>
         </form>
