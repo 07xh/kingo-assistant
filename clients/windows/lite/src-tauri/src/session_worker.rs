@@ -98,13 +98,14 @@ pub async fn kingo_session_action(
         "login" => {
             let body = payload.as_ref().and_then(|x| x.as_object())
                 .ok_or("登录请求格式无效")?;
-            if body.len() != 2
+            if body.len() != 3
                 || !body.get("username").is_some_and(|x| x.is_string())
-                || !body.get("password").is_some_and(|x| x.is_string()) {
+                || !body.get("password").is_some_and(|x| x.is_string())
+                || !body.get("remember").is_some_and(|x| x.is_boolean()) {
                 return Err("登录请求格式无效".to_string());
             }
         }
-        "catalog" | "session" | "logout" | "monitor-start" | "monitor-stop" | "monitor-status" if payload.is_none() => {}
+        "catalog" | "session" | "logout" | "restore" | "monitor-start" | "monitor-stop" | "monitor-status" if payload.is_none() => {}
         _ => return Err("不支持的登录服务操作".to_string()),
     }
     let session = state.inner().0.clone();
