@@ -43,6 +43,18 @@ class LiteBridgeTests(TestCase):
         self.assertNotIn("auth", after["courses"][0])
         self.assertFalse(data["automatic_submit_available"])
 
+    def test_existing_ancillary_fields_survive_visible_edits(self):
+        path = lite_bridge.ensure_config()
+        original = load_config(path)
+        original["courses"][0]["extra_local_hint"] = "retain"
+        save_config_atomic(path, original)
+        lite_bridge.save_courses([{
+            "key": "A", "course_name": "高等数学", "course_id": "MATH-01",
+            "class_id": "01", "teacher": "老师甲", "group": "", "time_slots": ""
+        }])
+        updated = load_config(path)
+        self.assertEqual(updated["courses"][0]["extra_local_hint"], "retain")
+
     def test_invalid_course_rejected_without_writing(self):
         path = lite_bridge.ensure_config()
         before = path.read_bytes()
