@@ -294,6 +294,14 @@ class Application(tk.Tk):
             foreground="#965b16",
         ).pack(anchor="w", pady=(4, 0))
 
+        # Allocate the persistent status footer before the expanding
+        # Notebook so it never gets squeezed out on smaller Windows screens.
+        self.status_bar = ttk.Label(
+            self, textvariable=self.status, foreground="#3b4757",
+            padding=(16, 7), wraplength=990,
+        )
+        self.status_bar.pack(side="bottom", fill="x")
+
         self.notebook = ttk.Notebook(self)
         self.tab_home = ttk.Frame(self.notebook)
         self.tab_manual = ttk.Frame(self.notebook)
@@ -534,14 +542,6 @@ class Application(tk.Tk):
             self.log_frame, text="导出本机运行日志",
             command=self.export_log,
         ).pack(anchor="e", pady=(5, 0))
-
-        # Always-visible status: moving logs to a secondary tab must not hide
-        # live user feedback from the primary workflow.
-        self.status_bar = ttk.Label(
-            self, textvariable=self.status, foreground="#3b4757",
-            padding=(16, 7), wraplength=990,
-        )
-        self.status_bar.pack(fill="x")
 
     def toggle_advanced_panel(self) -> None:
         self.notebook.select(self.tab_tools)
