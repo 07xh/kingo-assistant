@@ -283,6 +283,9 @@ class Application(tk.Tk):
 
         header = ttk.Frame(self, padding=(16, 12))
         header.pack(fill="x")
+        ttk.Button(
+            header, text="功能说明", command=self.show_function_guide,
+        ).pack(side="right", padx=(10, 0))
         ttk.Label(header, text="KingoAssistant · 选课助手",
                   style="KingoTitle.TLabel").pack(anchor="w")
         ttk.Label(
@@ -551,6 +554,22 @@ class Application(tk.Tk):
     def toggle_portal_panel(self) -> None:
         """Navigate to manual backup instead of hiding the controls."""
         self.notebook.select(self.tab_manual)
+
+    def show_function_guide(self) -> None:
+        """Plain-language capability legend. No network or hidden actions."""
+        messagebox.showinfo(
+            "这些功能分别做什么？",
+            "① 课程与志愿：编辑本地目标课程，已可使用，不会选课。\\n\\n"
+            "② 软件内登录 / 查课：使用 EXE 内的接口能力；华水真实协议还没验收，"
+            "目前不能保证可用。\\n\\n"
+            "③ 课程余量监测：只读取学校允许提供的课程信息，"
+            "不会提交选课；需要真实接口核验后才能启动。\\n\\n"
+            "自动提交：目前未接入华水真实选课接口，按钮保持禁用。\\n\\n"
+            "手动官网备用：只会在浏览器打开华水官网，"
+            "登录和选课必须由本人操作。\\n\\n"
+            "工具与日志：本机诊断、模拟测试和高级配置，"
+            "不代表学校接口已经接通。",
+        )
 
     def log(self, message: str) -> None:
         self.log_box.configure(state="normal")
