@@ -38,7 +38,7 @@ class Budget:
         self.cooldowns.append(seconds)
 
 
-def execute(cfg, handler, cookie="SID=LOCAL_SESSION"):
+def execute(cfg, handler, cookie="SID=LOCAL_SESSION", expected_user_code=None):
     budget = Budget()
     sent = []
     def respond(request):
@@ -46,6 +46,7 @@ def execute(cfg, handler, cookie="SID=LOCAL_SESSION"):
         return handler(request)
     result = asyncio.run(probe_known_year_term(
         cfg, session_cookie=cookie, environment={},
+        expected_user_code=expected_user_code,
         http_factory=lambda: httpx.AsyncClient(
             transport=httpx.MockTransport(respond), follow_redirects=False),
         budget_factory=lambda config, origin: budget,
@@ -73,6 +74,45 @@ class TermProbeTests(TestCase):
         self.assertEqual(sent[0].headers["cookie"], "SID=LOCAL_SESSION")
         self.assertNotIn("PRIVATE", str(result) + result.message)
         self.assertIn("尚不能", result.message)
+
+    def test_identity_matching_user_code_is_verified_without_exposing_student_id(self):
+        response = {
+            "xn": "2026-2027", "xqM": "1", "xqName": "semester",
+            "jwUserYeartermId": "PRIVATE_SCOPE", "userCode": "LOCAL_STUDENT",
+        }
+        result, sent, budget = execute(
+            config(),
+            lambda req: httpx.Response(
+                200, json=response, headers={"content-type": "text/plain"}),
+            expected_user_code="LOCAL_STUDENT",
+        )
+        self.assertEqual(result.code, "identity_verified")
+        self.assertNotIn("LOCAL_STUDENT", repr(result) + result.message)
+        self.assertEqual(len(sent), 1)
+
+    def test_different_identity_fails_closed_no_id_leak(self):
+        response = {
+            "xn": "2026-2027", "xqM": "1", "xqName": "semester",
+            "jwUserYeartermId": "PRIVATE_SCOPE", "userCode": "OTHER_ACCOUNT",
+        }
+        result, sent, budget = execute(
+            config(),
+            lambda req: httpx.Response(
+                200, json=response, headers={"content-type": "text/plain"}),
+            expected_user_code="LOCAL_STUDENT",
+        )
+        self.assertEqual(result.code, "identity_mismatch")
+        self.assertEqual(result.fields_matched, 0)
+        self.assertNotIn("OTHER_ACCOUNT", repr(result) + result.message)
+
+    def test_invalid_account_claim_never_connects(self):
+        result, sent, budget = execute(
+            config(),
+            lambda req: (_ for _ in ()).throw(AssertionError("network")),
+            expected_user_code=" ",
+        )
+        self.assertEqual(result.code, "invalid_identity_claim")
+        self.assertEqual(sent, [])
 
     def test_default_unverified_blocks_without_transport(self):
         cfg = config()
