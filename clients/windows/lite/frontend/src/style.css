@@ -52,3 +52,12 @@
 .monitor-metrics span{background:var(--surface-2);padding:11px;border:1px solid var(--stroke);border-radius:9px;font-size:11px;color:var(--muted)}
 .monitor-metrics strong{color:var(--text);font-size:12px}
 @media(max-width:650px){.monitor-metrics{grid-template-columns:1fr}.monitor-actions .button{width:100%}}
+
+/* Opt-in passwordless continuation; saved session is never treated as live proof. */
+.remember-row{display:flex;align-items:flex-start;gap:12px;margin-top:18px;
+  padding:13px 14px;border:1px solid var(--stroke);background:var(--surface);border-radius:11px;
+  cursor:pointer;color:var(--text);}
+.remember-row input{width:16px;height:16px;flex-shrink:0;margin-top:3px;accent-color:var(--accent)}
+.remember-row span{display:flex;flex-direction:column;gap:6px}
+.remember-row strong{font-size:12px;font-weight:600}
+.remember-row small{font-size:11px;color:var(--muted);line-height:1.6}
