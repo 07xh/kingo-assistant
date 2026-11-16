@@ -57,6 +57,10 @@ class LiveElectiveSnapshot:
     window: str = "unknown"
     courses: tuple[LiveElectiveCourse, ...] = ()
     recognized_headers: int = 0
+    # Confirmed only by the current-session window's positive business
+    # response, and checked against the current S202 ActionForm.
+    academic_year: str = ""
+    academic_term: str = ""
 
     @property
     def message(self) -> str:
@@ -401,10 +405,24 @@ async def live_s202_snapshot(
             stage = "window"
             window_resp = await request("POST", WINDOW_PATH + "?xktype=2")
             window = _window_state(window_resp)
+            runtime = _window_runtime_fields(window_resp)
+            verified_year = verified_term = ""
+            if runtime is not None:
+                for local_name, server_name in (
+                    ("xh", "xh"), ("xn", "xn"),
+                    ("xq", "xqM"), ("lcid", "lcid"),
+                ):
+                    local = form.get(local_name)
+                    if local and local != runtime[server_name]:
+                        # A stale/mismatched form cannot be compared against
+                        # a new round. It also must not be sent to DataTable.
+                        return LiveElectiveSnapshot(
+                            "form_incomplete", stage, window)
+                verified_year = runtime["xn"]
+                verified_term = runtime["xqM"]
             if not form.get("xn") or not form.get("xq") or not form.get("lcid"):
                 if window == "closed":
                     return LiveElectiveSnapshot("window_closed", stage, window)
-                runtime = _window_runtime_fields(window_resp)
                 if runtime is None:
                     return LiveElectiveSnapshot("form_incomplete", stage, window)
                 try:
@@ -421,7 +439,8 @@ async def live_s202_snapshot(
             except ValueError:
                 return LiveElectiveSnapshot("table_unrecognized", stage, window)
             return LiveElectiveSnapshot(
-                "catalog_read", stage, window, courses, headers)
+                "catalog_read", stage, window, courses, headers,
+                academic_year=verified_year, academic_term=verified_term)
     except PermissionError as exc:
         return LiveElectiveSnapshot(
             "restricted" if str(exc) == "restricted" else "expired")
