@@ -47,6 +47,8 @@ jobs:
           if ($LASTEXITCODE -ne 0 -or !$response.ok -or $response.data.data_source -ne "local_config" -or $response.data.automatic_submit_available) { throw "Local sidecar smoke failed" }
           $session = ('{"action":"session","payload":null}' | & ../lite/packaging/sidecar/kingo-sidecar.exe --serve | Select-Object -First 1 | ConvertFrom-Json)
           if (!$session.ok -or $session.data.status -ne "not_logged_in") { throw "Private session smoke failed" }
+          $preflight = (& ../lite/packaging/sidecar/kingo-sidecar.exe preflight | ConvertFrom-Json)
+          if ($LASTEXITCODE -ne 0 -or !$preflight.ok -or $preflight.data.source -ne "local_only") { throw "UTF-8 sidecar preflight smoke failed" }
       - name: Build frontend
         shell: pwsh
         working-directory: clients/windows/lite
