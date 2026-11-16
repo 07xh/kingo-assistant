@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import AsyncMock, Mock, patch
 
-from windows_gui import Application
+from windows_gui import Application, scoped_native_cookie
 from core.native_login import NativeLoginResult
 
 
@@ -31,7 +31,7 @@ class NativeLoginGuiTests(TestCase):
 
     def test_verified_login_runs_in_background_without_browser(self):
         cfg = {"protocol": {"verified": True}}
-        response = NativeLoginResult("verified", "SID=mock-private")
+        response = NativeLoginResult("verified", "SID=mock-private", "jwmis.ncwu.edu.cn")
         with patch("windows_gui.read_config", return_value=cfg), \
              patch("windows_gui.validate_login_contract", return_value=None), \
              patch("windows_gui.simpledialog.askstring", side_effect=["alice", "secret"]) as dialog, \
@@ -58,6 +58,17 @@ class NativeLoginGuiTests(TestCase):
         self.assertIsNone(self.app._native_session_cookie)
         browser.assert_not_called()
         thread.assert_not_called()
+
+    def test_native_session_is_only_usable_for_same_origin(self):
+        self.app._native_session_cookie = "SID=private"
+        self.app._native_session_origin = "jwmis.ncwu.edu.cn"
+        self.assertEqual(scoped_native_cookie(
+            self.app, {"base_url": "https://jwmis.ncwu.edu.cn"}),
+            "SID=private")
+        self.assertEqual(scoped_native_cookie(
+            self.app, {"base_url": "https://another.example"}), "")
+        self.assertNotIn("SID=private", str(scoped_native_cookie(
+            self.app, {"base_url": "https://another.example"})))
 
     def test_session_cannot_be_cleared_during_monitor(self):
         self.app._native_session_cookie = "SID=private"
