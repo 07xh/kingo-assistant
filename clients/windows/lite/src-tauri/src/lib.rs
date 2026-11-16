@@ -64,7 +64,7 @@ async fn kingo_snapshot(app: tauri::AppHandle) -> Result<serde_json::Value, Stri
 }
 
 #[tauri::command]
-async fn kingo_save_courses(app: tauri::AppHandle, courses: serde_json::Value)
+async fn kingo_save_courses(app: tauri::AppHandle, state: tauri::State<'_, SessionState>, courses: serde_json::Value)
     -> Result<serde_json::Value, String>
 {
     let items = courses.as_array().ok_or("课程清单格式无效")?;
@@ -75,7 +75,10 @@ async fn kingo_save_courses(app: tauri::AppHandle, courses: serde_json::Value)
     if body.len() > 128_000 {
         return Err("课程配置超过大小限制".to_string());
     }
-    tauri::async_runtime::spawn_blocking(move || call_sidecar(&app, "save-courses", Some(body)))
+    let session = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        session.run_when_idle(|| call_sidecar(&app, "save-courses", Some(body)))
+    })
         .await.map_err(|_| "本机任务中断".to_string())?
 }
 
