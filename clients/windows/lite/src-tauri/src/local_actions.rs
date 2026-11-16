@@ -1,6 +1,7 @@
 #[tauri::command]
 pub async fn kingo_local_action(
     app: tauri::AppHandle,
+    state: tauri::State<'_, crate::session_worker::SessionState>,
     action: String,
     payload: Option<serde_json::Value>,
 ) -> Result<serde_json::Value, String> {
@@ -16,6 +17,15 @@ pub async fn kingo_local_action(
         }
         _ => return Err("请求缺少数据".to_string())
     };
-    tauri::async_runtime::spawn_blocking(move || super::call_sidecar(&app, &action, body))
+    let mutation = matches!(action.as_str(),
+        "save-plan" | "apply-plan" | "delete-plan" | "save-strategy");
+    let session = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        if mutation {
+            session.run_when_idle(|| super::call_sidecar(&app, &action, body))
+        } else {
+            super::call_sidecar(&app, &action, body)
+        }
+    })
         .await.map_err(|_| "本机任务中断".to_string())?
 }
