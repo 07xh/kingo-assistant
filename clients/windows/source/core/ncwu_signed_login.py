@@ -120,9 +120,15 @@ def _sign_login_form(
         + "&txt_mm_userzh=" + str(includes)
         + "&hid_flag=1&hidlag=1&hid_dxyzm="
     )
+    # The captured site's packed md5.js uses 8-bit JS code units, not
+    # Python UTF-8 bytes. Preserve its actual low-byte UTF-16 behavior for
+    # non-ASCII passwords rather than inventing a different signature.
+    def old_js_md5(value: str) -> str:
+        utf16 = value.encode("utf-16-be", errors="surrogatepass")
+        return hashlib.md5(utf16[1::2]).hexdigest()
+
     signature = hashlib.md5(
-        (hashlib.md5(inner.encode("utf-8")).hexdigest()
-         + hashlib.md5(timestamp.encode("utf-8")).hexdigest()).encode("ascii")
+        (old_js_md5(inner) + old_js_md5(timestamp)).encode("ascii")
     ).hexdigest()
     ciphertext = encode_legacy_strenc(inner, temporary_key)
     return {
