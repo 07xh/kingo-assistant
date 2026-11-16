@@ -55,6 +55,27 @@ class PasswordlessRestoreTests(TestCase):
         self.assertFalse(reply["session"]["saved_session_available"])
         self.assertEqual(vault.cleared, 1)
 
+    def test_old_encrypted_token_is_not_mislabeled_as_current_session(self):
+        vault = MemoryVault(SavedSchoolSession("student01", "JSESSIONID=old", 0.0))
+        session = LiteSession("JSESSIONID=new", "jwmis.ncwu.edu.cn", "verified",
+                              vault=vault, username="student01")
+        self.assertTrue(session.info()["saved_session_available"])
+        self.assertFalse(session.info()["persistent"])
+
+    def test_failed_encrypted_update_does_not_claim_current_session_saved(self):
+        class FailingVault(MemoryVault):
+            def save(self, username, cookie):
+                raise OSError("mock secure storage unavailable")
+        vault = FailingVault(SavedSchoolSession("student01", "JSESSIONID=old", 0.0))
+        session = LiteSession(vault=vault)
+        result = NativeLoginResult("verified", "JSESSIONID=new", "jwmis.ncwu.edu.cn")
+        with patch("lite_session.login_ncwusigned", new_callable=AsyncMock, return_value=result):
+            reply = session.login({}, "student01", "secret-only-in-input", remember=True)
+        self.assertTrue(reply["remember_error"])
+        self.assertTrue(reply["session"]["verified_at_login"])
+        self.assertFalse(reply["session"]["persistent"])
+        self.assertNotIn("secret-only-in-input", str(reply))
+
     def test_switch_account_does_not_keep_previous_saved_cookie(self):
         vault = MemoryVault(SavedSchoolSession("other-student", "JSESSIONID=old", 0.0))
         session = LiteSession(vault=vault)
