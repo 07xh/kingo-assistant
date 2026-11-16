@@ -562,7 +562,8 @@ class Application(tk.Tk):
     def check_native_preparation(self) -> None:
         """Explicit in-EXE identity + catalog HTTP checks, never browser automation."""
         if (self.worker or self.__dict__.get("scheduled_worker")
-                or self._session_check_in_progress or self._native_login_in_progress
+                or self._session_check_in_progress
+                or self.__dict__.get("_native_login_in_progress", False)
                 or self._native_preparation_in_progress or self._closing):
             return
         try:
@@ -994,14 +995,18 @@ class Application(tk.Tk):
             # a second YAML read between authorization and worker construction.
             config = resolve_state_file(config, app_dir())
             session_cookie = self.__dict__.get("_native_session_cookie")
-            checks = inspect_readiness(config, session_cookie=session_cookie)
+            checks = (inspect_readiness(config, session_cookie=session_cookie)
+                      if session_cookie is not None else inspect_readiness(config))
             blockers, warnings = split_checks(checks)
             if blockers:
                 self.status.set(f"无法启动｜{len(blockers)} 项本地前提未完成")
                 messagebox.showwarning("先完成启动预检", format_checks(checks))
                 self.log(f"启动被本地预检拦截：{len(blockers)} 项；没有连接学校。")
                 return
-            validate(config, check_only=False, session_cookie=session_cookie)
+            if session_cookie is not None:
+                validate(config, check_only=False, session_cookie=session_cookie)
+            else:
+                validate(config, check_only=False)
             self.populate(config)
             self._previous_states = {}
             self._demo_report = None
@@ -1014,8 +1019,9 @@ class Application(tk.Tk):
         # Advisory hints are logged and remain available via readiness UI.
         if warnings:
             self.log(f"本地预检有 {len(warnings)} 项非阻断提示；可在运行准备度中查看。")
-        self.worker = MonitorWorker(config, self.events,
-                                    session_cookie=self.__dict__.get("_native_session_cookie"))
+        session_cookie = self.__dict__.get("_native_session_cookie")
+        self.worker = (MonitorWorker(config, self.events, session_cookie=session_cookie)
+                       if session_cookie is not None else MonitorWorker(config, self.events))
         self.worker.start()
         self.start_button.configure(state="disabled")
         self.edit_button.configure(state="disabled")
@@ -1104,6 +1110,9 @@ class Application(tk.Tk):
                     self.native_prepare_button.configure(state="normal")
                     result = event.value
                     self.native_preparation_status.set(result.message)
+                    if result.code == "expired":
+                        self._native_session_cookie = None
+                        self.native_login_status.set("应用登录会话已过期，请重新登录")
                     self.status.set(result.message)
                     self.log(result.message)
                 elif event.kind == "benchmark_done":
