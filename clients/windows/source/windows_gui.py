@@ -310,7 +310,7 @@ class Application(tk.Tk):
         ).pack(anchor="w")
         ttk.Label(
             intro,
-            text="注意：前三步依赖已核验接口；“自动选课”目前不能提交任何课程。",
+            text="第 1 步可离线使用；第 2、3 步需华水真实接口核验。“自动选课”尚不可用。",
             foreground="#965b16",
         ).pack(anchor="w", pady=(2, 0))
 
@@ -531,6 +531,14 @@ class Application(tk.Tk):
             self.log_frame, text="导出本机运行日志",
             command=self.export_log,
         ).pack(anchor="e", pady=(5, 0))
+
+        # Always-visible status: moving logs to a secondary tab must not hide
+        # live user feedback from the primary workflow.
+        self.status_bar = ttk.Label(
+            self, textvariable=self.status, foreground="#3b4757",
+            padding=(16, 7), wraplength=990,
+        )
+        self.status_bar.pack(fill="x")
 
     def toggle_advanced_panel(self) -> None:
         self.notebook.select(self.tab_tools)
@@ -1472,8 +1480,20 @@ def run_packaged_gui_smoke() -> None:
                     app.start_native_login()
                 if app._native_session_cookie is not None:
                     raise AssertionError("Unverified login must not produce a session")
-                if app.portal_panel.winfo_manager():
-                    raise AssertionError("Manual-only fallback must stay hidden by default")
+                if app.notebook.index("current") != 0:
+                    raise AssertionError("The first tab must be the selection homepage")
+                if app.portal_panel.winfo_manager() != "pack":
+                    raise AssertionError("Manual backup must exist in its own tab")
+                if app.portal_panel.winfo_ismapped():
+                    raise AssertionError("Manual backup must not be visible on home")
+                if app.log_box.winfo_ismapped():
+                    raise AssertionError("Developer logs must not crowd the homepage")
+                if app.status_bar.winfo_manager() != "pack":
+                    raise AssertionError("The live status footer must remain visible")
+                app.toggle_portal_panel()
+                if app.notebook.select() != str(app.tab_manual):
+                    raise AssertionError("Manual menu should navigate to backup tab")
+                app.notebook.select(app.tab_home)
                 with patch("core.client.httpx.AsyncClient", side_effect=AssertionError("network attempted")):
                     app.demo_next()
                     app.update()
