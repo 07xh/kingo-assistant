@@ -169,16 +169,10 @@ async def read_s202_selected_results(
                     ORIGIN + SELECTED_PAGE,
                     headers={"Referer": REFERER, "Accept": "text/html"},
                     follow_redirects=False)
-            if response.status_code in (401, 302, 303, 307, 308):
-                return S202ReadbackResult("expired")
-            if response.status_code in (403, 429):
-                if response.status_code == 429 and budget is not None:
-                    from core.client import KingoClient
-                    pause = KingoClient._retry_after_seconds(response.headers.get("Retry-After"))
-                    await budget.impose_retry_after(pause or 60.0)
-                return S202ReadbackResult("restricted")
-            if response.status_code != 200 or not response.content or len(response.content) > MAX_BODY:
-                return S202ReadbackResult("unavailable")
+            error = await classify_read_response(
+                response, budget, max_bytes=MAX_BODY, require_content=True)
+            if error:
+                return S202ReadbackResult(error)
             try:
                 html = _decode_html(response)
             except (ValueError, UnicodeError, LookupError):
