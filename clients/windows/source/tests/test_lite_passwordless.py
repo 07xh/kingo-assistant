@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import sys
+import subprocess
 import tempfile
 from pathlib import Path
 from unittest import TestCase, skipUnless
@@ -171,6 +172,40 @@ class WindowsDpapiVaultTests(TestCase):
         self.assertEqual(saved.cookie, "JSESSIONID=Sensitive+Value=123")
         self.vault.clear()
         self.assertIsNone(self.vault.load())
+
+    def test_cookie_name_is_not_forced_to_jsessionid(self):
+        # A legitimate same-origin school response can name its session
+        # differently. The server identity read is what authorizes resume.
+        self.vault.save("student01", "STUDENT_SESSION=abc123; SESSION=token456")
+        restored = self.vault.load()
+        self.assertIsNotNone(restored)
+        self.assertEqual(restored.cookie, "STUDENT_SESSION=abc123; SESSION=token456")
+
+    def test_dpapi_survives_separate_python_process(self):
+        # Simulates closing and restarting the EXE as the same Windows user.
+        # No school call or real credential is involved.
+        import json
+        self.vault.save("student01", "NCWU_SESSION=synthetic-token")
+        path_literal = json.dumps(str(self.vault.directory))
+        code = (
+            "from pathlib import Path; "
+            "from lite_session_vault import WindowsSessionVault; "
+            f"v=WindowsSessionVault(Path({path_literal})); "
+            "s=v.load(); "
+            "assert s is not None and s.username == 'student01'; "
+            "assert s.cookie == 'NCWU_SESSION=synthetic-token'; "
+            "print('restored')"
+        )
+        output = subprocess.check_output(
+            [sys.executable, "-c", code], timeout=15, text=True,
+        )
+        self.assertEqual(output.strip(), "restored")
+
+    def test_duplicate_cookie_name_rejected(self):
+        from lite_session_vault import _valid_cookie
+        self.assertFalse(_valid_cookie("X=a; X=b"))
+        self.assertFalse(_valid_cookie("X=a\r\nX-Injected=b"))
+        self.assertFalse(_valid_cookie(""))
 
     def test_expired_encrypted_record_is_never_restored(self):
         with patch("lite_session_vault.time.time", return_value=1_700_000_000.0):
