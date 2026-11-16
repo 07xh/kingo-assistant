@@ -23,10 +23,14 @@ auth:
     mode: direct_form
     verified: false
     method: POST
-    path: ""
-    username_field: ""
-    password_field: ""
-    static_fields: {}
+    # Captured in the separately sanitized 2026-11-03 NCWU HAR.
+    # The endpoint and field NAMES were observed; values, loginmethod
+    # semantics, any CSRF challenge and authenticated identity proof remain
+    # unverified. NEVER set verified:true merely from this example.
+    path: "/hsjw/cas/logon.action"
+    username_field: "username"
+    password_field: "password"
+    static_fields: {}  # "loginmethod" is observed but its required value is unknown
 strategy:
   mode: monitor       # monitor or burst; burst means ONE scheduled read-only check
   target_time: "2026-12-21 08:00:00" # timezone: Asia/Shanghai; confirm official announcement
