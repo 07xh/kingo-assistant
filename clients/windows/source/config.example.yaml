@@ -92,6 +92,10 @@ known_school_pages:
 # An observed route is not independently verified third-party permission.
 known_year_term:
   verified: false
+  # A positive userCode in a logged-in HAR is NOT proof anonymous requests
+  # cannot produce the same shape. Require authorized identity-binding
+  # validation before using this action to mark an EXE login successful.
+  identity_binding_verified: false
   method: POST
   path: "/hsjw/jw/common/showYearTerm.action"
   request_mode: empty
