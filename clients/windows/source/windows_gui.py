@@ -677,7 +677,8 @@ class Application(tk.Tk):
         Any permitted session check runs off the Tk main thread.
         """
         if (self.worker or self.__dict__.get("scheduled_worker")
-                or self._session_check_in_progress or self._closing):
+                or self._session_check_in_progress or self._closing
+                or self.__dict__.get("_timetable_read_in_progress", False)):
             return
         try:
             config = read_config(Path(self.path.get()), offline=True)
@@ -707,7 +708,8 @@ class Application(tk.Tk):
         """One credential form submission in the EXE, never browser automation."""
         if (self.worker or self.__dict__.get("scheduled_worker") or self._closing
                 or self._native_login_in_progress or self._native_preparation_in_progress
-                or self._session_check_in_progress):
+                or self._session_check_in_progress
+                or self.__dict__.get("_timetable_read_in_progress", False)):
             return
         try:
             config = read_config(Path(self.path.get()), offline=True)
@@ -751,7 +753,8 @@ class Application(tk.Tk):
         """Clear in-process credentials; this is not a verified server logout."""
         if (self.worker or self.__dict__.get("scheduled_worker")
                 or self._native_login_in_progress
-                or self._native_preparation_in_progress or self._session_check_in_progress):
+                or self._native_preparation_in_progress or self._session_check_in_progress
+                or self.__dict__.get("_timetable_read_in_progress", False)):
             return
         self._native_session_cookie = None
         self._native_session_origin = None
@@ -800,7 +803,8 @@ class Application(tk.Tk):
         if (self.worker or self.__dict__.get("scheduled_worker")
                 or self._session_check_in_progress
                 or self.__dict__.get("_native_login_in_progress", False)
-                or self._native_preparation_in_progress or self._closing):
+                or self._native_preparation_in_progress or self._closing
+                or self.__dict__.get("_timetable_read_in_progress", False)):
             return
         try:
             config = read_config(Path(self.path.get()), offline=True)
@@ -1251,7 +1255,9 @@ class Application(tk.Tk):
             self.log("无法解析本机样本，请核对脱敏页面和表头列号。")
 
     def start_monitor(self) -> None:
-        if self.worker or self.__dict__.get("scheduled_worker") or self._benchmark_in_progress:
+        if (self.worker or self.__dict__.get("scheduled_worker")
+                or self._benchmark_in_progress
+                or self.__dict__.get("_timetable_read_in_progress", False)):
             return
         try:
             # First run offline checks so placeholders and missing authorization
@@ -1553,6 +1559,10 @@ def run_packaged_gui_smoke() -> None:
                     raise AssertionError("In-EXE login button missing from primary Windows UI")
                 if app.native_prepare_button.winfo_manager() != "pack":
                     raise AssertionError("Native identity/catalog API check not mounted")
+                if app.timetable_read_button.winfo_manager() != "pack":
+                    raise AssertionError("Previously captured native timetable action missing")
+                if "既有接口" not in str(app.timetable_read_button.cget("text")):
+                    raise AssertionError("Known timetable API must be distinguished from elective catalog")
                 # Placeholder auth contract must not open a password prompt or
                 # contact the network, even when clicked in a packaged EXE.
                 with patch.object(simpledialog, "askstring",
