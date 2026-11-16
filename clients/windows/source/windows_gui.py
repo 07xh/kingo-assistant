@@ -41,6 +41,7 @@ from core.offline_benchmark import format_benchmark, run_offline_benchmark
 from core.official_portal_schedule import OfficialPortalAppointment, prepare_appointment, format_countdown
 from core.session_probe import SessionProbeResult, probe_own_session
 from core.native_preparation import NativePreparationResult, prepare_native_api
+from core.native_timetable import TimetableReadResult, read_known_timetable
 from core.native_login import NativeLoginResult, login_with_verified_form, validate_login_contract
 from core.official_entries import OFFICIAL_ENTRIES, probe_official_login_surfaces
 from core.scheduled_ui_bridge import prepare_scheduled_plan
@@ -249,11 +250,13 @@ class Application(tk.Tk):
         self._portal_prelogin_opened = False
         self._session_check_in_progress = False
         self._native_preparation_in_progress = False
+        self._timetable_read_in_progress = False
         self._native_login_in_progress = False
         self._native_session_cookie: str | None = None
         self._native_session_origin: str | None = None
         self.native_login_status = tk.StringVar(value="EXE 尚未登录｜仅接受已核验的官方登录协议")
         self.native_preparation_status = tk.StringVar(value="尚未通过 EXE 接口核验身份与课程目录")
+        self.timetable_read_status = tk.StringVar(value="此前 HAR 已确认课表 JSON 路径；请求参数和 EXE 会话待核验")
         self.portal_appointment_status = tk.StringVar(value="官网预约未启动（与自动提交无关）")
         self.path = tk.StringVar(value=str(ensure_config()))
         self.status = tk.StringVar(value="未启动｜本机离线检查可直接使用")
@@ -366,6 +369,16 @@ class Application(tk.Tk):
             auth_panel, textvariable=self.native_preparation_status,
             foreground="#666", wraplength=920,
         ).pack(anchor="w")
+        timetable_row = ttk.Frame(auth_panel)
+        timetable_row.pack(fill="x", pady=(5, 0))
+        self.timetable_read_button = ttk.Button(
+            timetable_row, text="读取本人课表（既有接口 · 只读）",
+            command=self.check_known_timetable)
+        self.timetable_read_button.pack(side="left", padx=(0, 8))
+        ttk.Label(
+            timetable_row, textvariable=self.timetable_read_status,
+            foreground="#666", wraplength=660,
+        ).pack(side="left", fill="x", expand=True)
 
         monitor_panel = ttk.LabelFrame(
             self.tab_home, text="第 3 步  ·  课程余量监测（只读）",
@@ -744,6 +757,43 @@ class Application(tk.Tk):
         self._native_session_origin = None
         self.native_login_status.set("已清除 EXE 内存会话；这不代表学校服务端注销")
         self.native_preparation_status.set("会话已清除，接口核验结果失效")
+
+    def check_known_timetable(self) -> None:
+        """Read the previously observed school timetable route, not electives."""
+        if (self.worker or self.__dict__.get("scheduled_worker")
+                or self._closing or self._native_login_in_progress
+                or self._native_preparation_in_progress
+                or self._session_check_in_progress
+                or self._timetable_read_in_progress):
+            return
+        try:
+            config = read_config(Path(self.path.get()), offline=True)
+        except (OSError, ValueError, TypeError, KeyError):
+            self.timetable_read_status.set("本机配置无效；没有向学校发送请求")
+            return
+        # Snapshot the session on the Tk UI thread, never read mutable UI
+        # state from the async network thread.
+        cookie = scoped_native_cookie(self, config)
+        self._timetable_read_in_progress = True
+        self.timetable_read_button.configure(state="disabled")
+        self.timetable_read_status.set("正在核对既有课表接口与本人 EXE 会话")
+
+        def execute() -> None:
+            try:
+                result = asyncio.run(read_known_timetable(config, session_cookie=cookie))
+            except Exception:
+                result = TimetableReadResult("unavailable")
+            self.events.put(MonitorEvent("known_timetable", result))
+
+        try:
+            threading.Thread(
+                target=execute, name="KingoKnownTimetableRead",
+                daemon=True,
+            ).start()
+        except RuntimeError:
+            self._timetable_read_in_progress = False
+            self.timetable_read_button.configure(state="normal")
+            self.timetable_read_status.set("课表读取线程启动失败；没有联网")
 
     def check_native_preparation(self) -> None:
         """Explicit in-EXE identity + catalog HTTP checks, never browser automation."""
@@ -1322,6 +1372,17 @@ class Application(tk.Tk):
                                                        else "尚未通过身份核验，接口预检不会自动开始")
                     self.status.set(result.message)
                     self.log(result.message)
+                elif event.kind == "known_timetable":
+                    self._timetable_read_in_progress = False
+                    self.timetable_read_button.configure(state="normal")
+                    result = event.value
+                    self.timetable_read_status.set(result.message)
+                    self.status.set(result.message)
+                    self.log(result.message)
+                    if result.code == "expired":
+                        self._native_session_cookie = None
+                        self._native_session_origin = None
+                        self.native_login_status.set("课表接口提示登录失效，请重新授权")
                 elif event.kind == "native_preparation":
                     self._native_preparation_in_progress = False
                     self.native_prepare_button.configure(state="normal")
