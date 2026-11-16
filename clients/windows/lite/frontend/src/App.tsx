@@ -4,7 +4,7 @@ import {
   Minus,Monitor, Moon,PanelLeftClose,PanelLeftOpen,Plus,RefreshCw,
   Save,Settings,ShieldAlert,Sun,Trash2, X, Square, GraduationCap, Pencil
 } from "lucide-react";
-import {applyPlan,blankCourse,createPlan,deletePlan,isDesktop,listPlans,preflight,saveCourses,saveStrategy,snapshot,windowAction,signedLogin,logout,restoreSavedSession,forgetSavedSession,recheckSession,manualCatalog,sessionStatus,startReadOnlyMonitor,stopReadOnlyMonitor,monitorStatus,type MonitorSnapshot,type OfficialCatalog,type LoginReply,type SessionInfo,type Course,type Preflight,type Snapshot,type Strategy} from "./bridge";
+import {applyPlan,blankCourse,createPlan,deletePlan,isDesktop,listPlans,preflight,saveCourses,saveStrategy,snapshot,windowAction,signedLogin,logout,restoreSavedSession,restoreReadiness,forgetSavedSession,recheckSession,manualCatalog,sessionStatus,type RestoreReadiness,startReadOnlyMonitor,stopReadOnlyMonitor,monitorStatus,type MonitorSnapshot,type OfficialCatalog,type LoginReply,type SessionInfo,type Course,type Preflight,type Snapshot,type Strategy} from "./bridge";
 
 type Page = "home" | "courses" | "execution" | "logs";
 const navigation = [
@@ -50,6 +50,7 @@ export default function App() {
   const [password,setPassword]=useState("");
   const [rememberLogin,setRememberLogin]=useState(false);
   const [session,setSession]=useState<SessionInfo|null>(null);
+  const [restoreInfo,setRestoreInfo]=useState<RestoreReadiness|null>(null);
   const [loginResult,setLoginResult]=useState<LoginReply|null>(null);
   const [catalog,setCatalog]=useState<OfficialCatalog|null>(null);
   const [schoolBusy,setSchoolBusy]=useState(false);
@@ -85,6 +86,24 @@ export default function App() {
     void sessionStatus().then(setSession).catch(()=>setSession(null));
     void monitorStatus().then(setMonitor).catch(()=>setMonitor(null));
   },[]);
+  useEffect(()=>{
+    if(!isDesktop()||!session?.saved_session_available||session.status==="verified"){
+      setRestoreInfo(null);
+      return;
+    }
+    let active=true;
+    void restoreReadiness().then(result=>{
+      if(active)setRestoreInfo(result);
+    }).catch(()=>{
+      if(active)setRestoreInfo({
+        code:"identity_unverified",
+        message:"无法读取本机恢复条件，请使用账号密码登录",
+        may_attempt:false,
+        school_verified:false
+      });
+    });
+    return ()=>{active=false;};
+  },[session?.saved_session_available,session?.status]);
   useEffect(()=>{
     if(!monitor || (monitor.phase!=="running"&&monitor.phase!=="stopping"))return;
     let active=true;
@@ -369,13 +388,14 @@ export default function App() {
               <div className="login-actions">
                 <span className={"status "+(session?.status==="verified"?"good":"muted")}>{session?.status==="verified"?"本次身份已核验":"尚无已核验会话"}</span>
                 {session?.status==="verified"?<button className="button" disabled={schoolBusy||monitor?.active} onClick={()=>void endSession()}>退出登录</button>:<>
-                  {session?.saved_session_available&&<button className="button primary" disabled={schoolBusy||!isDesktop()} onClick={()=>void restoreRememberedLogin()}>{schoolBusy?"核验中…":"免密码继续"}</button>}
+                  {session?.saved_session_available&&<button className="button primary" disabled={schoolBusy||!isDesktop()||!restoreInfo?.may_attempt} onClick={()=>void restoreRememberedLogin()}>{schoolBusy?"核验中…":"免密码继续"}</button>}
                   <button className={session?.saved_session_available?"button":"button primary"} disabled={schoolBusy||!isDesktop()} onClick={()=>{setLoginResult(null);setLoginOpen(true);}}>账号密码登录</button>
                   {session?.saved_session_available&&<button className="button subtle" disabled={schoolBusy} onClick={()=>void forgetRememberedLogin()}>清除已保存登录</button>}
                 </>}
                 {session?.status==="verified"&&<button className="button" disabled={schoolBusy||monitor?.active} onClick={()=>void checkCurrentSession()}>核验会话是否有效</button>}
                 {session?.status==="verified"&&<button className="button primary" disabled={schoolBusy||monitor?.active} onClick={()=>{go("execution");void loadCatalog();}}>手动读取课程</button>}
               </div>
+              {session?.saved_session_available&&session.status!=="verified"&&restoreInfo&&!restoreInfo.may_attempt&&<div className="notice warning" role="status">{restoreInfo.message}。可继续用账号密码登录。</div>}
               {loginResult&&<div className={"notice "+(loginResult.session.verified_at_login?"warning":"error")} role="status">{loginResult.message}</div>}
               <div className="section-heading" style={{marginTop:18}}><div><h3>快捷入口</h3><p>只展示当前有明确功能的操作</p></div></div>
               <div className="quick-grid">
