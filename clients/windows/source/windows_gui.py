@@ -2183,69 +2183,57 @@ class Application(tk.Tk):
                         self._native_session_origin = None
                         self.native_login_status.set("学期接口提示会话过期，请重新授权")
                 elif event.kind == "ncwu_course_plan":
-                    self._course_plan_in_progress = False
-                    self.course_plan_button.configure(state="normal")
                     result = event.value
-                    self.course_plan_status.set(result.message)
-                    self.status.set(result.message)
-                    self.log(
-                        f"开课计划快照：{result.code}，"
-                        f"教学班={len(result.rows)}，阶段={result.stage}；"
-                        "不是正选实时余量，未提交选课。")
-                    if result.code == "expired":
-                        self._native_session_cookie = None
-                        self._native_session_origin = None
-                        self.native_login_status.set("开课计划接口提示会话失效，请重新登录")
-                        if self.__dict__.get("_live_polling", False):
-                            self.stop_live_polling()
-                    elif result.code == "read":
+                    _finish_ncwu_read_event(
+                        self, result, flag="_course_plan_in_progress",
+                        button=self.course_plan_button,
+                        status_var=self.course_plan_status,
+                        log_message=(
+                            f"开课计划快照：{result.code}，"
+                            f"教学班={len(result.rows)}，阶段={result.stage}；"
+                            "不是正选实时余量，未提交选课。"
+                        ),
+                        expired_message="开课计划接口提示会话失效，请重新登录",
+                    )
+                    if result.code == "read":
                         self.show_course_plan_rows(result)
                 elif event.kind == "ncwu_s202_score":
-                    self._s202_score_in_progress = False
-                    self.s202_score_button.configure(state="normal")
                     result = event.value
-                    self.s202_score_status.set(result.message)
-                    self.status.set(result.message)
-                    self.log(
-                        f"S202 本人汇总查询：{result.code}，"
-                        f"确认已选门数={result.selected_count is not None}；未提交选课。")
-                    if result.code == "expired":
-                        self._native_session_cookie = None
-                        self._native_session_origin = None
-                        self.native_login_status.set("汇总接口提示登录已失效，请重新登录")
-                        if self.__dict__.get("_live_polling", False):
-                            self.stop_live_polling()
+                    _finish_ncwu_read_event(
+                        self, result, flag="_s202_score_in_progress",
+                        button=self.s202_score_button,
+                        status_var=self.s202_score_status,
+                        log_message=(
+                            f"S202 本人汇总查询：{result.code}，"
+                            f"确认已选门数={result.selected_count is not None}；未提交选课。"
+                        ),
+                        expired_message="汇总接口提示登录已失效，请重新登录",
+                    )
                 elif event.kind == "ncwu_s202_round":
-                    self._s202_round_probe_in_progress = False
-                    self.s202_round_button.configure(state="normal")
                     result = event.value
-                    self.s202_round_status.set(result.message)
-                    self.status.set(result.message)
-                    self.log(
-                        f"S202 轮次核验：{result.code}，窗口={result.window}，"
-                        f"轮次字段={result.field_count}/6；未提交选课。")
-                    if result.code == "expired":
-                        self._native_session_cookie = None
-                        self._native_session_origin = None
-                        self.native_login_status.set("S202 轮次接口提示登录失效，请重新登录")
-                        if self.__dict__.get("_live_polling", False):
-                            self.stop_live_polling()
+                    _finish_ncwu_read_event(
+                        self, result, flag="_s202_round_probe_in_progress",
+                        button=self.s202_round_button,
+                        status_var=self.s202_round_status,
+                        log_message=(
+                            f"S202 轮次核验：{result.code}，窗口={result.window}，"
+                            f"轮次字段={result.field_count}/6；未提交选课。"
+                        ),
+                        expired_message="S202 轮次接口提示登录失效，请重新登录",
+                    )
                 elif event.kind == "ncwu_s202_results":
-                    self._s202_result_in_progress = False
-                    self.s202_result_button.configure(state="normal")
                     result = event.value
-                    self.s202_result_status.set(result.message)
-                    self.status.set(result.message)
-                    self.log(
-                        f"S202 已选结果只读检查：{result.code}，"
-                        f"候选={len(result.candidates)}；未认定选课成功。")
-                    if result.code == "expired":
-                        self._native_session_cookie = None
-                        self._native_session_origin = None
-                        self.native_login_status.set("S202 页面表示登录已失效，请重新登录")
-                        if self.__dict__.get("_live_polling", False):
-                            self.stop_live_polling()
-                    elif result.code == "page_observed":
+                    _finish_ncwu_read_event(
+                        self, result, flag="_s202_result_in_progress",
+                        button=self.s202_result_button,
+                        status_var=self.s202_result_status,
+                        log_message=(
+                            f"S202 已选结果只读检查：{result.code}，"
+                            f"候选={len(result.candidates)}；未认定选课成功。"
+                        ),
+                        expired_message="S202 页面表示登录已失效，请重新登录",
+                    )
+                    if result.code == "page_observed":
                         self.show_s202_candidate_results(result)
                 elif event.kind == "known_school_results":
                     self._school_page_read_in_progress = False
