@@ -143,6 +143,63 @@ class MonitorEvent:
     value: object = None
 
 
+# Four independently named native read actions share this worker lifecycle.
+# This helper does not inspect credentials or alter any source-specific
+# result/event schema, so existing headless tests can still invoke methods
+# with a minimal SimpleNamespace instead of a real Tk root.
+_NCWU_READ_FLAGS = (
+    "_live_catalog_in_progress",
+    "_s202_round_probe_in_progress",
+    "_s202_result_in_progress",
+    "_s202_score_in_progress",
+    "_course_plan_in_progress",
+)
+
+
+def _ncwu_read_busy(app, *, include_polling: bool = False) -> bool:
+    return bool(
+        app.worker or app.__dict__.get("scheduled_worker")
+        or app._closing or app._native_login_in_progress
+        or app._native_preparation_in_progress
+        or app._session_check_in_progress
+        or any(app.__dict__.get(flag, False) for flag in _NCWU_READ_FLAGS)
+        or (include_polling and app.__dict__.get("_live_polling", False))
+    )
+
+
+def _start_ncwu_read_worker(
+    app, *, config: dict, cookie: str | None, read_call,
+    fallback_factory, flag: str, button, status_var,
+    running_message: str, failure_message: str,
+    event_kind: str, thread_name: str,
+) -> None:
+    """Single no-browser background job with Tk state restored on failure.
+
+    The source-specific method checks session and configuration *before*
+    calling here. The daemon posts only typed results; the Tk event loop
+    owns UI updates and expired-session cleanup.
+    """
+    setattr(app, flag, True)
+    button.configure(state="disabled")
+    status_var.set(running_message)
+
+    def execute() -> None:
+        try:
+            result = asyncio.run(read_call(config, session_cookie=cookie))
+        except Exception:
+            result = fallback_factory("unavailable")
+        app.events.put(MonitorEvent(event_kind, result))
+
+    try:
+        threading.Thread(
+            target=execute, name=thread_name, daemon=True,
+        ).start()
+    except RuntimeError:
+        setattr(app, flag, False)
+        button.configure(state="normal")
+        status_var.set(failure_message)
+
+
 class MonitorWorker:
     """Async network loop runs on a background thread. Tk lives on the main thread."""
 
