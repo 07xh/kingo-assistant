@@ -35,6 +35,7 @@ class S202LiveTargetGuiTests(TestCase):
             _live_target_message=None,
             _live_target_review_button=None,
             _live_target_report=None,
+            show_live_target_review=Mock(),
             path=SimpleNamespace(get=lambda: "config.yaml"),
         )
 
