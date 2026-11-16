@@ -138,7 +138,29 @@ class LiveS202Tests(TestCase):
         result, requests = run(handler)
         self.assertEqual(result.code, "catalog_read")
         self.assertEqual(result.window, "reported_open")
+        self.assertEqual(result.academic_year, "2026")
+        self.assertEqual(result.academic_term, "0")
         self.assertEqual(len(requests), 3)
+
+    def test_conflicting_open_round_blocks_catalog_submit(self):
+        def handler(req):
+            if req.url.path == S202_PAGE:
+                return httpx.Response(200, content=page(), headers={
+                    "content-type": "text/html; charset=GBK"})
+            self.assertEqual(req.url.path, WINDOW_PATH)
+            return httpx.Response(200, json={
+                "status": "200", "result": json.dumps({
+                    "lx": "2", "xh": "DIFFERENT_ACCOUNT",
+                    "xn": "2026", "xqM": "0",
+                    "lcid": "CURRENT_SESSION_ROUND",
+                    "nj": "2026", "zydm": "TEST_MAJOR",
+                }),
+            })
+        result, requests = run(handler)
+        self.assertEqual(result.code, "form_incomplete")
+        self.assertEqual(len(requests), 2)
+        self.assertEqual([r.url.path for r in requests],
+                         [S202_PAGE, WINDOW_PATH])
 
     def test_closed_window_does_not_hydrate_empty_first_party_page(self):
         def handler(req):
