@@ -80,7 +80,7 @@ def _context_from_window(raw: bytes) -> dict[str, str] | None:
         value = values.get(key)
         if (not isinstance(value, str) or not value.strip()
                 or len(value) > 100
-                or any(c in value for c in ("&", "=", "\\r", "\\n"))):
+                or any(c in value for c in ("&", "=", chr(13), chr(10)))):
             return None
         needed[key] = value
     # xh is a sensitive account identifier; it is transient and is
