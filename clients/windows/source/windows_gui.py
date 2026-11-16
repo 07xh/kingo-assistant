@@ -229,8 +229,8 @@ class Application(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title(APP_TITLE)
-        self.geometry("960x650")
-        self.minsize(750, 520)
+        self.geometry("1040x780")
+        self.minsize(860, 640)
         self.events: queue.Queue[MonitorEvent] = queue.Queue()
         self._tray = TrayController(lambda kind: self.events.put(MonitorEvent(kind)))
         self.worker: MonitorWorker | None = None
@@ -260,20 +260,9 @@ class Application(tk.Tk):
         self._build()
         menu = tk.Menu(self)
         manual_menu = tk.Menu(menu, tearoff=False)
-        manual_menu.add_command(label="打开官方教务（手动）", command=self.open_official_portal)
-        manual_menu.add_command(label="复制代码并打开官网（手动）", command=self.prepare_selected_course)
-        manual_menu.add_command(label="显示/隐藏官网预约（备用）", command=self.toggle_portal_panel)
-        menu.add_cascade(label="手动辅助", menu=manual_menu)
-        tools_menu = tk.Menu(menu, tearoff=False)
-        tools_menu.add_command(label="脱敏 HTML 离线演练", command=self.replay_local)
-        tools_menu.add_command(label="虚构样例：下一步", command=self.demo_next)
-        tools_menu.add_command(label="本机 HAR 结构检查（脱敏统计）", command=self.audit_local_har)
-        tools_menu.add_command(label="华水认证链路识别（HAR 离线）", command=self.audit_auth_route_har)
-        tools_menu.add_command(label="选课目录证据对照（离线 JSON）", command=self.review_catalog_evidence)
-        tools_menu.add_command(label="北化课表参数 · 离线调度测速", command=self.benchmark_offline)
-        tools_menu.add_command(label="华水官方入口清单（离线）", command=self.show_official_entries)
-        tools_menu.add_command(label="检测官方登录页可达性（手动）", command=self.probe_official_entries)
-        menu.add_cascade(label="离线工具", menu=tools_menu)
+        manual_menu.add_command(label="切换到手动官网备用", command=self.toggle_portal_panel)
+        menu.add_cascade(label="手动备用", menu=manual_menu)
+        menu.add_command(label="工具与日志", command=lambda: self.notebook.select(self.tab_tools))
         app_menu = tk.Menu(menu, tearoff=False)
         app_menu.add_command(label="显示/隐藏高级配置", command=self.toggle_advanced_panel)
         app_menu.add_command(label="最小化到系统托盘", command=self.close)
@@ -286,126 +275,294 @@ class Application(tk.Tk):
         self.check_config()
 
     def _build(self) -> None:
-        top = ttk.Frame(self, padding=(16, 14))
-        top.pack(fill="x")
-        ttk.Label(top, text="KingoAssistant · Windows", font=("Microsoft YaHei UI", 16, "bold")).pack(anchor="w")
-        ttk.Label(top, text="本机独立运行｜当前只读监测｜自动执行核心已加入，官方接口待验收", foreground="#666").pack(anchor="w", pady=(4, 0))
+        """Three clearly separated user journeys. Preserve legacy callbacks."""
+        style = ttk.Style(self)
+        style.configure("KingoTitle.TLabel", font=("Microsoft YaHei UI", 17, "bold"))
+        style.configure("KingoStep.TLabelframe.Label",
+                        font=("Microsoft YaHei UI", 10, "bold"))
 
-        cfg = ttk.Frame(self, padding=(16, 6))
-        cfg.pack(fill="x")
-        ttk.Label(cfg, text="课程和志愿：").pack(side="left")
-        self.edit_button = ttk.Button(cfg, text="编辑课程和设置", command=self.edit_settings)
-        self.edit_button.pack(side="left", padx=5)
-        self.plans_button = ttk.Button(cfg, text="课程方案", command=self.manage_plans)
-        self.plans_button.pack(side="left", padx=5)
+        header = ttk.Frame(self, padding=(16, 12))
+        header.pack(fill="x")
+        ttk.Label(header, text="KingoAssistant · 选课助手",
+                  style="KingoTitle.TLabel").pack(anchor="w")
+        ttk.Label(
+            header,
+            text="当前版本：课程方案可编辑；真实查询需要学校接口核验；自动提交尚未接通",
+            foreground="#965b16",
+        ).pack(anchor="w", pady=(4, 0))
 
-        # Advanced protocol file controls remain available, but do not distract
-        # from the read-only workflow or imply that YAML unlocks live enrollment.
-        self.advanced_panel = ttk.LabelFrame(self, text="高级配置（仅本机）", padding=8)
-        ttk.Label(self.advanced_panel, text="配置文件").pack(side="left")
-        self.config_entry = ttk.Entry(self.advanced_panel, textvariable=self.path)
-        self.config_entry.pack(side="left", fill="x", expand=True, padx=(8, 6))
-        self.pick_button = ttk.Button(self.advanced_panel, text="选择…", command=self.pick_config)
-        self.pick_button.pack(side="left")
-        self.open_button = ttk.Button(self.advanced_panel, text="打开文件", command=self.open_config)
-        self.open_button.pack(side="left", padx=5)
+        self.notebook = ttk.Notebook(self)
+        self.tab_home = ttk.Frame(self.notebook)
+        self.tab_manual = ttk.Frame(self.notebook)
+        self.tab_tools = ttk.Frame(self.notebook)
+        self.notebook.add(self.tab_home, text="① 选课首页")
+        self.notebook.add(self.tab_manual, text="② 手动官网备用")
+        self.notebook.add(self.tab_tools, text="③ 工具与日志")
+        self.notebook.pack(fill="both", expand=True, padx=10, pady=(0, 4))
 
-        self.action_panel = ttk.Frame(self, padding=(16, 8))
-        self.action_panel.pack(fill="x")
-        self.check_button = ttk.Button(self.action_panel, text="检查配置", command=self.check_config)
-        self.check_button.pack(side="left", padx=(0, 8))
-        ttk.Button(self.action_panel, text="运行准备度", command=self.preflight).pack(side="left", padx=(0, 8))
-        self.start_button = ttk.Button(self.action_panel, text="启动只读监测", command=self.start_monitor)
-        self.start_button.pack(side="left", padx=(0, 8))
-        self.stop_button = ttk.Button(self.action_panel, text="停止", command=self.stop_monitor, state="disabled")
-        self.stop_button.pack(side="left")
-        self.scheduled_preflight_button = ttk.Button(
-            self.action_panel, text="检查自动选课计划（离线）",
-            command=self.inspect_scheduled_runner,
+        # Home: explain the actual workflow instead of displaying all buttons
+        # as equal options in one toolbar.
+        intro = ttk.Frame(self.tab_home, padding=(10, 6))
+        intro.pack(fill="x")
+        ttk.Label(
+            intro, text="建议顺序：填写课程 → 登录与查课 → 启动只读监测",
+            font=("Microsoft YaHei UI", 10, "bold"),
+        ).pack(anchor="w")
+        ttk.Label(
+            intro,
+            text="注意：前三步依赖已核验接口；“自动选课”目前不能提交任何课程。",
+            foreground="#965b16",
+        ).pack(anchor="w", pady=(2, 0))
+
+        setup = ttk.LabelFrame(
+            self.tab_home, text="第 1 步  ·  课程与志愿（本地可用）",
+            padding=(10, 6), style="KingoStep.TLabelframe",
         )
-        self.scheduled_preflight_button.pack(side="right")
+        setup.pack(fill="x", padx=10, pady=(2, 5))
+        self.edit_button = ttk.Button(setup, text="填写 / 修改目标课程",
+                                      command=self.edit_settings)
+        self.edit_button.pack(side="left", padx=(0, 8))
+        self.plans_button = ttk.Button(setup, text="管理课程方案",
+                                       command=self.manage_plans)
+        self.plans_button.pack(side="left", padx=(0, 10))
+        ttk.Label(
+            setup, text="只编辑本机计划，不会向学校提交选课。",
+            foreground="#666",
+        ).pack(side="left")
+
+        auth_panel = ttk.LabelFrame(
+            self.tab_home, text="第 2 步  ·  登录与查课（真实接口待核验）",
+            padding=(10, 6), style="KingoStep.TLabelframe",
+        )
+        auth_panel.pack(fill="x", padx=10, pady=(0, 5))
+        auth_actions = ttk.Frame(auth_panel)
+        auth_actions.pack(fill="x")
+        self.native_login_button = ttk.Button(
+            auth_actions, text="在软件内登录", command=self.start_native_login)
+        self.native_login_button.pack(side="left", padx=(0, 8))
+        self.native_prepare_button = ttk.Button(
+            auth_actions, text="检查登录与课程数据（只读）",
+            command=self.check_native_preparation)
+        self.native_prepare_button.pack(side="left", padx=(0, 8))
+        self.native_clear_button = ttk.Button(
+            auth_actions, text="清除登录状态", command=self.clear_native_session)
+        self.native_clear_button.pack(side="left")
+        ttk.Label(
+            auth_panel, textvariable=self.native_login_status,
+            foreground="#666", wraplength=920,
+        ).pack(anchor="w", pady=(6, 1))
+        ttk.Label(
+            auth_panel, textvariable=self.native_preparation_status,
+            foreground="#666", wraplength=920,
+        ).pack(anchor="w")
+
+        monitor_panel = ttk.LabelFrame(
+            self.tab_home, text="第 3 步  ·  课程余量监测（只读）",
+            padding=(10, 6), style="KingoStep.TLabelframe",
+        )
+        monitor_panel.pack(fill="x", padx=10, pady=(0, 5))
+        self.action_panel = ttk.Frame(monitor_panel)
+        self.action_panel.pack(fill="x")
+        self.start_button = ttk.Button(
+            self.action_panel, text="开始查询课程余量", command=self.start_monitor)
+        self.start_button.pack(side="left", padx=(0, 8))
+        self.stop_button = ttk.Button(
+            self.action_panel, text="停止查询", command=self.stop_monitor,
+            state="disabled")
+        self.stop_button.pack(side="left", padx=(0, 8))
+        ttk.Button(
+            self.action_panel, text="检查是否具备运行条件", command=self.preflight,
+        ).pack(side="left")
+        ttk.Label(
+            monitor_panel,
+            text="此功能只读学校数据，不会帮你提交选课；学校接口尚未核验时会拒绝启动。",
+            foreground="#666",
+        ).pack(anchor="w", pady=(6, 0))
+
+        enrollment = ttk.Frame(self.tab_home, padding=(12, 3))
+        enrollment.pack(fill="x")
+        ttk.Label(
+            enrollment, text="自动选课：尚未接通官方提交接口",
+            foreground="#965b16",
+        ).pack(side="left")
         self.scheduled_start_button = ttk.Button(
-            self.action_panel, text="自动执行（待接入官方接口）",
+            enrollment, text="自动提交（暂不可用）",
             command=self.start_scheduled_enrollment, state="disabled",
         )
-        self.scheduled_start_button.pack(side="right", padx=(0, 8))
+        self.scheduled_start_button.pack(side="right", padx=(8, 0))
         self.scheduled_stop_button = ttk.Button(
-            self.action_panel, text="取消自动计划",
-            command=self.stop_scheduled_enrollment, state="disabled",
+            enrollment, text="取消自动计划", command=self.stop_scheduled_enrollment,
+            state="disabled",
         )
-        self.scheduled_stop_button.pack(side="right", padx=(0, 8))
+        self.scheduled_stop_button.pack(side="right")
 
-        native_panel = ttk.Frame(self, padding=(16, 4))
-        native_panel.pack(fill="x")
-        self.native_login_button = ttk.Button(
-            native_panel, text="EXE 内登录", command=self.start_native_login,
+        self.course_frame = ttk.LabelFrame(
+            self.tab_home, text="目标课程列表 · 本地配置 / 只读状态",
+            padding=8,
         )
-        self.native_login_button.pack(side="left", padx=(0, 8))
-        self.native_clear_button = ttk.Button(
-            native_panel, text="清除本机会话", command=self.clear_native_session,
+        self.course_frame.pack(
+            fill="both", expand=True, padx=10, pady=(3, 8))
+        self.table = ttk.Treeview(
+            self.course_frame,
+            columns=("key", "course", "class_id", "teacher", "status"),
+            show="headings",
         )
-        self.native_clear_button.pack(side="left", padx=(0, 8))
-        self.native_prepare_button = ttk.Button(
-            native_panel, text="EXE 接口提前预检（只读）",
-            command=self.check_native_preparation,
-        )
-        self.native_prepare_button.pack(side="left", padx=(0, 8))
-        ttk.Label(native_panel, textvariable=self.native_login_status,
-                  foreground="#666", wraplength=280).pack(side="left", fill="x", expand=True)
-        ttk.Label(self, textvariable=self.native_preparation_status,
-                  foreground="#666", wraplength=850, padding=(16, 0)).pack(fill="x")
-
-        self.portal_panel = ttk.LabelFrame(self, text="手动官网备用（不自动提交）", padding=8)
-        self.portal_appointment_button = ttk.Button(
-            self.portal_panel, text="预约按时打开官网（辅助）",
-            command=self.toggle_portal_appointment,
-        )
-        self.portal_appointment_button.pack(side="left", padx=(0, 8))
-        ttk.Button(self.portal_panel, text="现在打开官网登录",
-                   command=self.open_official_portal).pack(side="left", padx=(0, 8))
-        self.session_check_button = ttk.Button(
-            self.portal_panel, text="核验应用会话（只读）", command=self.check_script_session)
-        self.session_check_button.pack(side="left", padx=(0, 8))
-        ttk.Label(
-            self.portal_panel, textvariable=self.portal_appointment_status,
-            foreground="#666", wraplength=650,
-        ).pack(side="left", fill="x", expand=True)
-
-        ttk.Label(self, textvariable=self.status, padding=(16, 6)).pack(fill="x")
-        frame = ttk.LabelFrame(self, text="目标课程（当前只读；未接入真实自动选课提交）", padding=8)
-        self.course_frame = frame
-        frame.pack(fill="both", expand=True, padx=16, pady=(2, 8))
-        self.table = ttk.Treeview(frame, columns=("key", "course", "class_id", "teacher", "status"), show="headings")
-        for col, label, width in (("key", "志愿", 70), ("course", "课程/代码", 220),
-                                   ("class_id", "教学班", 110), ("teacher", "教师", 120),
-                                   ("status", "状态", 250)):
+        for col, label, width in (
+            ("key", "志愿", 70), ("course", "课程 / 代码", 225),
+            ("class_id", "教学班", 110), ("teacher", "任课教师", 120),
+            ("status", "查询结果", 240),
+        ):
             self.table.heading(col, text=label)
             self.table.column(col, width=width, stretch=True)
-        scroll = ttk.Scrollbar(frame, orient="vertical", command=self.table.yview)
+        scroll = ttk.Scrollbar(
+            self.course_frame, orient="vertical", command=self.table.yview)
         self.table.configure(yscrollcommand=scroll.set)
         scroll.pack(side="right", fill="y")
         self.table.pack(fill="both", expand=True)
-        ttk.Label(frame, text="双击课程可复制代码。手动官网辅助与离线诊断已移至菜单，不属于自动提交。",
-                  foreground="#666").pack(anchor="w", pady=(5, 3))
-        self.table.bind("<Double-1>", lambda _event: self.copy_selected_field("course_id"))
+        self.table.bind(
+            "<Double-1>", lambda _event: self.copy_selected_field("course_id"))
+        ttk.Label(
+            self.course_frame,
+            text="双击课程复制代码。示例课程不是学校实时数据。",
+            foreground="#666",
+        ).pack(anchor="w", pady=(5, 0))
 
-        log_frame = ttk.LabelFrame(self, text="本地运行信息（不展示账号、Cookie 或网页原文）", padding=8)
-        log_frame.pack(fill="both", expand=True, padx=16, pady=(0, 10))
-        self.log_box = tk.Text(log_frame, height=7, state="disabled", wrap="word")
+        # Manual route is deliberately isolated from both read-only queries
+        # and automatic enrollment. It may open the official browser.
+        ttk.Label(
+            self.tab_manual,
+            text="手动备用：只是打开华水官方网页，登录、选课和提交都由你自己完成。",
+            foreground="#965b16", wraplength=950, padding=(14, 14),
+        ).pack(fill="x")
+        self.portal_panel = ttk.LabelFrame(
+            self.tab_manual, text="官网操作与按时提醒（不会自动提交）",
+            padding=12,
+        )
+        self.portal_panel.pack(fill="x", padx=14, pady=(0, 10))
+        self.portal_appointment_button = ttk.Button(
+            self.portal_panel, text="设置到点打开官网",
+            command=self.toggle_portal_appointment,
+        )
+        self.portal_appointment_button.pack(anchor="w", pady=(0, 8))
+        manual_actions = ttk.Frame(self.portal_panel)
+        manual_actions.pack(fill="x")
+        ttk.Button(
+            manual_actions, text="现在打开华水官网",
+            command=self.open_official_portal,
+        ).pack(side="left", padx=(0, 8))
+        ttk.Button(
+            manual_actions, text="复制所选课程代码并打开官网",
+            command=self.prepare_selected_course,
+        ).pack(side="left", padx=(0, 8))
+        self.session_check_button = ttk.Button(
+            manual_actions, text="检查软件登录状态（只读）",
+            command=self.check_script_session,
+        )
+        self.session_check_button.pack(side="left")
+        ttk.Label(
+            self.portal_panel, textvariable=self.portal_appointment_status,
+            foreground="#666", wraplength=950,
+        ).pack(anchor="w", pady=(10, 0))
+        ttk.Label(
+            self.tab_manual,
+            text="说明：手动官网预约与“EXE 直接接口提交”不是同一功能。",
+            foreground="#666", padding=(14, 3),
+        ).pack(anchor="w")
+
+        # Diagnostics, examples, protocol editing and logs are only in this
+        # tertiary tab; no simulation button on the everyday main screen.
+        tools_heading = ttk.Frame(self.tab_tools, padding=(12, 8))
+        tools_heading.pack(fill="x")
+        ttk.Label(
+            tools_heading,
+            text="这些是开发诊断和本地测试工具，不会证明学校接口已经接通。",
+            foreground="#666",
+        ).pack(anchor="w")
+        self.tools_operations = ttk.LabelFrame(
+            self.tab_tools, text="本机诊断（不发起选课提交）", padding=10)
+        self.tools_operations.pack(fill="x", padx=10, pady=(2, 6))
+        for text, command in (
+            ("检查本机配置", self.check_config),
+            ("检查自动选课计划（仅离线）", self.inspect_scheduled_runner),
+            ("分析登录 HAR（仅本机）", self.audit_auth_route_har),
+            ("分析课程 HAR（仅本机）", self.audit_local_har),
+            ("课程目录证据对照", self.review_catalog_evidence),
+            ("离线 HTML 演练", self.replay_local),
+            ("运行虚构示例", self.demo_next),
+            ("本机离线调度测速", self.benchmark_offline),
+            ("查看学校官方入口", self.show_official_entries),
+            ("检查官方登录页可达性", self.probe_official_entries),
+        ):
+            # Buttons are evenly placed without requiring scrolling on a
+            # typical Windows screen; callbacks remain unchanged.
+            pass
+        groups = (
+            (("检查本机配置", self.check_config),
+             ("课程计划检查（离线）", self.inspect_scheduled_runner),
+             ("登录 HAR 分析（离线）", self.audit_auth_route_har),
+             ("课程 HAR 分析（离线）", self.audit_local_har)),
+            (("课程目录证据对照", self.review_catalog_evidence),
+             ("离线 HTML 演练", self.replay_local),
+             ("虚构示例（仅演示）", self.demo_next),
+             ("本机离线调度测速", self.benchmark_offline)),
+            (("查看学校官方入口", self.show_official_entries),
+             ("检测官方登录页可达性", self.probe_official_entries),
+             ("展开 / 收起高级配置", self.toggle_advanced_panel)),
+        )
+        for group in groups:
+            row = ttk.Frame(self.tools_operations)
+            row.pack(fill="x", pady=3)
+            for label, callback in group:
+                ttk.Button(row, text=label, command=callback).pack(
+                    side="left", padx=(0, 8))
+        self.scheduled_preflight_button = None
+        # Keep the existing public button reference for regression tests and
+        # any automation that checks whether the plan preflight is mounted.
+        self.scheduled_preflight_button = ttk.Button(
+            self.tools_operations, text="检查自动选课计划（离线）",
+            command=self.inspect_scheduled_runner)
+        self.scheduled_preflight_button.pack_forget()
+        # Expose the real button, not an inert duplicate.
+        self.scheduled_preflight_button.pack(anchor="w", pady=(2, 0))
+
+        self.advanced_panel = ttk.LabelFrame(
+            self.tab_tools, text="高级协议配置 · 仅适合调试",
+            padding=8,
+        )
+        ttk.Label(self.advanced_panel, text="配置文件").pack(side="left")
+        self.config_entry = ttk.Entry(
+            self.advanced_panel, textvariable=self.path)
+        self.config_entry.pack(side="left", fill="x", expand=True, padx=(8, 6))
+        self.pick_button = ttk.Button(
+            self.advanced_panel, text="选择…", command=self.pick_config)
+        self.pick_button.pack(side="left")
+        self.open_button = ttk.Button(
+            self.advanced_panel, text="打开文件", command=self.open_config)
+        self.open_button.pack(side="left", padx=5)
+
+        self.log_frame = ttk.LabelFrame(
+            self.tab_tools, text="本地运行日志（不显示账号或凭证）", padding=8)
+        self.log_frame.pack(
+            fill="both", expand=True, padx=10, pady=(0, 8))
+        self.log_box = tk.Text(
+            self.log_frame, height=7, state="disabled", wrap="word")
         self.log_box.pack(fill="both", expand=True)
-        ttk.Button(log_frame, text="导出本机运行日志", command=self.export_log).pack(anchor="e", pady=(5, 0))
+        ttk.Button(
+            self.log_frame, text="导出本机运行日志",
+            command=self.export_log,
+        ).pack(anchor="e", pady=(5, 0))
 
     def toggle_advanced_panel(self) -> None:
+        self.notebook.select(self.tab_tools)
         if self.advanced_panel.winfo_manager():
             self.advanced_panel.pack_forget()
         else:
-            self.advanced_panel.pack(fill="x", before=self.action_panel)
+            self.advanced_panel.pack(
+                fill="x", before=self.log_frame, padx=10, pady=(0, 8))
 
     def toggle_portal_panel(self) -> None:
-        if self.portal_panel.winfo_manager():
-            self.portal_panel.pack_forget()
-        else:
-            self.portal_panel.pack(fill="x", before=self.course_frame)
+        """Navigate to manual backup instead of hiding the controls."""
+        self.notebook.select(self.tab_manual)
 
     def log(self, message: str) -> None:
         self.log_box.configure(state="normal")
@@ -843,7 +1000,10 @@ class Application(tk.Tk):
             course = str(item.get("course_name") or item.get("course_id") or "待填写")
             class_id = str(item.get("class_id") or "—")
             teacher = str(item.get("teacher") or "—")
-            self.table.insert("", "end", iid=key, values=(key, course, class_id, teacher, "待监测"))
+            placeholder = str(item.get("course_id") or "") in (
+                "FILL_FROM_OFFICIAL_PAGE", "SECOND_OPTION_ID")
+            label = "仅示例 · 未连接" if placeholder else "未查询"
+            self.table.insert("", "end", iid=key, values=(key, course, class_id, teacher, label))
 
     def demo_next(self) -> None:
         """Step through 3 bundled fictional snapshots; never touch the school."""
