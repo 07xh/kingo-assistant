@@ -17,7 +17,7 @@ import threading
 import time
 import tkinter as tk
 import webbrowser
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox, simpledialog, ttk
 
 from loguru import logger
 
@@ -39,6 +39,7 @@ from core.offline_benchmark import format_benchmark, run_offline_benchmark
 from core.official_portal_schedule import OfficialPortalAppointment, prepare_appointment, format_countdown
 from core.session_probe import SessionProbeResult, probe_own_session
 from core.native_preparation import NativePreparationResult, prepare_native_api
+from core.native_login import NativeLoginResult, login_with_verified_form, validate_login_contract
 from core.official_entries import OFFICIAL_ENTRIES, probe_official_login_surfaces
 from core.scheduled_ui_bridge import prepare_scheduled_plan
 from core.enrollment_schedule import ScheduledRunReport
@@ -98,9 +99,11 @@ class MonitorEvent:
 class MonitorWorker:
     """Async network loop runs on a background thread. Tk lives on the main thread."""
 
-    def __init__(self, config: dict, updates: queue.Queue[MonitorEvent]):
+    def __init__(self, config: dict, updates: queue.Queue[MonitorEvent],
+                 *, session_cookie: str | None = None):
         self.config = config
         self.updates = updates
+        self.session_cookie = session_cookie
         self.thread: threading.Thread | None = None
         self.loop: asyncio.AbstractEventLoop | None = None
         self.client: KingoClient | None = None
@@ -150,7 +153,8 @@ class MonitorWorker:
         self.loop = asyncio.get_running_loop()
         if self._stop_requested.is_set():
             return
-        client = KingoClient(self.config)
+        client = (KingoClient(self.config, session_cookie=self.session_cookie)
+                  if self.session_cookie is not None else KingoClient(self.config))
         self.client = client
         clock = TimeSync()
         try:
@@ -227,6 +231,9 @@ class Application(tk.Tk):
         self._portal_prelogin_opened = False
         self._session_check_in_progress = False
         self._native_preparation_in_progress = False
+        self._native_login_in_progress = False
+        self._native_session_cookie: str | None = None
+        self.native_login_status = tk.StringVar(value="EXE 尚未登录｜仅接受已核验的官方登录协议")
         self.native_preparation_status = tk.StringVar(value="尚未通过 EXE 接口核验身份与课程目录")
         self.portal_appointment_status = tk.StringVar(value="官网预约未启动（与自动提交无关）")
         self.path = tk.StringVar(value=str(ensure_config()))
@@ -310,13 +317,23 @@ class Application(tk.Tk):
 
         native_panel = ttk.Frame(self, padding=(16, 4))
         native_panel.pack(fill="x")
+        self.native_login_button = ttk.Button(
+            native_panel, text="EXE 内登录", command=self.start_native_login,
+        )
+        self.native_login_button.pack(side="left", padx=(0, 8))
+        self.native_clear_button = ttk.Button(
+            native_panel, text="清除本机会话", command=self.clear_native_session,
+        )
+        self.native_clear_button.pack(side="left", padx=(0, 8))
         self.native_prepare_button = ttk.Button(
             native_panel, text="EXE 接口提前预检（只读）",
             command=self.check_native_preparation,
         )
         self.native_prepare_button.pack(side="left", padx=(0, 8))
-        ttk.Label(native_panel, textvariable=self.native_preparation_status,
-                  foreground="#666", wraplength=680).pack(side="left", fill="x", expand=True)
+        ttk.Label(native_panel, textvariable=self.native_login_status,
+                  foreground="#666", wraplength=280).pack(side="left", fill="x", expand=True)
+        ttk.Label(self, textvariable=self.native_preparation_status,
+                  foreground="#666", wraplength=850, padding=(16, 0)).pack(fill="x")
 
         self.portal_panel = ttk.LabelFrame(self, text="手动官网备用（不自动提交）", padding=8)
         self.portal_appointment_button = ttk.Button(
@@ -476,7 +493,8 @@ class Application(tk.Tk):
 
         def execute() -> None:
             try:
-                result = asyncio.run(probe_own_session(config))
+                result = asyncio.run(probe_own_session(
+                    config, session_cookie=self.__dict__.get("_native_session_cookie")))
             except Exception:
                 result = SessionProbeResult("unavailable", False)
             self.events.put(MonitorEvent("session_probe", result))
@@ -488,10 +506,63 @@ class Application(tk.Tk):
             self.session_check_button.configure(state="normal")
             self.status.set("会话核验线程无法启动；未请求学校")
 
+    def start_native_login(self) -> None:
+        """One credential form submission in the EXE, never browser automation."""
+        if (self.worker or self.__dict__.get("scheduled_worker") or self._closing
+                or self._native_login_in_progress or self._native_preparation_in_progress
+                or self._session_check_in_progress):
+            return
+        try:
+            config = read_config(Path(self.path.get()), offline=True)
+        except (ValueError, TypeError, KeyError, OSError):
+            self.native_login_status.set("本机配置无效，无法登录")
+            return
+        code = validate_login_contract(config)
+        if code is not None:
+            self.native_login_status.set(NativeLoginResult(code).message)
+            return
+        username = simpledialog.askstring("EXE 内登录", "本人官方账号：", parent=self)
+        if username is None:
+            return
+        password = simpledialog.askstring(
+            "EXE 内登录", "官方密码（仅用于本次请求，不会保存）：",
+            show="*", parent=self,
+        )
+        if password is None:
+            return
+        self._native_session_cookie = None
+        self._native_login_in_progress = True
+        self.native_login_button.configure(state="disabled")
+        self.native_login_status.set("正在通过已核验的官方接口进行登录与身份确认")
+
+        def execute() -> None:
+            try:
+                result = asyncio.run(login_with_verified_form(config, username, password))
+            except Exception:
+                result = NativeLoginResult("unavailable")
+            self.events.put(MonitorEvent("native_login", result))
+
+        try:
+            threading.Thread(target=execute, name="KingoNativeLogin", daemon=True).start()
+        except RuntimeError:
+            self._native_login_in_progress = False
+            self.native_login_button.configure(state="normal")
+            self.native_login_status.set("登录线程启动失败；没有保存会话")
+
+    def clear_native_session(self) -> None:
+        """Clear in-process credentials; this is not a verified server logout."""
+        if (self.worker or self.__dict__.get("scheduled_worker")
+                or self._native_login_in_progress
+                or self._native_preparation_in_progress or self._session_check_in_progress):
+            return
+        self._native_session_cookie = None
+        self.native_login_status.set("已清除 EXE 内存会话；这不代表学校服务端注销")
+        self.native_preparation_status.set("会话已清除，接口核验结果失效")
+
     def check_native_preparation(self) -> None:
         """Explicit in-EXE identity + catalog HTTP checks, never browser automation."""
         if (self.worker or self.__dict__.get("scheduled_worker")
-                or self._session_check_in_progress
+                or self._session_check_in_progress or self._native_login_in_progress
                 or self._native_preparation_in_progress or self._closing):
             return
         try:
@@ -505,7 +576,8 @@ class Application(tk.Tk):
 
         def execute() -> None:
             try:
-                result = asyncio.run(prepare_native_api(config))
+                result = asyncio.run(prepare_native_api(
+                    config, session_cookie=self.__dict__.get("_native_session_cookie")))
             except Exception:
                 result = NativePreparationResult("unavailable")
             self.events.put(MonitorEvent("native_preparation", result))
@@ -921,14 +993,15 @@ class Application(tk.Tk):
             # One exact snapshot for preflight and the running client. Avoid
             # a second YAML read between authorization and worker construction.
             config = resolve_state_file(config, app_dir())
-            checks = inspect_readiness(config)
+            session_cookie = self.__dict__.get("_native_session_cookie")
+            checks = inspect_readiness(config, session_cookie=session_cookie)
             blockers, warnings = split_checks(checks)
             if blockers:
                 self.status.set(f"无法启动｜{len(blockers)} 项本地前提未完成")
                 messagebox.showwarning("先完成启动预检", format_checks(checks))
                 self.log(f"启动被本地预检拦截：{len(blockers)} 项；没有连接学校。")
                 return
-            validate(config, check_only=False)
+            validate(config, check_only=False, session_cookie=session_cookie)
             self.populate(config)
             self._previous_states = {}
             self._demo_report = None
@@ -941,7 +1014,8 @@ class Application(tk.Tk):
         # Advisory hints are logged and remain available via readiness UI.
         if warnings:
             self.log(f"本地预检有 {len(warnings)} 项非阻断提示；可在运行准备度中查看。")
-        self.worker = MonitorWorker(config, self.events)
+        self.worker = MonitorWorker(config, self.events,
+                                    session_cookie=self.__dict__.get("_native_session_cookie"))
         self.worker.start()
         self.start_button.configure(state="disabled")
         self.edit_button.configure(state="disabled")
@@ -1013,6 +1087,16 @@ class Application(tk.Tk):
                     self._session_check_in_progress = False
                     self.session_check_button.configure(state="normal")
                     result = event.value
+                    self.status.set(result.message)
+                    self.log(result.message)
+                elif event.kind == "native_login":
+                    self._native_login_in_progress = False
+                    self.native_login_button.configure(state="normal")
+                    result = event.value
+                    self._native_session_cookie = result.session_cookie if result.verified else None
+                    self.native_login_status.set(result.message)
+                    self.native_preparation_status.set("已登录，请手动执行 EXE 接口课程预检" if result.verified
+                                                       else "尚未通过身份核验，接口预检不会自动开始")
                     self.status.set(result.message)
                     self.log(result.message)
                 elif event.kind == "native_preparation":
@@ -1131,6 +1215,7 @@ class Application(tk.Tk):
         if self._closing:
             return
         self._closing = True
+        self._native_session_cookie = None
         self._official_portal_appointment = None
         self._portal_prelogin_opened = False
         self._tray.stop()
