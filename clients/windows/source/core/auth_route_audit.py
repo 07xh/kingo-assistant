@@ -57,7 +57,7 @@ class AuthRouteSummary:
             f"教务 HTTPS 请求：{self.school_https_requests} 条\n"
             f"忽略其他域名/不安全记录：{self.non_school_entries_ignored} 条\n\n"
             f"识别结果：{label}\n"
-            "不解析密码、Cookie、ticket、验证码或响应内容。"
+            "不解析账号凭据、会话凭据、身份票据、验证码或响应内容。"
             "不是登录成功、选课接口或剩余名额已核验的证明。"
         )
 
