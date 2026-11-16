@@ -93,8 +93,8 @@ class LiteReadMonitor:
 
         # Exactly the legacy rules: verified school read-only protocol and
         # server policy, valid course targets, local data location and session.
-        config = resolve_state_file(dict(config), app_dir())
         try:
+            config = resolve_state_file(dict(config), app_dir())
             validate(config, check_only=False, session_cookie=session_cookie)
         except (ValueError, KeyError, TypeError, OSError):
             return {"code": "preflight_rejected", **self.status()}
