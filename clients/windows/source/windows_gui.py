@@ -918,7 +918,8 @@ class Application(tk.Tk):
                 or self._native_preparation_in_progress or self._session_check_in_progress
                 or self.__dict__.get("_timetable_read_in_progress", False)
                 or self.__dict__.get("_school_page_read_in_progress", False)
-                or self.__dict__.get("_term_probe_in_progress", False)):
+                or self.__dict__.get("_term_probe_in_progress", False)
+                or self.__dict__.get("_s202_score_in_progress", False)):
             return
         self._native_session_cookie = None
         self._native_session_origin = None
@@ -1125,7 +1126,8 @@ class Application(tk.Tk):
                 or self._session_check_in_progress
                 or self.__dict__.get("_s202_result_in_progress", False)
                 or self.__dict__.get("_live_catalog_in_progress", False)
-                or self.__dict__.get("_s202_round_probe_in_progress", False)):
+                or self.__dict__.get("_s202_round_probe_in_progress", False)
+                or self.__dict__.get("_s202_score_in_progress", False)):
             return
         if (self._native_session_cookie is None
                 or self._native_session_origin != "jwmis.ncwu.edu.cn"):
@@ -1167,7 +1169,8 @@ class Application(tk.Tk):
                 or self._session_check_in_progress
                 or self.__dict__.get("_live_catalog_in_progress", False)
                 or self.__dict__.get("_s202_result_in_progress", False)
-                or self.__dict__.get("_s202_round_probe_in_progress", False)):
+                or self.__dict__.get("_s202_round_probe_in_progress", False)
+                or self.__dict__.get("_s202_score_in_progress", False)):
             return
         if (self._native_session_cookie is None
                 or self._native_session_origin != "jwmis.ncwu.edu.cn"):
@@ -1231,7 +1234,8 @@ class Application(tk.Tk):
                 or self._session_check_in_progress
                 or self.__dict__.get("_live_catalog_in_progress", False)
                 or self.__dict__.get("_s202_result_in_progress", False)
-                or self.__dict__.get("_s202_round_probe_in_progress", False)):
+                or self.__dict__.get("_s202_round_probe_in_progress", False)
+                or self.__dict__.get("_s202_score_in_progress", False)):
             return
         if not self._native_session_cookie or self._native_session_origin != "jwmis.ncwu.edu.cn":
             self.live_catalog_status.set("请先点击「在 EXE 登录本人教务账号」")
