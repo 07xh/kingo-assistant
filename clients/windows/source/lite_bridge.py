@@ -62,7 +62,10 @@ def snapshot_from(config: dict) -> dict:
         "semester": str(config["xnxq"]),
         "courses": courses,
         "mode": str(strategy["mode"]),
+        "target_time": str(strategy["target_time"]),
         "interval_seconds": list(strategy["interval_range"]),
+        "max_cycles": int(strategy["max_cycles"]),
+        "max_duration_minutes": int(strategy.get("max_duration_minutes", 480)),
         "protocol_verified": config.get("protocol", {}).get("verified") is True,
         # The Lite bridge has not authenticated or queried the school.
         "login_status": "not_checked",
