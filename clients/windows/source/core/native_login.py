@@ -37,6 +37,7 @@ class NativeLoginResult:
         return {
             "protocol_unverified": "学校身份接口尚未核验；未执行 EXE 登录",
             "login_unverified": "EXE 登录协议尚未核验；未发送账号密码",
+            "cas_adapter_missing": "已选择学校统一认证 CAS；目前未接入跨域认证协议，未请求密码",
             "invalid_contract": "登录协议字段不完整或不安全；未发送账号密码",
             "invalid_credentials": "请输入有效的本人账号和密码；未联网",
             "policy_unverified": "没有已核验的官方请求规则；未发送账号密码",
@@ -57,8 +58,14 @@ def _contract(config: Mapping) -> tuple[str | None, tuple | None]:
             return "protocol_unverified", None
     auth = config.get("auth")
     login = auth.get("login") if isinstance(auth, dict) else None
+    if isinstance(login, dict) and login.get("mode") == "cas":
+        # A public school CAS entry is NOT a verified cross-origin login
+        # protocol, and must not be sent to the single-origin form client.
+        return "cas_adapter_missing", None
     if not isinstance(login, dict) or login.get("verified") is not True:
         return "login_unverified", None
+    if login.get("mode", "direct_form") != "direct_form":
+        return "invalid_contract", None
     base = config.get("base_url")
     if not isinstance(base, str):
         return "invalid_contract", None
