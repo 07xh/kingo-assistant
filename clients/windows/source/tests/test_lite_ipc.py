@@ -42,7 +42,10 @@ class LiteIpcTests(TestCase):
             {"action": "monitor-status", "payload": None},
         ]
         result = self.run_sidecar(commands)
-        self.assertEqual(result.returncode, 0, result.stderr)
+        # This test contains no personal tokens, so safe diagnostics may
+        # include its synthetic sidecar response if transport framing fails.
+        self.assertEqual(result.returncode, 0, "stdout=" + result.stdout[:3000]
+                         + " stderr=" + result.stderr[:3000])
         lines = [json.loads(row) for row in result.stdout.splitlines()]
         self.assertEqual(len(lines), 3)
         self.assertTrue(all(row["ok"] is True for row in lines))
