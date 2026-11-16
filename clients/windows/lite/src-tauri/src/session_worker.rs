@@ -65,8 +65,27 @@ impl Drop for SessionWorker {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct SessionState(Arc<Mutex<Option<SessionWorker>>>);
+
+impl SessionState {
+    /// Serialize all local configuration writes against monitor-start and
+    /// reject them while the original read-only monitoring worker is active.
+    pub(crate) fn run_when_idle<F, T>(&self, operation: F) -> Result<T, String>
+    where
+        F: FnOnce() -> Result<T, String>,
+    {
+        let mut session = self.0.lock().map_err(|_| "本机会话状态不可用".to_string())?;
+        if let Some(worker) = session.as_mut() {
+            let state = worker.exchange("monitor-status", None)?;
+            if state.get("active").and_then(|value| value.as_bool()) != Some(false) {
+                return Err("请先停止只读监测，再修改课程或查询设置".to_string());
+            }
+        }
+        operation()
+    }
+}
+
 
 #[tauri::command]
 pub async fn kingo_session_action(
