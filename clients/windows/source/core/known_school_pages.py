@@ -190,11 +190,16 @@ async def read_known_school_page(
             mime = response.headers.get("content-type", "").split(";", 1)[0].strip().lower()
             if mime not in ("text/html", "application/xhtml+xml"):
                 return KnownSchoolPageResult("invalid_response", page_kind)
+            charset = "utf-8"
+            for param in response.headers.get("content-type", "").split(";")[1:]:
+                if param.strip().lower().startswith("charset="):
+                    charset = param.split("=", 1)[1].strip().strip('"').lower()
+            # Interpret only a small, known-safe set of legacy encodings.
+            if charset not in ("utf-8", "utf8", "gbk", "gb2312", "gb18030"):
+                return KnownSchoolPageResult("invalid_response", page_kind)
             try:
-                decoded = response.content.decode("utf-8-sig", errors="strict")
-            except UnicodeError:
-                # Historical school HTML can use a legacy charset; this
-                # non-authoritative shape verifier refuses to guess encoding.
+                decoded = response.content.decode(charset, errors="strict")
+            except (UnicodeError, LookupError):
                 return KnownSchoolPageResult("invalid_response", page_kind)
             parser = _TableShape()
             parser.feed(decoded)
