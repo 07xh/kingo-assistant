@@ -18,6 +18,9 @@ auth:
   # Empty placeholders intentionally disable network authentication.
   # This is NOT a working NCWU login endpoint, and CAS/SSO is not yet adapted.
   login:
+    # Supported template: direct_form. CAS is identified but not implemented.
+    # Choosing mode: cas disables form submission until a reviewed CAS adapter exists.
+    mode: direct_form
     verified: false
     method: POST
     path: ""
