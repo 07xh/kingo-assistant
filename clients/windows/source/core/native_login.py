@@ -26,10 +26,11 @@ class NativeLoginResult:
     code: str
     # Never include a credential in repr, logs, return message or settings.
     session_cookie: str = field(default="", repr=False, compare=False)
+    session_origin: str = field(default="", repr=False, compare=False)
 
     @property
     def verified(self) -> bool:
-        return self.code == "verified" and bool(self.session_cookie)
+        return self.code == "verified" and bool(self.session_cookie) and bool(self.session_origin)
 
     @property
     def message(self) -> str:
@@ -178,7 +179,7 @@ async def login_with_verified_form(
                 return NativeLoginResult("unavailable")
         client = identity_factory(dict(config), session_cookie=cookie)
         await client.identity()
-        return NativeLoginResult("verified", cookie)
+        return NativeLoginResult("verified", cookie, netloc)
     except AuthenticationError:
         return NativeLoginResult("expired")
     except RateLimitError:
