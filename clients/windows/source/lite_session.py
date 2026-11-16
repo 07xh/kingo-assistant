@@ -53,6 +53,32 @@ class LiteSession:
             "origin": self.origin if self.status == "verified" else "",
         }
 
+    def restore_readiness(self, config: Mapping) -> dict[str, Any]:
+        """Purely local explanation of whether a manual restore can be tried.
+
+        Never asserts the school has accepted a saved cookie; only the
+        separately budgeted, explicitly invoked identity read can do that.
+        """
+        saved = self.vault.load() if self.vault is not None else None
+        if saved is None:
+            code = "no_saved_session"
+            message = "本机没有可恢复的加密会话"
+        elif (not isinstance(config.get("known_year_term"), Mapping)
+              or config["known_year_term"].get("identity_binding_verified") is not True
+              or validate_term_contract(config) is not None):
+            code = "identity_unverified"
+            message = "学校账号身份回读协议尚未核验，不能安全恢复"
+        elif (not isinstance(config.get("server_policy"), Mapping)
+              or config["server_policy"].get("verified") is not True):
+            code = "policy_unverified"
+            message = "学校请求预算规则尚未核验，不能尝试联网恢复"
+        else:
+            code = "ready_to_verify"
+            message = "本机条件满足；仍须手动请求学校身份核验，不能保证会话有效"
+        return {"code": code, "message": message,
+                "may_attempt": code == "ready_to_verify",
+                "school_verified": False}
+
     def restore(self, config: Mapping) -> dict[str, Any]:
         """One explicit user action; never trust a saved cookie without proof."""
         if self.status == "verified":
