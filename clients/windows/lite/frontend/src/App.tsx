@@ -4,7 +4,7 @@ import {
   Minus,Monitor, Moon,PanelLeftClose,PanelLeftOpen,Plus,RefreshCw,
   Save,Settings,ShieldAlert,Sun,Trash2, X, Square, GraduationCap, Pencil
 } from "lucide-react";
-import {applyPlan,blankCourse,createPlan,deletePlan,isDesktop,listPlans,preflight,saveCourses,saveStrategy,snapshot,windowAction,type Course,type Preflight,type Snapshot,type Strategy} from "./bridge";
+import {applyPlan,blankCourse,createPlan,deletePlan,isDesktop,listPlans,preflight,saveCourses,saveStrategy,snapshot,windowAction,signedLogin,logout,manualCatalog,sessionStatus,type OfficialCatalog,type LoginReply,type SessionInfo,type Course,type Preflight,type Snapshot,type Strategy} from "./bridge";
 
 type Page = "home" | "courses" | "execution" | "logs";
 const navigation = [
@@ -45,6 +45,13 @@ export default function App() {
   const [editError,setEditError]=useState("");
   const [events,setEvents]=useState<EventEntry[]>([]);
   const [editing,setEditing]=useState<number|null>(null);
+  const [loginOpen,setLoginOpen]=useState(false);
+  const [username,setUsername]=useState("");
+  const [password,setPassword]=useState("");
+  const [session,setSession]=useState<SessionInfo|null>(null);
+  const [loginResult,setLoginResult]=useState<LoginReply|null>(null);
+  const [catalog,setCatalog]=useState<OfficialCatalog|null>(null);
+  const [schoolBusy,setSchoolBusy]=useState(false);
   const [plansOpen,setPlansOpen]=useState(false);
   const [planName,setPlanName]=useState("");
   const [plans,setPlans]=useState<string[]>([]);
@@ -71,6 +78,10 @@ export default function App() {
     } finally {setLoading(false);}
   }
   useEffect(()=>{void reload();},[]);
+  useEffect(()=>{
+    if(!isDesktop())return;
+    void sessionStatus().then(setSession).catch(()=>setSession(null));
+  },[]);
   useEffect(()=>{localStorage.setItem("kingo-lite.theme",theme);},[theme]);
   useEffect(()=>{localStorage.setItem("kingo-lite.nav.collapsed",String(collapsed));},[collapsed]);
   function openEditor(index:number) {
@@ -182,6 +193,38 @@ export default function App() {
     }catch(e){setDialogError(shortError(e));}
     finally{setLoading(false);}
   }
+  async function loginUser(event:FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if(schoolBusy || !username.trim() || !password)return;
+    setSchoolBusy(true);setError("");setLoginResult(null);
+    try {
+      const result=await signedLogin(username.trim(),password);
+      setSession(result.session);setLoginResult(result);
+      setCatalog(null);
+      log(result.session.verified_at_login?"本人账号身份回读通过（未查询课程）":"EXE 登录未通过："+result.code);
+      if(result.session.verified_at_login){setLoginOpen(false);setUsername("");}
+    }catch(e){setError(shortError(e));log("EXE 登录服务请求失败（无凭据被保存）");}
+    finally{setPassword("");setSchoolBusy(false);}
+  }
+  async function endSession() {
+    if(schoolBusy)return;
+    setSchoolBusy(true);setError("");
+    try{
+      const result=await logout();setSession(result);setCatalog(null);setLoginResult(null);
+      setUsername("");setPassword("");log("已清除进程内会话，未向教务系统发送退出请求");
+    }catch(e){setError(shortError(e));}
+    finally{setSchoolBusy(false);}
+  }
+  async function loadCatalog() {
+    if(schoolBusy || session?.status!=="verified")return;
+    setSchoolBusy(true);setError("");
+    try{
+      const result=await manualCatalog();
+      setCatalog(result);setSession(result.session);
+      log(result.code==="catalog_read"?"S202 官网只读查询完成："+result.total_courses+" 条课程":"S202 官网查询未完成："+result.code);
+    }catch(e){setError(shortError(e));setCatalog(null);log("S202 只读查询失败，没有模拟数据");}
+    finally{setSchoolBusy(false);}
+  }
   function go(next:Page) {setPage(next);setError("");}
   return (
     <div className={"app "+theme}>
@@ -239,12 +282,19 @@ export default function App() {
             </section>
             <div className="stats">
               <div className="card metric"><span>本机课程</span><strong>{snapshotData?courses.length:"—"}</strong><small>仅本地草稿</small></div>
-              <div className="card metric"><span>账号登录</span><strong className="metric-word">未验证</strong><small>新界面尚未接入认证</small></div>
-              <div className="card metric"><span>在线课程</span><strong className="metric-word">未查询</strong><small>无实时余量数据</small></div>
+              <div className="card metric"><span>账号登录</span><strong className="metric-word">{session?.status==="verified"?"已核验":"未登录"}</strong><small>{session?.status==="verified"?"本次登录已通过身份回读":"需在应用内授权"}</small></div>
+              <div className="card metric"><span>在线课程</span><strong className="metric-word">{catalog?.code==="catalog_read"?catalog.total_courses:"未查询"}</strong><small>{catalog?.code==="catalog_read"?"最近一次手动读取；非已选结果":"无实时余量数据"}</small></div>
               <div className="card metric"><span>自动提交</span><strong className="metric-word">不可用</strong><small>真实提交适配器未验收</small></div>
             </div>
             <section className="card section">
-              <div className="section-heading"><div><h3>快捷入口</h3><p>只展示当前有明确功能的操作</p></div></div>
+              <div className="section-heading"><div><h3>教务登录</h3><p>在 EXE 内使用已有的 NCWU 原生签名登录；不会保存密码或 Cookie。</p></div></div>
+              <div className="login-actions">
+                <span className={"status "+(session?.status==="verified"?"good":"muted")}>{session?.status==="verified"?"本次身份已核验":"尚无已核验会话"}</span>
+                {session?.status==="verified"?<button className="button" disabled={schoolBusy} onClick={()=>void endSession()}>清除会话</button>:<button className="button primary" disabled={schoolBusy||!isDesktop()} onClick={()=>{setLoginResult(null);setLoginOpen(true);}}>登录本人教务账号</button>}
+                {session?.status==="verified"&&<button className="button primary" disabled={schoolBusy} onClick={()=>{go("execution");void loadCatalog();}}>手动读取课程</button>}
+              </div>
+              {loginResult&&!loginResult.session.verified_at_login&&<div className="notice warning">{loginResult.message}</div>}
+              <div className="section-heading" style={{marginTop:18}}><div><h3>快捷入口</h3><p>只展示当前有明确功能的操作</p></div></div>
               <div className="quick-grid">
                 <button className="quick" onClick={()=>go("courses")}><BookOpen size={22}/><strong>管理选课计划</strong><small>添加课程、调整志愿</small><ChevronRight size={16} className="quick-arrow"/></button>
                 <button className="quick" onClick={()=>go("execution")}><Monitor size={22}/><strong>查看执行状态</strong><small>区分只读、调度与正式提交</small><ChevronRight size={16} className="quick-arrow"/></button>
@@ -267,10 +317,19 @@ export default function App() {
             </section>
             <section className="card section"><h3>真实能力状态</h3>
               <div className="cap-row"><span>本地课程计划</span><span className={"status "+(snapshotData?"good":"muted")}>{snapshotData?"可读取":"不可用"}</span></div>
-              <div className="cap-row"><span>官方账号会话</span><span className="status muted">新界面未接通</span></div>
-              <div className="cap-row"><span>学校实时课程</span><span className="status muted">未查询</span></div>
+              <div className="cap-row"><span>官方账号会话</span><span className={"status "+(session?.status==="verified"?"good":"muted")}>{session?.status==="verified"?"本次登录身份已核验":"未登录"}</span></div>
+              <div className="cap-row"><span>学校实时课程</span><span className={"status "+(catalog?.code==="catalog_read"?"good":"muted")}>{catalog?.code==="catalog_read"?"最近一次查询已返回":"未获得可展示数据"}</span></div>
               <div className="cap-row"><span>只读监测</span><span className="status muted">等待迁移后台控制器</span></div>
               <div className="cap-row"><span>自动提交</span><span className="status blocked">学校写入适配器缺失</span></div>
+            </section>
+            <section className="card section"><div className="section-heading"><div><h3>NCWU S202 课程目录</h3><p>仅在你点击时从官网读取一次。状态字段不是已选结果，也不包含已核验的剩余名额。</p></div>
+                <button className="button primary" disabled={schoolBusy||session?.status!=="verified"||!isDesktop()} onClick={()=>void loadCatalog()}>{schoolBusy?"读取中…":"手动读取官网目录"}</button></div>
+                {catalog&&<div className={"notice "+(catalog.code==="catalog_read"?"warning":"error")}>{catalog.message}</div>}
+                {catalog?.code==="catalog_read"&&<><div className="course-footer"><small>学校返回 {catalog.total_courses} 条；显示 {catalog.courses.length} 条。本次读取不会提交选课。</small></div>
+                  <div className="table-wrap"><table><thead><tr><th>课程名称</th><th>课程代码</th><th>教学班</th><th>任课教师</th><th>选课状态</th></tr></thead>
+                  <tbody>{catalog.courses.map((row,index)=><tr key={index}><td>{row.course_name||"—"}</td><td>{row.course_code}</td><td>{row.class_number}</td><td>{row.teacher||"—"}</td><td>{row.selection_status||"未提供"}</td></tr>)}</tbody></table></div>
+                </>}
+                {!catalog&&<p>尚无本次会话的官网查询结果。需先登录本人账号；Lite 不会自动轮询，也不会读取浏览器 Cookie。</p>}
             </section>
             <section className="card section"><h3>当前本机查询配置</h3>
               <p>模式：{snapshotData?.mode==="burst"?"定时单次查询":"常规只读监测"}　查询间隔：{snapshotData?.interval_seconds?.join("–")||"未读取"} 秒</p>
@@ -294,6 +353,19 @@ export default function App() {
             <p>此版本正在迁移桌面界面。旧版已具备的真实业务逻辑不会被本界面替代或删除。</p></div>
           </div>
         </section>
+      </div>}
+      {loginOpen&&<div className="overlay" onMouseDown={e=>{if(e.target===e.currentTarget&&!schoolBusy){setLoginOpen(false);setPassword("");}}}>
+        <form className="modal edit-modal" role="dialog" aria-modal="true" aria-label="本人教务登录" onSubmit={e=>void loginUser(e)}>
+          <div className="modal-heading"><h2>登录本人教务账号</h2><button type="button" aria-label="关闭登录" disabled={schoolBusy} onClick={()=>{setLoginOpen(false);setPassword("");}}><X size={18}/></button></div>
+          <p>使用旧版 EXE 已接入的 NCWU 签名协议。密码仅在本次授权时发送给本机业务进程，若学校要求验证码或额外认证则停止，不自动绕过。</p>
+          <div className="form-grid">
+            <label>教务账号<input required autoComplete="username" value={username} maxLength={128} onChange={e=>setUsername(e.target.value)}/></label>
+            <label>教务密码<input required type="password" autoComplete="current-password" value={password} maxLength={256} onChange={e=>setPassword(e.target.value)}/></label>
+          </div>
+          {loginResult&&!loginResult.session.verified_at_login&&<div className="notice warning" role="status">{loginResult.message}</div>}
+          <div className="modal-actions"><button className="button" type="button" disabled={schoolBusy} onClick={()=>{setPassword("");setLoginOpen(false);}}>取消</button>
+            <button className="button primary" type="submit" disabled={schoolBusy||!username.trim()||!password}>{schoolBusy?"登录核验中…":"登录并核验身份"}</button></div>
+        </form>
       </div>}
       {plansOpen&&<div className="overlay" onMouseDown={e=>{if(e.target===e.currentTarget)setPlansOpen(false);}}>
         <section className="modal" role="dialog" aria-modal="true" aria-label="管理课程方案">
