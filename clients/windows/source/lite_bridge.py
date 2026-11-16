@@ -199,7 +199,7 @@ def serve() -> int:
     session = LiteSession(vault=WindowsSessionVault(app_dir()))
     monitor = LiteReadMonitor()
     operations = {
-        "login", "catalog", "session", "logout", "restore",
+        "login", "catalog", "session", "logout", "restore", "forget",
         "monitor-start", "monitor-stop", "monitor-status",
     }
     while True:
