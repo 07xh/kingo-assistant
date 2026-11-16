@@ -1636,6 +1636,15 @@ def run_packaged_gui_smoke() -> None:
                     raise AssertionError("Previously captured native timetable action missing")
                 if "既有接口" not in str(app.timetable_read_button.cget("text")):
                     raise AssertionError("Known timetable API must be distinguished from elective catalog")
+                if app.school_page_button.winfo_manager() != "pack":
+                    raise AssertionError("Observed school results readback must be mounted under tools")
+                if app.school_page_button.winfo_ismapped():
+                    raise AssertionError("Advanced readback action must stay off the home tab")
+                with patch("core.known_school_pages.httpx.AsyncClient",
+                           side_effect=AssertionError("unverified result-page query attempted network")):
+                    app.check_known_school_results()
+                if "旧 HAR" not in app.school_page_status.get():
+                    raise AssertionError("Unverified school query must stop with an explicit message")
                 # Placeholder auth contract must not open a password prompt or
                 # contact the network, even when clicked in a packaged EXE.
                 with patch.object(simpledialog, "askstring",
