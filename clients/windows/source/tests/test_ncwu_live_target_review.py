@@ -49,7 +49,7 @@ class LiveS202TargetReviewTests(TestCase):
             config(target(class_id="SAME_STRING")),
         )
         self.assertEqual(result.candidate_targets, 1)
-        self.assertNotIn("教学班确认", result.message.splitlines()[0])
+        self.assertIn("非教学班确认", result.message.splitlines()[0])
         self.assertEqual(result.targets[0].configured_class_id, "SAME_STRING")
         self.assertIn("教学班真实标识尚未核对", result.targets[0].label)
 
