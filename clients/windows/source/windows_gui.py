@@ -655,6 +655,10 @@ class Application(tk.Tk):
         ttk.Button(
             contract_row, text="核验初始化／资格预检 HAR（离线）",
             command=self.inspect_ncwu_contracts,
+        ).pack(side="left", padx=(0, 8))
+        ttk.Button(
+            contract_row, text="复制脱敏契约报告",
+            command=self.copy_ncwu_contract_report,
         ).pack(side="left")
         term_row = ttk.Frame(self.tools_operations)
         term_row.pack(fill="x", pady=(4, 1))
@@ -1144,6 +1148,25 @@ class Application(tk.Tk):
         scrollbar.pack(side="right", fill="y", padx=(0, 10), pady=(0, 14))
         tree.pack(side="left", fill="both", expand=True, padx=(12, 0), pady=(0, 14))
 
+    def copy_ncwu_contract_report(self) -> None:
+        """Copy only locally generated structural evidence, never the HAR."""
+        text = self.__dict__.get("_last_ncwu_contract_report")
+        if not isinstance(text, str) or not text:
+            messagebox.showinfo(
+                "脱敏报告", "请先选择本人 HAR 完成本地接口核验。")
+            return
+        try:
+            self.clipboard_clear()
+            self.clipboard_append(text)
+            self.update_idletasks()
+        except tk.TclError:
+            messagebox.showwarning(
+                "脱敏报告", "系统剪贴板暂不可用，未复制任何内容。")
+            return
+        self.log("已复制脱敏 HAR 接口字段报告；不含请求和响应的原始取值。")
+        messagebox.showinfo("脱敏报告", "已复制字段结构报告。可用于继续核验接口，"
+                             "不要附带原始 HAR 或账号凭证。")
+
     def inspect_ncwu_contracts(self) -> None:
         """Inspect only local HAR keys for two currently unverified routes."""
         filename = filedialog.askopenfilename(
@@ -1161,6 +1184,12 @@ class Application(tk.Tk):
             messagebox.showwarning(
                 "接口证据核验", "无法读取文件或超过 16 MiB；没有访问学校。")
             return
+        if report.code == "parsed":
+            # Only this bounded, value-free report is retained in memory.
+            # The raw HAR and all request/response bodies are discarded.
+            self._last_ncwu_contract_report = report.message
+        else:
+            self._last_ncwu_contract_report = None
         self.log("已在本机检查 S202 初始化与资格预检 HAR 字段名；"
                  "没有保存、上传或发送捕获的请求与响应。")
         messagebox.showinfo("初始化／教学班预检契约（仅本机）",
