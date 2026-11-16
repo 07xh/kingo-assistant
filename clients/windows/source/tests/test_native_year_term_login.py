@@ -29,6 +29,7 @@ def year_term_auth_config():
         # the identity contract uses the captured YearTerm read.
         "known_year_term": {
             "verified": True,
+            "identity_binding_verified": True,
             "method": "POST",
             "path": "/hsjw/jw/common/showYearTerm.action",
             "request_mode": "empty",
@@ -110,6 +111,11 @@ class YearTermBoundLoginTests(TestCase):
         self.assertEqual(result.code, "identity_unverified")
         budget.assert_not_called()
         term.assert_not_called()
+
+    def test_unverified_authenticated_only_behavior_blocks_password_prompt(self):
+        cfg = year_term_auth_config()
+        cfg["known_year_term"]["identity_binding_verified"] = False
+        self.assertEqual(validate_login_contract(cfg), "identity_unverified")
 
     def test_invalid_identity_mode_denied(self):
         cfg = year_term_auth_config()
