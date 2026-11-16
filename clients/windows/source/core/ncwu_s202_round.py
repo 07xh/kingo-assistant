@@ -161,17 +161,9 @@ async def probe_s202_round(
                     response = await send()
             else:
                 response = await send()
-            if response.status_code in (401, 302, 303, 307, 308):
-                return S202RoundStatus("expired")
-            if response.status_code in (403, 429):
-                if response.status_code == 429 and budget is not None:
-                    from core.client import KingoClient
-                    delay = KingoClient._retry_after_seconds(
-                        response.headers.get("Retry-After"))
-                    await budget.impose_retry_after(delay or 60.0)
-                return S202RoundStatus("restricted")
-            if response.status_code != 200:
-                return S202RoundStatus("unavailable")
+            error = await classify_read_response(response, budget)
+            if error:
+                return S202RoundStatus(error)
             return parse_s202_round(response.content)
     except (httpx.HTTPError, ValueError, TypeError, KeyError):
         return S202RoundStatus("unavailable")
