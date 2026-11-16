@@ -215,7 +215,7 @@ def _parse_catalog(page: str) -> tuple[tuple[LiveElectiveCourse, ...], int]:
             continue
         by_name: dict[str, str] = {}
         row_id = tr.get("id", "")
-        prefix = row_id + "_" if re.fullmatch(r"tr\\d+", row_id) else ""
+        prefix = row_id + "_" if re.fullmatch(r"tr[0-9]+", row_id) else ""
         for cell in cells:
             key = cell.get("name") or ""
             cid = cell.get("id", "")
