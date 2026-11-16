@@ -17,6 +17,7 @@ import threading
 import time
 import tkinter as tk
 import webbrowser
+from urllib.parse import urlsplit
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
 from loguru import logger
@@ -48,6 +49,22 @@ from main import _read_local_html, validate
 
 APP_TITLE = "KingoAssistant · Windows（只读监测｜自动提交尚未接入）"
 OFFICIAL_PORTAL = "https://jwmis.ncwu.edu.cn"  # Confirmed by school notices; NOT an API endpoint.
+
+
+def scoped_native_cookie(app, config: dict) -> str | None:
+    """Never send a volatile login token to a different configured origin."""
+    cookie = app.__dict__.get("_native_session_cookie")
+    if cookie is None:
+        return None  # Legacy external session behavior if no native login exists.
+    origin = app.__dict__.get("_native_session_origin")
+    address = config.get("base_url") if isinstance(config, dict) else None
+    try:
+        parsed = urlsplit(address)
+    except (TypeError, ValueError):
+        return ""
+    if parsed.scheme == "https" and parsed.netloc == origin:
+        return cookie
+    return ""  # Explicitly prevent fallback to a legacy environment session.
 
 
 def app_dir() -> Path:
@@ -233,6 +250,7 @@ class Application(tk.Tk):
         self._native_preparation_in_progress = False
         self._native_login_in_progress = False
         self._native_session_cookie: str | None = None
+        self._native_session_origin: str | None = None
         self.native_login_status = tk.StringVar(value="EXE 尚未登录｜仅接受已核验的官方登录协议")
         self.native_preparation_status = tk.StringVar(value="尚未通过 EXE 接口核验身份与课程目录")
         self.portal_appointment_status = tk.StringVar(value="官网预约未启动（与自动提交无关）")
@@ -494,7 +512,7 @@ class Application(tk.Tk):
         def execute() -> None:
             try:
                 result = asyncio.run(probe_own_session(
-                    config, session_cookie=self.__dict__.get("_native_session_cookie")))
+                    config, session_cookie=scoped_native_cookie(self, config)))
             except Exception:
                 result = SessionProbeResult("unavailable", False)
             self.events.put(MonitorEvent("session_probe", result))
@@ -531,6 +549,7 @@ class Application(tk.Tk):
         if password is None:
             return
         self._native_session_cookie = None
+        self._native_session_origin = None
         self._native_login_in_progress = True
         self.native_login_button.configure(state="disabled")
         self.native_login_status.set("正在通过已核验的官方接口进行登录与身份确认")
@@ -556,6 +575,7 @@ class Application(tk.Tk):
                 or self._native_preparation_in_progress or self._session_check_in_progress):
             return
         self._native_session_cookie = None
+        self._native_session_origin = None
         self.native_login_status.set("已清除 EXE 内存会话；这不代表学校服务端注销")
         self.native_preparation_status.set("会话已清除，接口核验结果失效")
 
@@ -578,7 +598,7 @@ class Application(tk.Tk):
         def execute() -> None:
             try:
                 result = asyncio.run(prepare_native_api(
-                    config, session_cookie=self.__dict__.get("_native_session_cookie")))
+                    config, session_cookie=scoped_native_cookie(self, config)))
             except Exception:
                 result = NativePreparationResult("unavailable")
             self.events.put(MonitorEvent("native_preparation", result))
@@ -801,7 +821,10 @@ class Application(tk.Tk):
             return
         try:
             config = read_config(Path(self.path.get()), offline=True)
-            checks = inspect_readiness(resolve_state_file(config, app_dir()))
+            config = resolve_state_file(config, app_dir())
+            cookie = scoped_native_cookie(self, config)
+            checks = (inspect_readiness(config, session_cookie=cookie)
+                      if cookie is not None else inspect_readiness(config))
         except Exception:
             messagebox.showerror("无法检查", "配置结构无效，请先修正 YAML 文件。")
             return
@@ -994,7 +1017,7 @@ class Application(tk.Tk):
             # One exact snapshot for preflight and the running client. Avoid
             # a second YAML read between authorization and worker construction.
             config = resolve_state_file(config, app_dir())
-            session_cookie = self.__dict__.get("_native_session_cookie")
+            session_cookie = scoped_native_cookie(self, config)
             checks = (inspect_readiness(config, session_cookie=session_cookie)
                       if session_cookie is not None else inspect_readiness(config))
             blockers, warnings = split_checks(checks)
@@ -1019,7 +1042,7 @@ class Application(tk.Tk):
         # Advisory hints are logged and remain available via readiness UI.
         if warnings:
             self.log(f"本地预检有 {len(warnings)} 项非阻断提示；可在运行准备度中查看。")
-        session_cookie = self.__dict__.get("_native_session_cookie")
+        session_cookie = scoped_native_cookie(self, config)
         self.worker = (MonitorWorker(config, self.events, session_cookie=session_cookie)
                        if session_cookie is not None else MonitorWorker(config, self.events))
         self.worker.start()
@@ -1100,6 +1123,7 @@ class Application(tk.Tk):
                     self.native_login_button.configure(state="normal")
                     result = event.value
                     self._native_session_cookie = result.session_cookie if result.verified else None
+                    self._native_session_origin = result.session_origin if result.verified else None
                     self.native_login_status.set(result.message)
                     self.native_preparation_status.set("已登录，请手动执行 EXE 接口课程预检" if result.verified
                                                        else "尚未通过身份核验，接口预检不会自动开始")
@@ -1112,6 +1136,7 @@ class Application(tk.Tk):
                     self.native_preparation_status.set(result.message)
                     if result.code == "expired":
                         self._native_session_cookie = None
+                        self._native_session_origin = None
                         self.native_login_status.set("应用登录会话已过期，请重新登录")
                     self.status.set(result.message)
                     self.log(result.message)
@@ -1225,6 +1250,7 @@ class Application(tk.Tk):
             return
         self._closing = True
         self._native_session_cookie = None
+        self._native_session_origin = None
         self._official_portal_appointment = None
         self._portal_prelogin_opened = False
         self._tray.stop()
