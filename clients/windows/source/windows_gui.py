@@ -47,6 +47,7 @@ from core.ncwu_term_probe import TermProbeResult, probe_known_year_term, validat
 from core.native_login import NativeLoginResult, login_with_verified_form, validate_login_contract
 from core.ncwu_signed_login import login_ncwusigned, validate_ncwulogin_entry
 from core.ncwu_elective_table import inspect_elective_table
+from core.ncwu_live_elective import LiveElectiveSnapshot, live_s202_snapshot
 from core.official_entries import OFFICIAL_ENTRIES, probe_official_login_surfaces
 from core.scheduled_ui_bridge import prepare_scheduled_plan
 from core.attestation import AttestationError, AttestationRegistry, resolve_registry
@@ -283,10 +284,12 @@ class Application(tk.Tk):
         self._school_page_read_in_progress = False
         self._term_probe_in_progress = False
         self._native_login_in_progress = False
+        self._live_catalog_in_progress = False
         self._native_session_cookie: str | None = None
         self._native_session_origin: str | None = None
         self.native_login_status = tk.StringVar(value="尚未登录｜已接入普通网页账号的签名协议，需本人实机验收")
         self.native_preparation_status = tk.StringVar(value="尚未通过 EXE 接口核验身份与课程目录")
+        self.live_catalog_status = tk.StringVar(value="实时 S202 查询：先登录本人账号，再点击读取；选课未开放也可查询页面")
         self.timetable_read_status = tk.StringVar(value="此前 HAR 已确认课表 JSON 路径；请求参数和 EXE 会话待核验")
         self.school_page_status = tk.StringVar(value="旧 HAR 已确认网页地址；已选结果的动态查询参数仍待核验")
         self.term_probe_status = tk.StringVar(value="11月3日及14日 HAR 均观察到无需表单参数的学年学期接口")
@@ -408,10 +411,19 @@ class Application(tk.Tk):
             timetable_row, text="读取本人课表（既有接口 · 只读）",
             command=self.check_known_timetable)
         self.timetable_read_button.pack(side="left", padx=(0, 8))
+        self.live_catalog_button = ttk.Button(
+            timetable_row, text="实时读取可选课程（S202 · 只读）",
+            command=self.check_live_catalog,
+        )
+        self.live_catalog_button.pack(side="left")
         ttk.Label(
-            timetable_row, textvariable=self.timetable_read_status,
-            foreground="#666", wraplength=660,
-        ).pack(side="left", fill="x", expand=True)
+            auth_panel, textvariable=self.timetable_read_status,
+            foreground="#666", wraplength=920,
+        ).pack(anchor="w", pady=(4, 0))
+        ttk.Label(
+            auth_panel, textvariable=self.live_catalog_status,
+            foreground="#416075", wraplength=920,
+        ).pack(anchor="w", pady=(4, 0))
 
         monitor_panel = ttk.LabelFrame(
             self.tab_home, text="第 3 步  ·  课程余量监测（只读）",
@@ -793,7 +805,7 @@ class Application(tk.Tk):
         """One credential form submission in the EXE, never browser automation."""
         if (self.worker or self.__dict__.get("scheduled_worker") or self._closing
                 or self._native_login_in_progress or self._native_preparation_in_progress
-                or self._session_check_in_progress
+                or self._live_catalog_in_progress or self._session_check_in_progress
                 or self.__dict__.get("_timetable_read_in_progress", False)
                 or self.__dict__.get("_school_page_read_in_progress", False)
                 or self.__dict__.get("_term_probe_in_progress", False)):
@@ -977,10 +989,78 @@ class Application(tk.Tk):
             self.school_page_button.configure(state="normal")
             self.school_page_status.set("读取线程启动失败；没有访问学校")
 
+    def check_live_catalog(self) -> None:
+        """Read the current S202 form/window/catalog via the EXE's own session."""
+        if (self.worker or self.__dict__.get("scheduled_worker") or self._closing
+                or self._native_login_in_progress
+                or self._native_preparation_in_progress
+                or self._session_check_in_progress
+                or self._live_catalog_in_progress):
+            return
+        if not self._native_session_cookie or self._native_session_origin != "jwmis.ncwu.edu.cn":
+            self.live_catalog_status.set("请先点击「在 EXE 登录本人教务账号」")
+            return
+        try:
+            config = read_config(Path(self.path.get()), offline=True)
+        except (ValueError, TypeError, KeyError, OSError):
+            self.live_catalog_status.set("配置读取失败；未查询学校")
+            return
+        self._live_catalog_in_progress = True
+        self.live_catalog_button.configure(state="disabled")
+        self.live_catalog_status.set("正在从官网读取当前正选表单、时间窗及课程列表（只读）")
+        cookie = scoped_native_cookie(self, config)
+
+        def execute() -> None:
+            try:
+                result = asyncio.run(live_s202_snapshot(
+                    config, session_cookie=cookie,
+                ))
+            except Exception:
+                result = LiveElectiveSnapshot("unavailable")
+            self.events.put(MonitorEvent("ncwu_live_catalog", result))
+
+        try:
+            threading.Thread(
+                target=execute, name="KingoLiveS202Query", daemon=True,
+            ).start()
+        except RuntimeError:
+            self._live_catalog_in_progress = False
+            self.live_catalog_button.configure(state="normal")
+            self.live_catalog_status.set("查询线程无法启动；未访问学校")
+
+    def show_live_catalog_rows(self, result: LiveElectiveSnapshot) -> None:
+        """Display only this one response's current rows; never save to disk."""
+        if not result.courses:
+            return
+        popup = tk.Toplevel(self)
+        popup.title("华水 S202 · 实时课程目录（非已选结果）")
+        popup.geometry("940x500")
+        popup.transient(self)
+        ttk.Label(
+            popup, text=result.message, wraplength=900,
+        ).pack(anchor="w", padx=12, pady=(12, 8))
+        columns = ("name", "code", "class_number", "teacher", "selection_status", "points")
+        titles = ("课程名称", "课程代码", "教学班号", "教师", "选课状态", "选课币字段")
+        widths = (210, 150, 150, 130, 160, 120)
+        table = ttk.Treeview(popup, columns=columns, show="headings", height=15)
+        for column, title, width in zip(columns, titles, widths):
+            table.heading(column, text=title)
+            table.column(column, width=width, minwidth=80)
+        for course in result.courses:
+            table.insert("", "end", values=(
+                course.course_name, course.course_code, course.class_number,
+                course.teacher, course.selection_status, course.points_label,
+            ))
+        scrollbar = ttk.Scrollbar(popup, orient="vertical", command=table.yview)
+        table.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side="right", fill="y", padx=(0, 10), pady=(0, 14))
+        table.pack(side="left", fill="both", expand=True, padx=(12, 0), pady=(0, 14))
+
     def check_native_preparation(self) -> None:
         """Explicit in-EXE identity + catalog HTTP checks, never browser automation."""
         if (self.worker or self.__dict__.get("scheduled_worker")
                 or self._session_check_in_progress
+                or self._live_catalog_in_progress
                 or self.__dict__.get("_native_login_in_progress", False)
                 or self._native_preparation_in_progress or self._closing
                 or self.__dict__.get("_timetable_read_in_progress", False)
@@ -1591,6 +1671,21 @@ class Application(tk.Tk):
                     )
                     self.status.set(result.message)
                     self.log(result.message)
+                elif event.kind == "ncwu_live_catalog":
+                    self._live_catalog_in_progress = False
+                    self.live_catalog_button.configure(state="normal")
+                    result = event.value
+                    self.live_catalog_status.set(result.message)
+                    self.status.set(result.message)
+                    self.log(
+                        f"S202 实时查询：{result.code}，窗口={result.window}，"
+                        f"记录={len(result.courses)}，阶段={result.stage}；未提交选课。")
+                    if result.code == "expired":
+                        self._native_session_cookie = None
+                        self._native_session_origin = None
+                        self.native_login_status.set("官网表示会话失效，请重新登录")
+                    elif result.code == "catalog_read":
+                        self.show_live_catalog_rows(result)
                 elif event.kind == "known_timetable":
                     self._timetable_read_in_progress = False
                     self.timetable_read_button.configure(state="normal")
