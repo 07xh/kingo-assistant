@@ -23,7 +23,10 @@ SCHEMA = 1
 MAX_LOCAL_AGE_SECONDS = 7 * 24 * 60 * 60
 MAX_BLOB_BYTES = 16384
 _ACCOUNT = re.compile(r"^[0-9A-Za-z_.-]{3,64}$")
-_COOKIE = re.compile(r"^[A-Za-z0-9_-]{1,80}=[^;\s]{1,2048}(?:; [A-Za-z0-9_-]{1,80}=[^;\s]{1,2048})*$")
+# Match the original same-origin cookie exporter. The school may use a
+# different cookie name than JSESSIONID; validity is decided by a fresh
+# school identity read, never by the token's name.
+_COOKIE_NAME = re.compile(r"^[!#$%&'*+.^_`|~0-9A-Za-z-]{1,128}$")
 
 
 @dataclass(frozen=True)
@@ -70,12 +73,22 @@ def _dpapi(data: bytes, *, encrypt: bool) -> bytes:
 
 
 def _valid_cookie(value: str) -> bool:
-    if not isinstance(value, str) or not 1 <= len(value) <= 2000:
+    if not isinstance(value, str) or not 1 <= len(value) <= 4096:
         return False
-    if not _COOKIE.fullmatch(value):
+    seen: set[str] = set()
+    parts = value.split("; ")
+    if not 1 <= len(parts) <= 16:
         return False
-    names = [pair.split("=", 1)[0] for pair in value.split("; ")]
-    return "JSESSIONID" in names and len(set(names)) == len(names)
+    for part in parts:
+        if "=" not in part:
+            return False
+        name, token = part.split("=", 1)
+        if (not _COOKIE_NAME.fullmatch(name) or name in seen
+                or not token or len(token) > 2048
+                or ";" in token or "\r" in token or "\n" in token):
+            return False
+        seen.add(name)
+    return True
 
 
 class WindowsSessionVault:
