@@ -14,6 +14,7 @@ Last source baseline: Windows V4.6, plus offline course-catalog evidence compari
 | Evidence for the four capability gates | **0/4 registered** | No evidence document has been issued yet, so the write path is now closed by missing evidence rather than by missing code |
 | Latency instrumentation | Implemented | [Design](../architecture/latency-instrumentation.md); per-phase JSONL + exported-log summary; 24 tests |
 | Pickup polling schedule | Implemented, disabled by default | Peak windows clamp into `interval_range` and never go below the 30 s floor; 8 tests |
+| Plan v1 metric corrections | Passed | [Corrections log](plan-v1-review-corrections-20261116.md); 5 review findings verified against code, 3 were real errors in the v1 plan and are fixed in the shipped docs |
 | Offline read-only catalog evidence helper | Ready for manual use | [Verification guide](catalog-readonly-verification.md); 10 new synthetic unit tests |
 | Offline Xiqueer HAR structure audit | Passed locally with user's prior capture | 67 entries, 55 gateway requests, 1 timetable schema match, 4 closed-window messages; see [guide](har-offline-audit.md) |
 | Offline GUI evidence review | Passed | Available under Windows 离线工具; 6 new synthetic tests across HAR + GUI |

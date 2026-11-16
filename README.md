@@ -59,9 +59,18 @@ Read-only polls now emit per-phase latency samples (`budget_wait` / `request` /
 `decode` / `parse` / `total`) to a local JSONL file, with no course identifiers or
 session data recorded; see
 [docs/architecture/latency-instrumentation.md](docs/architecture/latency-instrumentation.md).
-The benchmark matrix in `tools/bench` is why: discovery latency spans 100× while
-submission latency spans 2×, and every concurrency strategy measured strictly
-worse (8 concurrent submits: success 1.00 → 0.125).
+The benchmark matrix in `tools/bench` is why: in that simulator, discovery
+latency spans two orders of magnitude (60 s vs 500 ms poll intervals) while the
+submission pipeline spans 2×, and every concurrency strategy lowered the
+per-request confirmation share and raised pipeline p95 (8 concurrent: 1 of 8
+requests confirmed, p95 70 ms → 1178 ms).
+
+Read `success_rate` there as "confirmed requests / all requests", never as "the
+probability this student gets the course" — the two differ, and only the latter
+matters to a student. `total_p95` likewise sums client+network+queue+tx only; it
+excludes discovery wait and readback, so it is not end-to-end latency. The 500 ms
+poll interval is a simulation input, not a deployable setting: the client enforces
+a 30 s floor and has no verified school frequency permission.
 
 The 2026-11-11 HAR included an explicit “current time is not a valid selection window” response. Timetable data and `zxinfo.zxxq` records are not an elective catalog or seat count. See [the sanitized HAR audit](docs/acceptance/ncwu-xiqueer-har-2026-11-11.md) and [the execution architecture](docs/architecture/automatic-enrollment.md).
 

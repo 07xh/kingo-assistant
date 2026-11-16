@@ -8,20 +8,36 @@ Status: implemented (offline). Owner modules: `core/latency.py`,
 `tools/bench` already answers "where does a seat race get decided", and the
 answer is not where most people optimise:
 
-| Scenario | Success | Requests | Discover p50 | Submit p50 | Total p95 |
+| Scenario | Confirmed / sent | Requests | Discover p50 | Submit p50 | Pipeline p95 |
 |---|---|---|---|---|---|
-| baseline (no prewarm, slow poll) | 1.00 | 1 | **28 118 ms** | 20.2 ms | 70 ms |
-| high_freq_poll | 1.00 | 1 | 280.9 ms | 20.2 ms | 70 ms |
+| baseline (no prewarm, 60 s poll) | 1.00 | 1 | **28 118 ms** | 20.2 ms | 70 ms |
+| high_freq_poll (500 ms poll) | 1.00 | 1 | 280.9 ms | 20.2 ms | 70 ms |
 | prebuild | 1.00 | 1 | 280.9 ms | **9.2 ms** | **59 ms** |
 | concurrent (8) | 0.125 | 8 | 280.9 ms | 87.1 ms | 1178 ms |
 | multi_session / proxy_pool | 0.15 | 20 | 284.2 ms | 1042.7 ms | 1145 ms |
 | pulse_burst | 0.013 | 80 | 280.9 ms | 1369.0 ms | 1481 ms |
 | captcha_bypass / tamper_params / queue_skip / endpoint_exploit | 0.00 | 1 | — | — | — |
 
-Reading: discovery latency spans **100×**, submission latency spans 2×, and every
-concurrency or bypass strategy is strictly worse. So a client that cannot report
-its own per-phase discovery latency cannot be tuned at all — every "optimisation"
-becomes guesswork. That is what this module fixes.
+**Column semantics, stated explicitly because they are easy to misread:**
+
+* `Confirmed / sent` is `len(success) / len(attempts)`
+  (`academic_latency_sim.py:513`) — the share of *requests* that got an official
+  readback, **not** the chance that a student ends up in the course. 8 concurrent
+  means 1 of 8 requests succeeded, not "12.5% chance of getting the course".
+* `Pipeline p95` is `client + network + queue + tx` only
+  (`Attempt.total_ms`, line 140). It excludes discovery wait and the readback
+  loop, so it is **not** end-to-end latency.
+* The 60 000 ms and 500 ms poll intervals are **simulation inputs**, not
+  deployable settings. The shipped client enforces a 30 s floor
+  (`monitor_policy.ABSOLUTE_MIN_INTERVAL`) and has no verified school frequency
+  permission, so the realistic delta is 30 s vs 60 s.
+
+Reading: within those simulated inputs, discovery latency spans two orders of
+magnitude while the submission pipeline spans 2×; every concurrency strategy
+lowers the per-request confirmation share and raises pipeline p95. The lesson is
+narrower than "go fast": a client that cannot report its own per-phase discovery
+latency cannot be tuned at all, because every "optimisation" becomes guesswork.
+That is what this module fixes.
 
 ## What is recorded
 

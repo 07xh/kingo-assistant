@@ -24,6 +24,19 @@ server queueing, rate limiting, transaction serialization and seat allocation.
 Everything here runs against synthetic gateways. No school host is contacted,
 no credentials are used, no real protocol field is replayed.
 
+Metric definitions that are routinely misread
+---------------------------------------------
+* ``success_rate`` = confirmed requests / all requests. NOT a per-student
+  success probability. 8 concurrent requests with 1 confirmation is 0.125 here;
+  it does not mean "12.5% chance this student gets the course".
+* ``total_ms`` / ``total_p95`` = client + network + queue + tx. Discovery wait
+  and the readback loop are excluded, so it is a submission-pipeline figure,
+  not end-to-end round latency.
+* ``poll_interval_ms`` values in ``scenarios()`` (60 000 and 500) are simulation
+  inputs to bracket the search space. The shipped client enforces a 30 s floor
+  and has no verified school frequency permission, so 500 ms is not a
+  deployable configuration and must not be presented as an optimisation target.
+
 Usage
 -----
     python academic_latency_sim.py --all
@@ -138,6 +151,13 @@ class Attempt:
 
     @property
     def total_ms(self) -> float:
+        """Submission pipeline only: client prep + network + queue + txn.
+
+        Deliberately EXCLUDES discovery wait and the readback loop. Do not quote
+        this number as end-to-end latency for a selection round; report
+        ``discover_ms`` separately, plus "open -> discovered" and
+        "discovered -> officially confirmed" spans.
+        """
         return self.client_ms + self.network_ms + self.queue_ms + self.tx_ms
 
 
@@ -510,6 +530,11 @@ def summarize(name: str, sim: Simulator) -> dict:
         "optimistic_conflicts": sim.ledger.conflicts,
         "requests": len(a),
         "success": len(succ),
+        # Share of REQUESTS that ended with an official readback confirmation,
+        # i.e. len(success) / len(requests). This is NOT "the probability a
+        # student gets the course": 8 concurrent requests confirming 1 means
+        # 1/8 = 0.125 here, while a single student sending one request either
+        # lands the seat or does not. Never quote this as a task success rate.
         "success_rate": round(len(succ) / len(a), 3) if a else 0.0,
         "discover_p50": pct(sim.discoveries, 0.50),
         "submit_p50": pct([x.submit_ms for x in a], 0.50),
