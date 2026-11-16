@@ -7,7 +7,9 @@ on:
     paths:
       - "clients/windows/lite/**"
       - "clients/windows/source/lite_bridge.py"
-      - "clients/windows/source/tests/test_lite_bridge.py"
+      - "clients/windows/source/lite_session.py"
+      - "clients/windows/source/lite_monitor.py"
+      - "clients/windows/source/tests/test_lite_*.py"
       - ".github/workflows/windows-lite-ui.yml"
 
 permissions:
