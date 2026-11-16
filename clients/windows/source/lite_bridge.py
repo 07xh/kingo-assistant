@@ -13,6 +13,12 @@ import sys
 from typing import Any
 
 from core.desktop_settings import load_config, save_config_atomic, update_config
+from core.plan_store import (
+    list_plans as stored_plans, save_plan as stored_save_plan,
+    load_plan as stored_load_plan, delete_plan as stored_delete_plan,
+    save_switch_backup,
+)
+from core.preflight import inspect_readiness
 from main import validate
 
 COURSE_COLUMNS = ("key", "course_id", "class_id", "course_name", "teacher", "group", "time_slots")
@@ -106,6 +112,77 @@ def save_courses(raw_courses: Any) -> dict:
     return snapshot_from(load_config(path))
 
 
+def get_plans() -> dict:
+    return {"plans": stored_plans(app_dir() / "plans")}
+
+
+def store_plan(name: str) -> dict:
+    stored_save_plan(app_dir() / "plans", name, load_config(ensure_config()))
+    return get_plans()
+
+
+def use_plan(name: str) -> dict:
+    path = ensure_config()
+    original = load_config(path)
+    changed = stored_load_plan(app_dir() / "plans", name, original)
+    backup = save_switch_backup(app_dir() / "plans", original)
+    save_config_atomic(path, changed)
+    return {**get_snapshot(), "backup_name": backup, "plans": stored_plans(app_dir() / "plans")}
+
+
+def remove_plan(name: str) -> dict:
+    stored_delete_plan(app_dir() / "plans", name)
+    return get_plans()
+
+
+def get_preflight() -> dict:
+    # Existing preflight is entirely local; passing an empty env prevents
+    # leaking or implicitly claiming an external session from this short-lived
+    # sidecar. Logged-in status requires a separate live identity check.
+    checks = inspect_readiness(load_config(ensure_config()), env={})
+    result = [
+        {"label": item.label, "passed": item.passed, "detail": item.detail,
+         "severity": item.severity}
+        for item in checks
+    ]
+    return {
+        "source": "local_only",
+        "checks": result,
+        "blockers": sum(not item.passed and item.severity == "blocker" for item in checks),
+        "warnings": sum(not item.passed and item.severity == "warning" for item in checks),
+        "school_verified": False,
+    }
+
+
+def save_strategy(data: Any) -> dict:
+    if not isinstance(data, dict):
+        raise ValueError("strategy must be object")
+    allowed = {
+        "semester", "mode", "target_time", "interval_low", "interval_high",
+        "max_cycles", "max_duration_minutes",
+    }
+    if set(data) != allowed:
+        raise ValueError("strategy fields differ from whitelist")
+    path = ensure_config()
+    current = load_config(path)
+    strategy = current["strategy"]
+    changed = update_config(
+        current,
+        courses=current["courses"],
+        semester=data["semester"],
+        mode=data["mode"],
+        target_time=data["target_time"],
+        interval_low=data["interval_low"],
+        interval_high=data["interval_high"],
+        max_cycles=data["max_cycles"],
+        max_duration_minutes=data["max_duration_minutes"],
+    )
+    # Reuses the original validation and persistence; never changes policy,
+    # account fields, school protocol contracts or enrollment permissions.
+    save_config_atomic(path, changed)
+    return get_snapshot()
+
+
 def main() -> int:
     try:
         if len(sys.argv) != 2:
@@ -113,12 +190,29 @@ def main() -> int:
         command = sys.argv[1]
         if command == "snapshot":
             result = get_snapshot()
-        elif command == "save-courses":
+        elif command == "preflight":
+            result = get_preflight()
+        elif command == "plans":
+            result = get_plans()
+        elif command in ("save-courses", "save-plan", "apply-plan", "delete-plan", "save-strategy"):
             request = sys.stdin.buffer.read(MAX_INPUT_BYTES + 1)
             if len(request) > MAX_INPUT_BYTES:
                 raise ValueError("request too large")
             payload = json.loads(request.decode("utf-8"))
-            result = save_courses(payload)
+            if command == "save-courses":
+                result = save_courses(payload)
+            elif command == "save-strategy":
+                result = save_strategy(payload)
+            else:
+                if not isinstance(payload, dict) or set(payload) != {"name"}:
+                    raise ValueError("invalid plan request")
+                name = payload["name"]
+                if command == "save-plan":
+                    result = store_plan(name)
+                elif command == "apply-plan":
+                    result = use_plan(name)
+                else:
+                    result = remove_plan(name)
         else:
             raise ValueError("unsupported operation")
         print(json.dumps({"ok": True, "data": result}, ensure_ascii=False), flush=True)
