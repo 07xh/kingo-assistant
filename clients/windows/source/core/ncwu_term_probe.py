@@ -153,7 +153,9 @@ async def probe_known_year_term(
             if expected_user_code is not None:
                 # Compare only in memory, without logging or returning either
                 # identifier. A result from somebody else's session must fail.
-                if hmac.compare_digest(parsed["userCode"], expected_user_code):
+                if hmac.compare_digest(
+                        parsed["userCode"].encode("utf-8"),
+                        expected_user_code.encode("utf-8")):
                     return TermProbeResult("identity_verified", len(_REQUIRED))
                 return TermProbeResult("identity_mismatch")
             return TermProbeResult("shape_observed", len(_REQUIRED))
