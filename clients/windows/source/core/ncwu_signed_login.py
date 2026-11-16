@@ -48,6 +48,20 @@ _NEXT_ALLOWED = 0.0
 _COOLDOWN_SECONDS = 60.0
 
 
+def _respect_retry_after(response: httpx.Response) -> None:
+    """Observe numeric server Retry-After; never retry automatically."""
+    global _NEXT_ALLOWED
+    if response.status_code != 429:
+        return
+    raw = response.headers.get("Retry-After", "")
+    try:
+        seconds = int(raw)
+    except (TypeError, ValueError):
+        seconds = 60
+    seconds = max(60, min(3600, seconds))
+    _NEXT_ALLOWED = max(_NEXT_ALLOWED, time.monotonic() + seconds)
+
+
 def validate_ncwulogin_entry(config: Mapping) -> str | None:
     """School-only official origin; no arbitrary endpoint or verified flags."""
     if not isinstance(config, Mapping):
@@ -140,6 +154,7 @@ def _sign_login_form(
 
 def _school_response(resp: httpx.Response) -> str:
     if resp.status_code == 429 or resp.status_code == 403:
+        _respect_retry_after(resp)
         return "restricted"
     if 300 <= resp.status_code < 400:
         return "challenge_required"
@@ -163,6 +178,7 @@ def _validated_yearterm(resp: httpx.Response, username: str) -> str:
     if resp.status_code in (401, 302, 301, 303, 307, 308):
         return "expired"
     if resp.status_code in (403, 429):
+        _respect_retry_after(resp)
         return "restricted"
     if resp.status_code != 200 or len(resp.content) > 8192:
         return "unavailable"
@@ -215,6 +231,7 @@ async def login_ncwusigned(
             async def fetch(path, *, params=None):
                 response = await client.get(_ROOT + path, params=params, follow_redirects=False)
                 if response.status_code in (403, 429):
+                    _respect_retry_after(response)
                     raise PermissionError("restricted by official service")
                 if response.status_code != 200:
                     raise ValueError("official site changed or requires SSO")
