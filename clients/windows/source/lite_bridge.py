@@ -25,6 +25,19 @@ COURSE_COLUMNS = ("key", "course_id", "class_id", "course_name", "teacher", "gro
 MAX_INPUT_BYTES = 128 * 1024
 
 
+def emit_json(response: dict) -> None:
+    """Always emit a UTF-8 JSON line, independent of Windows console locale.
+
+    PyInstaller --noconsole and pipe-spawned Python otherwise inherit an
+    ANSI/codepage-dependent sys.stdout encoding, which crashes on Chinese
+    status messages before the Rust or frontend caller sees a response.
+    """
+    encoded = (json.dumps(response, ensure_ascii=False, separators=(",", ":"))
+               + "\n").encode("utf-8")
+    sys.stdout.buffer.write(encoded)
+    sys.stdout.buffer.flush()
+
+
 def app_dir() -> Path:
     if os.name == "nt":
         root = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA")
@@ -278,8 +291,7 @@ def serve() -> int:
         except Exception:
             # Even unanticipated errors must not include secret values or URLs.
             output = {"ok": False, "error": "SESSION_UNAVAILABLE"}
-        sys.stdout.write(json.dumps(output, ensure_ascii=False, separators=(",", ":")) + "\n")
-        sys.stdout.flush()
+        emit_json(output)
 
 
 def main() -> int:
@@ -316,11 +328,11 @@ def main() -> int:
                     result = remove_plan(name)
         else:
             raise ValueError("unsupported operation")
-        print(json.dumps({"ok": True, "data": result}, ensure_ascii=False), flush=True)
+        emit_json({"ok": True, "data": result})
         return 0
     except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
         # Never return raw exception details, config, credentials or school data.
-        print(json.dumps({"ok": False, "error": "LOCAL_CONFIG_" + type(exc).__name__}), flush=True)
+        emit_json({"ok": False, "error": "LOCAL_CONFIG_" + type(exc).__name__})
         return 1
 
 
