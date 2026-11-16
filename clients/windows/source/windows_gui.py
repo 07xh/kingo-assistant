@@ -48,6 +48,7 @@ from core.native_login import NativeLoginResult, login_with_verified_form, valid
 from core.ncwu_signed_login import login_ncwusigned, validate_ncwulogin_entry
 from core.ncwu_elective_table import inspect_elective_table
 from core.ncwu_live_elective import LiveElectiveSnapshot, live_s202_snapshot
+from core.ncwu_live_target_review import compare_live_targets
 from core.ncwu_s202_readback import S202ReadbackResult, read_s202_selected_results
 from core.ncwu_s202_round import S202RoundStatus, probe_s202_round
 from core.ncwu_s202_score import PersonalScoreCount, read_personal_s202_score
@@ -300,6 +301,9 @@ class Application(tk.Tk):
         self._live_catalog_popup = None
         self._live_catalog_tree = None
         self._live_catalog_message = None
+        self._live_target_report = None
+        self._live_target_message = None
+        self._live_target_review_button = None
         self._native_session_cookie: str | None = None
         self._native_session_origin: str | None = None
         self.native_login_status = tk.StringVar(value="尚未登录｜已接入普通网页账号的签名协议，需本人实机验收")
@@ -1461,10 +1465,23 @@ class Application(tk.Tk):
             self._live_catalog_message = tk.StringVar(value="")
             ttk.Label(
                 popup, textvariable=self._live_catalog_message, wraplength=900,
-            ).pack(anchor="w", padx=12, pady=(12, 8))
-            columns = ("name", "code", "class_number", "teacher", "selection_status", "points")
-            titles = ("课程名称", "课程代码", "教学班号", "教师", "选课状态", "选课币字段")
-            widths = (210, 150, 150, 130, 160, 120)
+            ).pack(anchor="w", padx=12, pady=(12, 6))
+            target_header = ttk.Frame(popup, padding=(12, 0, 12, 8))
+            target_header.pack(fill="x")
+            self._live_target_message = tk.StringVar(
+                value="尚未与本地志愿关联；仅供课程目录核对")
+            ttk.Label(
+                target_header, textvariable=self._live_target_message,
+                wraplength=760, foreground="#41566c",
+            ).pack(side="left", fill="x", expand=True)
+            self._live_target_review_button = ttk.Button(
+                target_header, text="查看志愿候选分析",
+                command=self.show_live_target_review, state="disabled",
+            )
+            self._live_target_review_button.pack(side="right", padx=(8, 0))
+            columns = ("name", "code", "class_number", "teacher", "selection_status", "points", "target")
+            titles = ("课程名称", "课程代码", "显示班号", "教师", "选课状态", "选课币字段", "本地志愿（仅候选）")
+            widths = (210, 145, 135, 115, 145, 110, 160)
             table = ttk.Treeview(popup, columns=columns, show="headings", height=15)
             for column, title, width in zip(columns, titles, widths):
                 table.heading(column, text=title)
@@ -1475,14 +1492,45 @@ class Application(tk.Tk):
             table.pack(side="left", fill="both", expand=True, padx=(12, 0), pady=(0, 14))
             self._live_catalog_tree = table
         self._live_catalog_message.set(result.message)
+        try:
+            config = read_config(Path(self.path.get()), offline=True)
+            report = compare_live_targets(result, config)
+            self._live_target_report = report
+            self._live_target_message.set(report.message.splitlines()[0])
+            self._live_target_review_button.configure(
+                state="normal" if report.targets else "disabled")
+        except (ValueError, TypeError, KeyError, OSError):
+            report = None
+            self._live_target_report = None
+            self._live_target_message.set(
+                "本地志愿配置无法读取或验证，仍可查看学校实时课程列表。")
+            self._live_target_review_button.configure(state="disabled")
         table = self._live_catalog_tree
         for iid in table.get_children():
             table.delete(iid)
-        for course in result.courses:
+        for index, course in enumerate(result.courses):
+            marks = (
+                "、".join(report.row_marks[index])
+                if report is not None and index < len(report.row_marks)
+                else ""
+            )
             table.insert("", "end", values=(
                 course.course_name, course.course_code, course.class_number,
                 course.teacher, course.selection_status, course.points_label,
+                ("课程候选：" + marks) if marks else "",
             ))
+
+    def show_live_target_review(self) -> None:
+        """Explain candidate courses without equating skbh with skbjdm."""
+        report = self.__dict__.get("_live_target_report")
+        if report is None or not report.targets:
+            messagebox.showinfo(
+                "志愿候选分析", "当前没有可核对的本地目标课程。")
+            return
+        messagebox.showinfo(
+            "S202 正选列表 × 本地志愿（只读分析）",
+            report.message, parent=self._live_catalog_popup,
+        )
 
     def check_native_preparation(self) -> None:
         """Explicit in-EXE identity + catalog HTTP checks, never browser automation."""
