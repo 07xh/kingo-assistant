@@ -300,7 +300,7 @@ class Application(tk.Tk):
                   style="KingoTitle.TLabel").pack(anchor="w")
         ttk.Label(
             header,
-            text="当前版本：课程方案可编辑；真实查询需要学校接口核验；自动提交尚未接通",
+            text="当前版本：EXE 原生登录已接入（待本人验证）；课程目录与自动提交尚未接通",
             foreground="#965b16",
         ).pack(anchor="w", pady=(4, 0))
 
@@ -326,12 +326,12 @@ class Application(tk.Tk):
         intro = ttk.Frame(self.tab_home, padding=(10, 6))
         intro.pack(fill="x")
         ttk.Label(
-            intro, text="建议顺序：填写课程 → 登录与查课 → 启动只读监测",
+            intro, text="建议顺序：填写目标课程 → 软件内登录 → 检查本人课程",
             font=("Microsoft YaHei UI", 10, "bold"),
         ).pack(anchor="w")
         ttk.Label(
             intro,
-            text="第 1 步可离线使用；第 2、3 步需华水真实接口核验。“自动选课”尚不可用。",
+            text="第 1 步可离线使用；EXE 登录等待本人实测，课程目录和自动选课尚未接通。",
             foreground="#965b16",
         ).pack(anchor="w", pady=(2, 0))
 
@@ -352,7 +352,7 @@ class Application(tk.Tk):
         ).pack(side="left")
 
         auth_panel = ttk.LabelFrame(
-            self.tab_home, text="第 2 步  ·  登录与查课（真实接口待核验）",
+            self.tab_home, text="第 2 步  ·  软件内登录（协议已接入 · 待实机验收）",
             padding=(10, 6), style="KingoStep.TLabelframe",
         )
         auth_panel.pack(fill="x", padx=10, pady=(0, 5))
