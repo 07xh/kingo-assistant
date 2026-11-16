@@ -11,7 +11,7 @@ import httpx
 
 from core.ncwu_legacy_encoder import encode_legacy_strenc
 from core.ncwu_signed_login import (
-    _sign_login_form, login_ncwusigned, validate_ncwulogin_entry,
+    _content, _form_bootstrap, _sign_login_form, login_ncwusigned, validate_ncwulogin_entry,
 )
 
 
@@ -128,6 +128,16 @@ class SignedLoginTests(TestCase):
             config(), _ACCOUNT, _SECRET,
             http_factory=factory, enforce_local_cooldown=False))
         return result, sent
+
+    def test_gbk_login_page_preserves_original_school_form(self):
+        page = login_html().replace("</html>", "<p>登录验证</p></html>")
+        response = httpx.Response(
+            200, content=page.encode("gbk"),
+            headers={"content-type": "text/html; charset=GBK"},
+        )
+        decoded = _content(response, max_bytes=512_000, mime=("text/html",))
+        self.assertIn("登录验证", decoded)
+        self.assertEqual(_form_bootstrap(decoded), (_ID, _ID))
 
     def test_happy_path_is_real_native_http_only_and_account_bound(self):
         result, sent = self.sign_in()
