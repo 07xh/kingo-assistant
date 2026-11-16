@@ -107,6 +107,8 @@ class PlanReadTests(TestCase):
         result, seen = run(self.valid_response)
         self.assertEqual([r.method for r in seen], ["POST", "GET", "POST"])
         self.assertEqual(result.code, "read")
+        self.assertEqual(result.academic_year, "2026")
+        self.assertEqual(result.academic_term, "0")
         self.assertEqual(len(result.rows), 1)
         self.assertEqual(result.record_count, 2)
         row = result.rows[0]

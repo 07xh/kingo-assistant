@@ -52,6 +52,7 @@ from core.ncwu_s202_readback import S202ReadbackResult, read_s202_selected_resul
 from core.ncwu_s202_round import S202RoundStatus, probe_s202_round
 from core.ncwu_s202_score import PersonalScoreCount, read_personal_s202_score
 from core.ncwu_course_plan import PlanSnapshot, read_current_course_plan
+from core.ncwu_plan_alignment import compare_plan_targets
 from core.ncwu_contract_capture import inspect_two_endpoint_contracts
 from core.official_entries import OFFICIAL_ENTRIES, probe_official_login_surfaces
 from core.scheduled_ui_bridge import prepare_scheduled_plan
@@ -1126,6 +1127,28 @@ class Application(tk.Tk):
         popup.transient(self)
         ttk.Label(popup, text=result.message, wraplength=1080).pack(
             anchor="w", padx=12, pady=(12, 8))
+        # Compare the fresh plan to local course preferences without saving
+        # anything or turning historical availability into a live seat claim.
+        try:
+            config = read_config(Path(self.path.get()), offline=True)
+            alignment = compare_plan_targets(result, config)
+            heading = alignment.message.splitlines()[0]
+        except (OSError, ValueError, TypeError, KeyError):
+            alignment = None
+            heading = "尚未核对本地志愿：本地课程配置不可读取或格式不正确。"
+        header = ttk.Frame(popup, padding=(12, 0, 12, 8))
+        header.pack(fill="x")
+        ttk.Label(
+            header, text=heading, foreground="#41566c",
+            wraplength=870,
+        ).pack(side="left", fill="x", expand=True)
+        if alignment is not None and alignment.targets:
+            ttk.Button(
+                header, text="查看逐项志愿核对",
+                command=lambda report=alignment: messagebox.showinfo(
+                    "开课计划 × 本地志愿（仅供准备）",
+                    report.message, parent=popup),
+            ).pack(side="right", padx=(8, 0))
         columns = ("name", "code", "class", "teacher", "cap", "enrolled",
                    "available", "time", "room")
         titles = ("课程", "课程代码", "教学班标识", "教师", "限选", "已选",
