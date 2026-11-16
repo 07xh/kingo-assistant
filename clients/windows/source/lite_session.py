@@ -77,6 +77,8 @@ class LiteSession:
             "message": result.message,
             "window": result.window,
             "stage": result.stage,
+            "total_courses": len(result.courses) if result.code == "catalog_read" else 0,
+            "display_limit": 200,
             "courses": [
                 {
                     "course_name": item.course_name,
@@ -86,7 +88,7 @@ class LiteSession:
                     "selection_status": item.selection_status,
                     "points_label": item.points_label,
                 }
-                for item in result.courses
+                for item in result.courses[:200]
             ] if result.code == "catalog_read" else [],
             "session": self.info(),
             "data_source": "live_school" if result.code == "catalog_read" else "unavailable",
