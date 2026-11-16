@@ -64,13 +64,15 @@ export const saveStrategy = (settings:Strategy) => action<Snapshot>("save-strate
 export type SessionInfo = {
   status:"not_logged_in"|"verified";
   verified_at_login:boolean;
-  persistent:false;
+  persistent:boolean;
+  saved_session_available:boolean;
   origin:string;
 };
 export type LoginReply = {
   code:string;
   message:string;
   session:SessionInfo;
+  remember_error?:boolean;
 };
 export type OfficialCatalogCourse = {
   course_name:string;
@@ -92,11 +94,15 @@ export type OfficialCatalog = {
   seat_count_verified:false;
   session:SessionInfo;
 };
-export async function signedLogin(username:string,password:string):Promise<LoginReply>{
+export async function signedLogin(username:string,password:string,remember:boolean):Promise<LoginReply>{
   if(!isDesktop()) throw new Error("请在 Windows 客户端中登录");
   return invoke<LoginReply>("kingo_session_action",{
-    action:"login",payload:{username,password}
+    action:"login",payload:{username,password,remember}
   });
+}
+export async function restoreSavedSession():Promise<LoginReply>{
+  if(!isDesktop()) throw new Error("请在 Windows 客户端中恢复登录");
+  return invoke<LoginReply>("kingo_session_action",{action:"restore",payload:null});
 }
 export async function sessionStatus():Promise<SessionInfo>{
   if(!isDesktop()) throw new Error("请在 Windows 客户端中查看会话状态");
