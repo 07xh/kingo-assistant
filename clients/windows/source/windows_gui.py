@@ -32,6 +32,7 @@ from desktop_tray import TrayController
 from desktop_scheduled_worker import DesktopScheduledWorker, ScheduledWorkerEvent
 from core.inspector import inspect_html
 from core.har_audit import summarize_har, format_summary
+from core.auth_route_audit import summarize_auth_route_har
 from tools.catalog_evidence import inspect_local_file
 from core.scheduler import Scheduler
 from core.preflight import inspect_readiness, split_checks, format_checks
@@ -267,6 +268,7 @@ class Application(tk.Tk):
         tools_menu.add_command(label="脱敏 HTML 离线演练", command=self.replay_local)
         tools_menu.add_command(label="虚构样例：下一步", command=self.demo_next)
         tools_menu.add_command(label="本机 HAR 结构检查（脱敏统计）", command=self.audit_local_har)
+        tools_menu.add_command(label="华水认证链路识别（HAR 离线）", command=self.audit_auth_route_har)
         tools_menu.add_command(label="选课目录证据对照（离线 JSON）", command=self.review_catalog_evidence)
         tools_menu.add_command(label="北化课表参数 · 离线调度测速", command=self.benchmark_offline)
         tools_menu.add_command(label="华水官方入口清单（离线）", command=self.show_official_entries)
@@ -928,6 +930,30 @@ class Application(tk.Tk):
             self.log(f"本机 HAR 结构与只读 JSON 线索分析完成：包含 {summary.matching_school_origin} 条华水 HTTPS 请求；未连接学校。")
         except (OSError, ValueError):
             messagebox.showerror("HAR 检查失败", "文件结构无效、文件过大或无法读取；请勿上传未经脱敏的 HAR。")
+
+    def audit_auth_route_har(self) -> None:
+        """Classify CAS and school redirect evidence from local HAR only."""
+        if self.worker or self.__dict__.get("scheduled_worker"):
+            messagebox.showinfo("请先停止监测", "认证链路离线分析不能与后台任务同时进行。")
+            return
+        filename = filedialog.askopenfilename(
+            title="选择本机本人授权导出的 HAR（不上传，不重放）",
+            filetypes=[("HAR 文件", "*.har")],
+        )
+        if not filename:
+            return
+        try:
+            summary = summarize_auth_route_har(Path(filename))
+            messagebox.showinfo("华水认证链路（仅离线结构）", summary.message)
+            self.log(
+                f"本机身份认证链路分析完成：{summary.observed_route}；"
+                "仅统计，无学校请求，未启用 CAS 登录或选课提交。"
+            )
+        except (ValueError, OSError):
+            messagebox.showerror(
+                "认证链路分析失败",
+                "HAR 无效、过大或无法读取。请勿上传包含登录凭证的原始 HAR。"
+            )
 
     def review_catalog_evidence(self) -> None:
         """Compare a locally redacted evidence pair; never enable live catalog mode."""
