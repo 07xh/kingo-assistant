@@ -26,6 +26,11 @@ auth:
     # plain_20261103 only after independently verifying applicable official mode;
     # signed_20261114 is explicitly unsupported (no stale token replay).
     contract_variant: ""
+    # Use the historical no-body YearTerm action to compare returned userCode
+    # with the login account IN MEMORY, without inventing an identity endpoint.
+    # Still requires an independently verified direct-form login contract,
+    # known_year_term.verified, permitted server budget and official challenges.
+    identity_mode: year_term
     method: POST
     # Captured in the separately sanitized 2026-11-03 NCWU HAR.
     # The endpoint and field NAMES were observed; values, loginmethod
@@ -87,6 +92,10 @@ known_school_pages:
 # An observed route is not independently verified third-party permission.
 known_year_term:
   verified: false
+  # A positive userCode in a logged-in HAR is NOT proof anonymous requests
+  # cannot produce the same shape. Require authorized identity-binding
+  # validation before using this action to mark an EXE login successful.
+  identity_binding_verified: false
   method: POST
   path: "/hsjw/jw/common/showYearTerm.action"
   request_mode: empty
