@@ -18,3 +18,20 @@
 .spin{animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}@keyframes fade-in{from{opacity:0}to{opacity:1}}
 @media(max-width:900px){.main-content{padding:20px}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.sidebar{width:152px}.quick-grid{grid-template-columns:1fr}}
 @media(max-width:650px){.sidebar{width:58px}.sidebar .nav-item{justify-content:center;padding:0}.sidebar .nav-item span,.sidebar-header span,.sidebar-bottom small{display:none}.page-heading h1{font-size:21px}.hero{flex-direction:column}.settings-layout{grid-template-columns:1fr}.settings-menu{display:none}.form-grid{grid-template-columns:1fr}}
+
+/* Lite plan manager and local diagnostics */
+.button-cluster{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.readiness-row{display:flex;align-items:flex-start;gap:13px;padding:11px 0;border-bottom:1px solid var(--stroke)}
+.readiness-row:last-child{border-bottom:0}
+.readiness-row strong{display:block;font-size:12px}
+.readiness-row small{display:block;margin-top:5px;font-size:11px;line-height:1.5;color:var(--muted)}
+.check-good,.check-warn{flex:none;min-width:54px;text-align:center;padding:4px 6px;border-radius:7px;font-size:11px}
+.check-good{color:var(--accent);background:var(--accent-soft)}
+.check-warn{color:var(--danger);background:var(--surface-2)}
+.plan-create{display:flex;gap:10px;margin:16px 0 12px}
+.plan-create input{flex:1;min-width:0;padding:0 12px;border:1px solid var(--stroke);border-radius:9px;color:var(--text);background:var(--surface)}
+.plan-list{max-height:46vh;overflow-y:auto}
+.plan-item{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border-top:1px solid var(--stroke)}
+.plan-item strong{font-size:12px;font-weight:600}
+.form-grid select{height:36px;border-radius:8px;border:1px solid var(--stroke);background:var(--surface);color:var(--text);padding:0 10px;outline:none}
+@media(max-width:650px){.plan-item{align-items:flex-start;flex-direction:column}.plan-create{flex-wrap:wrap}.plan-create input{height:36px;flex-basis:100%}}
