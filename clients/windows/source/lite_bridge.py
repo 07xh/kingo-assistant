@@ -193,9 +193,14 @@ def serve() -> int:
     password, session cookie or a raw school response back to the UI.
     """
     from lite_session import LiteSession
+    from lite_monitor import LiteReadMonitor
 
     session = LiteSession()
-    operations = {"login", "catalog", "session", "logout"}
+    monitor = LiteReadMonitor()
+    operations = {
+        "login", "catalog", "session", "logout",
+        "monitor-start", "monitor-stop", "monitor-status",
+    }
     while True:
         line = sys.stdin.buffer.readline(MAX_INPUT_BYTES + 1)
         if not line:
@@ -217,14 +222,43 @@ def serve() -> int:
             if command == "login":
                 if not isinstance(payload, dict) or set(payload) != {"username", "password"}:
                     raise ValueError("invalid login envelope")
-                result = session.login(load_config(ensure_config()), payload["username"], payload["password"])
+                if monitor.status()["active"]:
+                    result = {
+                        "code": "monitor_active",
+                        "message": "请先停止只读监测，再重新登录",
+                        "session": session.info(),
+                    }
+                else:
+                    result = session.login(load_config(ensure_config()), payload["username"], payload["password"])
             else:
                 if payload is not None:
                     raise ValueError("unexpected payload")
                 if command == "catalog":
-                    result = session.catalog(load_config(ensure_config()))
+                    if monitor.status()["active"]:
+                        result = {
+                            "code": "busy", "message": "只读监测运行中，请停止后再查询",
+                            "courses": [], "total_courses": 0, "display_limit": 200,
+                            "window": "unknown", "stage": "", "data_source": "unavailable",
+                            "seat_count_verified": False, "session": session.info(),
+                        }
+                    else:
+                        result = session.catalog(load_config(ensure_config()))
                 elif command == "logout":
+                    if monitor.status()["active"]:
+                        raise ValueError("monitor running")
                     result = session.clear()
+                elif command == "monitor-start":
+                    if session.status != "verified":
+                        result = {"code": "missing_session", **monitor.status()}
+                    else:
+                        result = monitor.start(
+                            load_config(ensure_config()),
+                            session_cookie=session.cookie, origin=session.origin,
+                        )
+                elif command == "monitor-stop":
+                    result = monitor.stop()
+                elif command == "monitor-status":
+                    result = monitor.status()
                 else:
                     result = session.info()
             output = {"ok": True, "data": result}
