@@ -103,7 +103,7 @@ class S202ResultTests(TestCase):
 
     def test_arbitrary_table_is_not_a_selected_course(self):
         parsed = parse_s202_readback(
-            "<html><table><tr><th>课程</th><th>状态</th></tr>"
+            "<html><h2>选课结果</h2><table><tr><th>课程</th><th>状态</th></tr>"
             "<tr><td>TEST_COURSE</td><td>成功</td></tr></table></html>")
         self.assertEqual(parsed.code, "page_observed")
         self.assertEqual(parsed.recognized_tables, 0)
@@ -111,12 +111,22 @@ class S202ResultTests(TestCase):
 
     def test_duplicated_identity_column_is_not_trusted(self):
         parsed = parse_s202_readback(
-            "<html><table><tr><th>课程代码</th><th>课程代码</th>"
+            "<html><h2>选课结果</h2><table><tr><th>课程代码</th><th>课程代码</th>"
             "<th>教学班号</th></tr><tr><td>A</td><td>B</td>"
             "<td>C</td></tr></table></html>")
         self.assertEqual(parsed.code, "page_observed")
         self.assertEqual(parsed.recognized_tables, 0)
         self.assertEqual(parsed.candidates, ())
+
+    def test_login_page_http200_is_not_mistaken_for_result_page(self):
+        page = ("<html><body><h1>选课结果</h1><form>"
+                "<input type='password' name='password'></form></body></html>")
+        self.assertEqual(parse_s202_readback(page).code, "expired")
+
+    def test_unrelated_200_html_is_not_an_enrollment_page(self):
+        self.assertEqual(parse_s202_readback(
+            "<html><body><h1>教学服务</h1></body></html>").code,
+            "unrecognized")
 
     def test_html_without_document_root_is_not_accepted(self):
         self.assertEqual(parse_s202_readback("some unrelated text").code,
