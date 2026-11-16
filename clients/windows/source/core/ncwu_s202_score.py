@@ -159,23 +159,14 @@ async def read_personal_s202_score(
                     return await send()
 
             async def validate(response: httpx.Response) -> str | None:
-                status = response.status_code
-                if status in (401, 302, 303, 307, 308):
-                    return "expired"
-                if status in (403, 429):
-                    if status == 429 and budget is not None:
-                        from core.client import KingoClient
-                        delay = KingoClient._retry_after_seconds(
-                            response.headers.get("Retry-After"))
-                        await budget.impose_retry_after(delay or 60.0)
-                    return "restricted"
-                if status != 200:
-                    return "unavailable"
-                if response.content and len(response.content) <= _MAX_RESPONSE:
-                    txt = response.content.decode("utf-8", "ignore")
-                    if any(marker in txt for marker in _EXPIRED):
-                        return "expired"
-                return None
+                return await classify_read_response(
+                    response, budget,
+                    expired_markers=_EXPIRED,
+                    # Keep the original score parser's 16 KiB cap and
+                    # expired-text scan bound: oversized 200 still reaches
+                    # the parser, which returns 'score_unrecognized'.
+                    # The shared helper only scans when within the bound.
+                )
 
             window_resp = await post(WINDOW_PATH + "?xktype=2", b"")
             err = await validate(window_resp)
