@@ -101,6 +101,13 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             kingo_snapshot, kingo_save_courses, kingo_local_action, kingo_session_action, kingo_window_action
         ])
-        .run(tauri::generate_context!())
-        .expect("Unable to start KingoAssistant Lite");
+        .build(tauri::generate_context!())
+        .expect("Unable to start KingoAssistant Lite")
+        .run(|app, event| {
+            if let tauri::RunEvent::Exit = event {
+                // Tauri's run() exits the process; relying on Rust Drop at
+                // process exit would leave the child potentially orphaned.
+                app.state::<SessionState>().shutdown();
+            }
+        });
 }
