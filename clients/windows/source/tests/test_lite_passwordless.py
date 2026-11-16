@@ -91,6 +91,39 @@ class PasswordlessRestoreTests(TestCase):
         self.assertFalse(reply["session"]["saved_session_available"])
         self.assertEqual(vault.cleared, 1)
 
+    def test_existing_login_manual_recheck_has_account_binding(self):
+        session = LiteSession("JSESSIONID=private", "jwmis.ncwu.edu.cn", "verified",
+                              username="student01")
+        with patch("lite_session.validate_term_contract", return_value=None), \
+             patch("lite_session.probe_known_year_term", new_callable=AsyncMock,
+                   return_value=TermProbeResult("identity_verified")) as probe:
+            result = session.check({"known_year_term": {"identity_binding_verified": True}})
+        self.assertEqual(result["code"], "identity_verified")
+        self.assertEqual(result["session"]["status"], "verified")
+        self.assertEqual(probe.await_count, 1)
+        self.assertEqual(probe.await_args.kwargs["expected_user_code"], "student01")
+        self.assertNotIn("private", str(result))
+
+    def test_manual_check_rejects_unverified_contract_without_network(self):
+        session = LiteSession("JSESSIONID=private", "jwmis.ncwu.edu.cn", "verified",
+                              username="student01")
+        with patch("lite_session.probe_known_year_term", new_callable=AsyncMock) as probe:
+            result = session.check({"known_year_term": {"identity_binding_verified": False}})
+        self.assertEqual(result["code"], "verification_unavailable")
+        probe.assert_not_called()
+
+    def test_manual_check_rejects_wrong_account_and_revokes_encrypted_token(self):
+        vault = MemoryVault(SavedSchoolSession("student01", "JSESSIONID=private", 0.0))
+        session = LiteSession("JSESSIONID=private", "jwmis.ncwu.edu.cn", "verified",
+                              vault=vault, username="student01")
+        with patch("lite_session.validate_term_contract", return_value=None), \
+             patch("lite_session.probe_known_year_term", new_callable=AsyncMock,
+                   return_value=TermProbeResult("identity_mismatch")):
+            result = session.check({"known_year_term": {"identity_binding_verified": True}})
+        self.assertEqual(result["code"], "identity_mismatch")
+        self.assertEqual(result["session"]["status"], "not_logged_in")
+        self.assertFalse(result["session"]["saved_session_available"])
+
     def test_explicit_logout_deletes_saved_login(self):
         vault = MemoryVault(SavedSchoolSession("student01", "JSESSIONID=secret", 0.0))
         session = LiteSession("JSESSIONID=secret", "jwmis.ncwu.edu.cn", "verified",
