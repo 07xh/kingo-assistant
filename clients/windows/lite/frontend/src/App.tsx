@@ -4,7 +4,7 @@ import {
   Minus,Monitor, Moon,PanelLeftClose,PanelLeftOpen,Plus,RefreshCw,
   Save,Settings,ShieldAlert,Sun,Trash2, X, Square, GraduationCap, Pencil
 } from "lucide-react";
-import {applyPlan,blankCourse,createPlan,deletePlan,isDesktop,listPlans,preflight,saveCourses,saveStrategy,snapshot,windowAction,signedLogin,logout,restoreSavedSession,forgetSavedSession,manualCatalog,sessionStatus,startReadOnlyMonitor,stopReadOnlyMonitor,monitorStatus,type MonitorSnapshot,type OfficialCatalog,type LoginReply,type SessionInfo,type Course,type Preflight,type Snapshot,type Strategy} from "./bridge";
+import {applyPlan,blankCourse,createPlan,deletePlan,isDesktop,listPlans,preflight,saveCourses,saveStrategy,snapshot,windowAction,signedLogin,logout,restoreSavedSession,forgetSavedSession,recheckSession,manualCatalog,sessionStatus,startReadOnlyMonitor,stopReadOnlyMonitor,monitorStatus,type MonitorSnapshot,type OfficialCatalog,type LoginReply,type SessionInfo,type Course,type Preflight,type Snapshot,type Strategy} from "./bridge";
 
 type Page = "home" | "courses" | "execution" | "logs";
 const navigation = [
@@ -261,6 +261,17 @@ export default function App() {
     }catch(e){setError(shortError(e));log("免密码恢复未完成");}
     finally{setSchoolBusy(false);}
   }
+  async function checkCurrentSession() {
+    if(schoolBusy||monitor?.active||session?.status!=="verified")return;
+    setSchoolBusy(true);setError("");
+    try {
+      const result=await recheckSession();
+      setSession(result.session);setLoginResult(result);
+      if(!result.session.verified_at_login)setCatalog(null);
+      log(result.code==="identity_verified"?"学校身份回读成功，当前会话仍有效":"学校身份回读未成功："+result.code);
+    }catch(e){setError(shortError(e));setCatalog(null);log("学校身份回读未完成，不认定会话有效");}
+    finally{setSchoolBusy(false);}
+  }
   async function forgetRememberedLogin() {
     if(schoolBusy||monitor?.active)return;
     if(!window.confirm("清除本机加密会话并退出当前登录？之后需要重新获取官方授权。"))return;
@@ -362,9 +373,10 @@ export default function App() {
                   <button className={session?.saved_session_available?"button":"button primary"} disabled={schoolBusy||!isDesktop()} onClick={()=>{setLoginResult(null);setLoginOpen(true);}}>账号密码登录</button>
                   {session?.saved_session_available&&<button className="button subtle" disabled={schoolBusy} onClick={()=>void forgetRememberedLogin()}>清除已保存登录</button>}
                 </>}
+                {session?.status==="verified"&&<button className="button" disabled={schoolBusy||monitor?.active} onClick={()=>void checkCurrentSession()}>核验会话是否有效</button>}
                 {session?.status==="verified"&&<button className="button primary" disabled={schoolBusy||monitor?.active} onClick={()=>{go("execution");void loadCatalog();}}>手动读取课程</button>}
               </div>
-              {loginResult&&!loginResult.session.verified_at_login&&<div className="notice warning">{loginResult.message}</div>}
+              {loginResult&&<div className={"notice "+(loginResult.session.verified_at_login?"warning":"error")} role="status">{loginResult.message}</div>}
               <div className="section-heading" style={{marginTop:18}}><div><h3>快捷入口</h3><p>只展示当前有明确功能的操作</p></div></div>
               <div className="quick-grid">
                 <button className="quick" onClick={()=>go("courses")}><BookOpen size={22}/><strong>管理选课计划</strong><small>添加课程、调整志愿</small><ChevronRight size={16} className="quick-arrow"/></button>
