@@ -29,6 +29,19 @@ def page(*, mode="2"):
     ).encode("gbk")
 
 
+def dynamic_page():
+    """S202 first-party HTML has empty fields before its window AJAX runs."""
+    return (
+        "<html><meta charset='GBK'>"
+        "<form id='ActionForm' method='post'>"
+        "<input name='xktype' value='2'>"
+        "<input name='xh'><input name='xn'><input name='xq'>"
+        "<input name='lcid'><input name='nj'><input name='zydm'>"
+        "<input name='_kcfw'><input name='initQry' value='1'>"
+        "</form></html>"
+    ).encode("gbk")
+
+
 def catalog(*, row=True):
     headers = "".join(f"<th id='{name}'>{name}</th>" for name in EXPECTED_HEADINGS)
     fields = [""] * 17
@@ -97,6 +110,66 @@ class LiveS202Tests(TestCase):
         self.assertEqual(result.courses[0].course_code, "SYNTHETIC_COURSE")
         self.assertFalse(hasattr(result.courses[0], "remain"))
         self.assertNotIn("SESSION_SCOPED_VALUE", result.message)
+
+    def test_dynamic_first_party_page_hydrates_after_open_window(self):
+        def handler(req):
+            if req.url.path == S202_PAGE:
+                return httpx.Response(200, content=dynamic_page(), headers={
+                    "content-type": "text/html; charset=GBK"})
+            if req.url.path == WINDOW_PATH:
+                self.assertEqual(req.url.query.decode(), "xktype=2")
+                return httpx.Response(200, json={
+                    "status": "200", "result": json.dumps({
+                        "lx": "2", "xh": "TEST_SELF_SCOPED",
+                        "xn": "2026", "xqM": "0",
+                        "lcid": "FRESH_SYNTHETIC_ROUND",
+                        "nj": "2026", "zydm": "TEST_MAJOR",
+                        "kcfw": "zxbnj",
+                    }),
+                })
+            self.assertEqual(req.url.path, "/hsjw/taglib/DataTable.jsp")
+            posted = req.content.decode()
+            for required in ("xh=TEST_SELF_SCOPED", "xn=2026",
+                             "xq=0", "lcid=FRESH_SYNTHETIC_ROUND",
+                             "_kcfw=zxbnj"):
+                self.assertIn(required, posted)
+            return httpx.Response(200, content=catalog(row=True), headers={
+                "content-type": "text/html; charset=GBK"})
+        result, requests = run(handler)
+        self.assertEqual(result.code, "catalog_read")
+        self.assertEqual(result.window, "reported_open")
+        self.assertEqual(len(requests), 3)
+
+    def test_closed_window_does_not_hydrate_empty_first_party_page(self):
+        def handler(req):
+            if req.url.path == S202_PAGE:
+                return httpx.Response(200, content=dynamic_page(), headers={
+                    "content-type": "text/html; charset=GBK"})
+            self.assertEqual(req.url.path, WINDOW_PATH)
+            return httpx.Response(200, json={
+                "status": "400",
+                "message": "当前时间不是有效的选课时间区段！",
+                "result": json.dumps({
+                    "xh": "ARCHIVED", "xn": "2026",
+                    "xqM": "0", "lcid": "STALE",
+                }),
+            })
+        result, requests = run(handler)
+        self.assertEqual(result.code, "window_closed")
+        self.assertEqual(result.window, "closed")
+        self.assertEqual(len(requests), 2)
+
+    def test_dynamic_page_missing_current_round_fails_closed(self):
+        def handler(req):
+            if req.url.path == S202_PAGE:
+                return httpx.Response(200, content=dynamic_page(), headers={
+                    "content-type": "text/html; charset=GBK"})
+            return httpx.Response(200, json={
+                "status": "200", "result": json.dumps({"xn": "2026"}),
+            })
+        result, requests = run(handler)
+        self.assertEqual(result.code, "form_incomplete")
+        self.assertEqual(len(requests), 2)
 
     def test_missing_session_makes_zero_network_calls(self):
         result, requests = run(

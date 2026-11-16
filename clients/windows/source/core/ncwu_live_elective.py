@@ -78,7 +78,8 @@ class LiveElectiveSnapshot:
             "expired": "学校返回登录失效/跳转；已停止，不使用旧会话",
             "restricted": "学校限制或拒绝访问，立即停止，不重试",
             "form_missing": "官网选课页未找到 ActionForm；不能凭空构造查询表单",
-            "form_incomplete": "官网当前表单缺少可验证的正选参数；未发送列表查询",
+            "form_incomplete": "官网当前表单或轮次信息不完整；未发送列表查询",
+            "window_closed": "官网选课时间窗未开放，当前页面未生成有效查询表单；未发送列表查询",
             "table_unrecognized": "官网返回内容与当前选课表结构不一致；没有伪造课程",
             "protocol_changed": "学校页面/响应协议变化，已停止当前读取",
             "unavailable": "官网请求失败或超时；未发起选课提交",
@@ -119,7 +120,7 @@ def _decode_html(response: httpx.Response) -> str:
     return raw.decode(codec, "strict")
 
 
-def _extract_query_form(page: str) -> dict[str, str]:
+def _extract_query_form(page: str, *, allow_incomplete: bool = False) -> dict[str, str]:
     soup = BeautifulSoup(page, "html.parser")
     forms = [
         x for x in soup.find_all("form")
@@ -158,7 +159,8 @@ def _extract_query_form(page: str) -> dict[str, str]:
     # Do not fill blanks with a captured other session's internal student ID
     # or round ID. Query only a fresh, self-contained official form.
     if (values.get("xktype") != "2"
-            or not values.get("xn") or not values.get("xq")):
+            or (not allow_incomplete and (
+                not values.get("xn") or not values.get("xq")))):
         raise ValueError("missing current-round context")
     return values
 
@@ -225,6 +227,57 @@ def _window_state(response: httpx.Response) -> str:
     except (ValueError, UnicodeError, AttributeError):
         pass
     return "unknown"
+
+
+def _window_runtime_fields(response: httpx.Response) -> dict[str, str] | None:
+    """Read the same-session data used by the first-party initWsxkTimeRange().
+
+    The school's HTML includes empty hidden xn/xq/lcid fields. Its own JS
+    fills these *only when* the business response reports status 200.
+    Never hydrate a form using a closed/unknown window or archived values.
+    """
+    if _window_state(response) != "reported_open":
+        return None
+    try:
+        record = json.loads(response.content.decode("utf-8-sig"))
+        raw = record.get("result")
+        fields = json.loads(raw) if isinstance(raw, str) else raw
+        if not isinstance(fields, dict) or str(fields.get("lx", "2")) != "2":
+            return None
+        required = ("xh", "xn", "xqM", "lcid", "nj", "zydm")
+        for key in required:
+            value = fields.get(key)
+            if (not isinstance(value, str) or not value.strip()
+                    or len(value) > 512):
+                return None
+        return fields
+    except (ValueError, TypeError, UnicodeError, AttributeError):
+        return None
+
+
+def _hydrate_round_form(form: dict[str, str], runtime: Mapping) -> dict[str, str]:
+    """Apply only fresh values the first-party page itself maps to inputs."""
+    mapping = {
+        "xh": "xh", "xn": "xn", "xq": "xqM", "lcid": "lcid",
+        "nj": "nj", "zydm": "zydm", "yxbdm": "yxbdm",
+        "is_xjls": "isXjls", "sfbd": "sfbd", "djs": "djs",
+        "xfsx": "xfsx", "mssx": "mssx", "kxkc": "kxkc",
+        "xxkckzfs": "xxkckzfs", "yxkzyfxxk": "yxkzyfxxk",
+        "yxsjct": "yxsjct", "_kcfw": "kcfw",
+    }
+    result = dict(form)
+    for dest, source in mapping.items():
+        if dest not in result or source not in runtime:
+            continue
+        value = runtime[source]
+        if not isinstance(value, str) or len(value) > 512:
+            raise ValueError("invalid current-round field")
+        if result[dest] and result[dest] != value:
+            raise ValueError("conflicting current-round field")
+        result[dest] = value
+    if any(not result.get(key) for key in ("xktype", "xh", "xn", "xq", "lcid")):
+        raise ValueError("current-round form remains incomplete")
+    return result
 
 
 @asynccontextmanager
@@ -296,14 +349,24 @@ async def live_s202_snapshot(
             if any(marker in page for marker in _LOGIN_MARKERS):
                 return LiveElectiveSnapshot("expired", stage)
             try:
-                form = _extract_query_form(page)
+                form = _extract_query_form(page, allow_incomplete=True)
             except LookupError:
                 return LiveElectiveSnapshot("form_missing", stage)
             except ValueError:
                 return LiveElectiveSnapshot("form_incomplete", stage)
             stage = "window"
-            window_resp = await request("POST", WINDOW_PATH)
+            window_resp = await request("POST", WINDOW_PATH + "?xktype=2")
             window = _window_state(window_resp)
+            if not form.get("xn") or not form.get("xq") or not form.get("lcid"):
+                if window == "closed":
+                    return LiveElectiveSnapshot("window_closed", stage, window)
+                runtime = _window_runtime_fields(window_resp)
+                if runtime is None:
+                    return LiveElectiveSnapshot("form_incomplete", stage, window)
+                try:
+                    form = _hydrate_round_form(form, runtime)
+                except ValueError:
+                    return LiveElectiveSnapshot("form_incomplete", stage, window)
             stage = "catalog"
             table_resp = await request("POST", CATALOG_PATH, form=form)
             html = _decode_html(table_resp)
