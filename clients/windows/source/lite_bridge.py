@@ -244,7 +244,7 @@ def serve() -> int:
                         }
                     else:
                         result = session.catalog(load_config(ensure_config()))
-                elif command == "logout":
+                elif command in ("logout", "forget"):
                     if monitor.status()["active"]:
                         raise ValueError("monitor running")
                     result = session.clear(forget=True)
