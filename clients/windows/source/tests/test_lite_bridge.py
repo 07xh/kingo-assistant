@@ -55,6 +55,64 @@ class LiteBridgeTests(TestCase):
         updated = load_config(path)
         self.assertEqual(updated["courses"][0]["extra_local_hint"], "retain")
 
+
+    def test_local_preflight_never_asserts_school_session(self):
+        lite_bridge.ensure_config()
+        report = lite_bridge.get_preflight()
+        self.assertEqual(report["source"], "local_only")
+        self.assertFalse(report["school_verified"])
+        self.assertTrue(any(
+            check["label"] == "本人登录会话" and not check["passed"]
+            for check in report["checks"]
+        ))
+
+    def test_plan_switch_preserves_protocol_and_creates_recovery_backup(self):
+        path = lite_bridge.ensure_config()
+        original = load_config(path)
+        lite_bridge.store_plan("备选一")
+        changed = lite_bridge.save_courses([{
+            "key": "NEW", "course_name": "物理实验", "course_id": "PHY01",
+            "class_id": "P01", "teacher": "", "group": "", "time_slots": ""
+        }])
+        self.assertEqual(changed["courses"][0]["key"], "NEW")
+        restored = lite_bridge.use_plan("备选一")
+        self.assertEqual(restored["courses"][0]["key"], original["courses"][0]["key"])
+        self.assertEqual(load_config(path)["protocol"], original["protocol"])
+        self.assertIn(restored["backup_name"], lite_bridge.get_plans()["plans"])
+
+    def test_plan_list_and_delete(self):
+        lite_bridge.ensure_config()
+        lite_bridge.store_plan("教学计划")
+        self.assertIn("教学计划", lite_bridge.get_plans()["plans"])
+        lite_bridge.remove_plan("教学计划")
+        self.assertNotIn("教学计划", lite_bridge.get_plans()["plans"])
+
+    def test_strategy_save_preserves_school_policy(self):
+        path = lite_bridge.ensure_config()
+        original = load_config(path)
+        data = {
+            "semester": original["xnxq"],
+            "mode": "monitor",
+            "target_time": original["strategy"]["target_time"],
+            "interval_low": 120, "interval_high": 120,
+            "max_cycles": 12, "max_duration_minutes": 60,
+        }
+        new = lite_bridge.save_strategy(data)
+        actual = load_config(path)
+        self.assertEqual(new["interval_seconds"], [120, 120])
+        self.assertEqual(actual["server_policy"], original["server_policy"])
+        self.assertEqual(actual["protocol"], original["protocol"])
+        self.assertTrue(actual["strategy"]["dry_run"])
+
+    def test_strategy_rejects_unapproved_fields_without_writing(self):
+        path = lite_bridge.ensure_config()
+        before = path.read_bytes()
+        with self.assertRaises(ValueError):
+            lite_bridge.save_strategy({
+                "mode": "monitor", "protocol_verified": True,
+            })
+        self.assertEqual(before, path.read_bytes())
+
     def test_invalid_course_rejected_without_writing(self):
         path = lite_bridge.ensure_config()
         before = path.read_bytes()
