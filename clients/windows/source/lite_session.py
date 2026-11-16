@@ -47,6 +47,7 @@ class LiteSession:
             "persistent": bool(
                 saved is not None and self.status == "verified"
                 and saved.username == self.username
+                and saved.cookie == self.cookie
             ),
             "saved_session_available": saved is not None,
             "origin": self.origin if self.status == "verified" else "",
