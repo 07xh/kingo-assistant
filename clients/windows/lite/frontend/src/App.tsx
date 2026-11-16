@@ -97,6 +97,7 @@ export default function App() {
   useEffect(()=>{localStorage.setItem("kingo-lite.theme",theme);},[theme]);
   useEffect(()=>{localStorage.setItem("kingo-lite.nav.collapsed",String(collapsed));},[collapsed]);
   function openEditor(index:number) {
+    if(monitor?.active){setError("只读监测运行中，请先停止，再编辑课程");return;}
     setEditError("");
     setEditing(index);
     setDraft(index < 0 ? blankCourse() : {...courses[index]});
@@ -106,6 +107,7 @@ export default function App() {
   }
   function acceptEdit(event:FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if(monitor?.active){setEditError("请先停止只读监测");return;}
     if(!draft.key.trim() || ![draft.course_id,draft.course_name,draft.teacher].some(x=>x.trim())) {
       setEditError("请填写志愿标识，以及课程代码、课程名称或任课教师中的至少一项");return;
     }
@@ -118,6 +120,7 @@ export default function App() {
   }
   async function persist() {
     if(!snapshotData || loading) return;
+    if(monitor?.active){setError("请先停止监测，再保存课程配置");return;}
     setLoading(true);setError("");
     try {
       const data=await saveCourses(courses);
@@ -127,10 +130,12 @@ export default function App() {
     finally{setLoading(false);}
   }
   function removeCourse(index:number) {
+    if(monitor?.active){setError("监测运行中不能修改课程");return;}
     if(!window.confirm("仅从本机计划中移除此课程？不会访问教务网站。"))return;
     setCourses(current=>current.filter((_,i)=>i!==index));setDirty(true);
   }
   function moveCourse(index:number,direction:-1|1) {
+    if(monitor?.active){setError("监测运行中不能调整志愿顺序");return;}
     const target=index+direction;
     if(target<0||target>=courses.length)return;
     setCourses(current=>{
@@ -141,6 +146,7 @@ export default function App() {
     setDirty(true);
   }
   async function showPlans() {
+    if(monitor?.active){setError("请先停止只读监测，再管理本机方案");return;}
     if(dirty){setError("请先保存课程修改，再管理课程方案");return;}
     try {
       setPlanBusy(true);setError("");setDialogError("");
@@ -182,6 +188,7 @@ export default function App() {
     finally{setChecking(false);}
   }
   function editStrategy() {
+    if(monitor?.active){setError("请先停止只读监测，再修改查询设置");return;}
     if(!snapshotData||dirty){setError("请先保存课程草稿并刷新配置");return;}
     setStrategyDraft({
       semester:snapshotData.semester,
@@ -299,7 +306,7 @@ export default function App() {
               <h1>{page==="home"?"选课工作台":page==="courses"?"课程计划":page==="execution"?"运行中心":"日志记录"}</h1>
               <p>{page==="home"?"准备课程与检查运行条件":page==="courses"?"编辑本机目标课程和备选志愿":page==="execution"?"查看各项能力的真实接入状态":"本次 Lite 界面会话的本机操作记录"}</p>
             </div>
-            <button className="button subtle" disabled={loading||dirty} onClick={()=>void reload()} title={dirty?"请先保存或放弃未保存修改":"重新读取本机配置"}>
+            <button className="button subtle" disabled={loading||dirty||monitor?.active} onClick={()=>void reload()} title={dirty?"请先保存或放弃未保存修改":"重新读取本机配置"}>
               <RefreshCw size={15} className={loading?"spin":""}/>刷新
             </button>
           </div>
@@ -336,13 +343,13 @@ export default function App() {
             </section>
           </>}
           {page==="courses"&&<>
-            <div className="section-heading top-actions"><div><h3>目标课程</h3><p>仅保存到本机配置，最多 30 门；示例课程不会作为真实在线课程显示。</p></div><div className="button-cluster"><button className="button" disabled={!snapshotData||planBusy} onClick={()=>void showPlans()}>管理方案</button><button className="button primary" disabled={!snapshotData||courses.length>=30} onClick={()=>openEditor(-1)}><Plus size={16}/>添加课程</button></div></div>
+            <div className="section-heading top-actions"><div><h3>目标课程</h3><p>仅保存到本机配置，最多 30 门；示例课程不会作为真实在线课程显示。</p></div><div className="button-cluster"><button className="button" disabled={!snapshotData||planBusy||monitor?.active} onClick={()=>void showPlans()}>管理方案</button><button className="button primary" disabled={!snapshotData||courses.length>=30||monitor?.active} onClick={()=>openEditor(-1)}><Plus size={16}/>添加课程</button></div></div>
             <section className="card table-wrap">
               <table><thead><tr><th>优先级</th><th>志愿</th><th>课程</th><th>教学班</th><th>备选组</th><th>状态</th><th>操作</th></tr></thead>
-              <tbody>{courses.map((course,index)=><tr key={index}><td>{index+1}</td><td>{course.key}</td><td><strong>{presentCourse(course)}</strong><small>{course.course_id||"无课程代码"} · {course.teacher||"未填教师"}</small></td><td>{course.class_id||"—"}</td><td>{course.group||"—"}</td><td><span className="status muted">{isPlaceholder(course)?"示例 · 未连接":"未查询"}</span></td><td><div className="row-actions"><button aria-label={"上移"+presentCourse(course)} disabled={index===0} onClick={()=>moveCourse(index,-1)}><ArrowUp size={15}/></button><button aria-label={"下移"+presentCourse(course)} disabled={index===courses.length-1} onClick={()=>moveCourse(index,1)}><ArrowDown size={15}/></button><button aria-label={"编辑"+presentCourse(course)} onClick={()=>openEditor(index)}><Pencil size={15}/></button><button aria-label={"删除"+presentCourse(course)} onClick={()=>removeCourse(index)}><Trash2 size={15}/></button></div></td></tr>)}</tbody></table>
+              <tbody>{courses.map((course,index)=><tr key={index}><td>{index+1}</td><td>{course.key}</td><td><strong>{presentCourse(course)}</strong><small>{course.course_id||"无课程代码"} · {course.teacher||"未填教师"}</small></td><td>{course.class_id||"—"}</td><td>{course.group||"—"}</td><td><span className="status muted">{isPlaceholder(course)?"示例 · 未连接":"未查询"}</span></td><td><div className="row-actions"><button aria-label={"上移"+presentCourse(course)} disabled={index===0||monitor?.active} onClick={()=>moveCourse(index,-1)}><ArrowUp size={15}/></button><button aria-label={"下移"+presentCourse(course)} disabled={index===courses.length-1||monitor?.active} onClick={()=>moveCourse(index,1)}><ArrowDown size={15}/></button><button aria-label={"编辑"+presentCourse(course)} disabled={monitor?.active} onClick={()=>openEditor(index)}><Pencil size={15}/></button><button aria-label={"删除"+presentCourse(course)} disabled={monitor?.active} onClick={()=>removeCourse(index)}><Trash2 size={15}/></button></div></td></tr>)}</tbody></table>
               {courses.length===0&&<div className="empty"><BookOpen size={26}/><strong>还没有配置课程</strong><span>使用右上角「添加课程」建立本机计划</span></div>}
             </section>
-            <div className="course-footer"><small>学期：{snapshotData?.semester||"未读取"} · 当前界面不调用学校选课接口</small><button className="button primary" disabled={!dirty||loading} onClick={()=>void persist()}><Save size={16}/>保存本机计划</button></div>
+            <div className="course-footer"><small>学期：{snapshotData?.semester||"未读取"} · 当前界面不调用学校选课接口</small><button className="button primary" disabled={!dirty||loading||monitor?.active} onClick={()=>void persist()}><Save size={16}/>保存本机计划</button></div>
           </>}
           {page==="execution"&&<>
             <section className="card section"><div className="section-heading"><div><h3>本机运行前检查</h3><p>不访问教务系统，不证明账号有效或可选课程有余量。</p></div><button className="button" disabled={checking||!snapshotData} onClick={()=>void checkReadiness()}>{checking?"检查中…":"检查运行条件"}</button></div>
