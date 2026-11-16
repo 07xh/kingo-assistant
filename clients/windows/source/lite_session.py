@@ -115,6 +115,13 @@ class LiteSession:
             raise ValueError("credentials must be text")
         if len(username) > 128 or len(password) > 256:
             raise ValueError("credentials too long")
+        # Switching to a different account, or declining "remember", must
+        # not silently leave another account's bearer token in Windows storage.
+        # Fail closed if the old credential cannot be safely revoked.
+        if self.vault is not None:
+            existing = self.vault.load()
+            if existing is not None and (existing.username != username or not remember):
+                self.vault.clear()
         self.clear()
         result = asyncio.run(login_ncwusigned(config, username, password))
         saved_error = False
