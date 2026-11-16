@@ -13,6 +13,17 @@
 
 上述证据已证明真实课表响应接口存在；**它不是可选课程、剩余名额或实际选课成功的证据**。
 
+## 从此前保存的其他脱敏报告补回的接口
+
+另行找到用户 2026-11-03 的华水青果网页 HAR 结构报告（183 条请求）、2026-11-07 喜鹊儿报告（48 条请求）。它们来自不同一次登录与使用流程，不能直接拼成同一可重放的认证会话。
+
+- 已观察到 `POST /hsjw/cas/logon.action`，表单字段名称 `username`、`password`、`loginmethod`；参数值、必要的动态验证和响应身份确认尚未保留。示例配置只预填已观察到的路径与两个账号密码字段名，`auth.login.verified` **仍为 false**。这一校内账号登录表单不是已经实现的跨域 CAS/SSO。
+- `GET /hsjw/student/xkjg.wdkb.jsp` 和 `GET /hsjw/student/wsxk.xskcb10319.jsp` 是个人课表 HTML 入口/展示页；它们不等于可选课程目录。
+- `GET /hsjw/wsxk/xkjg.ckdgxsxdkchj_data10319.jsp` 是选课结果页面；不能当作当下未选课程或余量。
+- `POST /hsjw/jw/common/showYearTerm.action` 返回学年学期信息，并不是可写的选课 POST。
+
+这些源文件在个人文件库的脱敏报告中，不包含原始密钥值、Cookie 或可复用动态提交参数。本轮没有将它们猜测为学校完整协议，也没有合并到选课写入通道。
+
 ## 本轮真实代码接入
 
 新模块 `core/native_timetable.py` 使用观察到的**原样双斜杠路径**和 HTTP POST，作为固定、不可由用户任意改成选课提交 URL 的只读适配器：
