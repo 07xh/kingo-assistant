@@ -35,3 +35,13 @@
 .plan-item strong{font-size:12px;font-weight:600}
 .form-grid select{height:36px;border-radius:8px;border:1px solid var(--stroke);background:var(--surface);color:var(--text);padding:0 10px;outline:none}
 @media(max-width:650px){.plan-item{align-items:flex-start;flex-direction:column}.plan-create{flex-wrap:wrap}.plan-create input{height:36px;flex-basis:100%}}
+
+/* Official account and manual catalog controls, visually distinct from local drafts. */
+.login-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:7px 0 14px}
+.login-actions .status{margin-right:auto}
+.login-actions .button{white-space:nowrap}
+.section .notice{margin-top:13px}
+.section .table-wrap{overflow-x:auto;border:1px solid var(--stroke);border-radius:11px;max-height:390px}
+.section .table-wrap table{min-width:660px}
+.section .table-wrap th{position:sticky;top:0;z-index:1}
+@media(max-width:650px){.login-actions .status{margin-right:0}.login-actions .button{width:100%}}
