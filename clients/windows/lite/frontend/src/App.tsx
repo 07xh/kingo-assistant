@@ -4,7 +4,7 @@ import {
   Minus,Monitor, Moon,PanelLeftClose,PanelLeftOpen,Plus,RefreshCw,
   Save,Settings,ShieldAlert,Sun,Trash2, X, Square, GraduationCap, Pencil
 } from "lucide-react";
-import {applyPlan,blankCourse,createPlan,deletePlan,isDesktop,listPlans,preflight,saveCourses,saveStrategy,snapshot,windowAction,signedLogin,logout,manualCatalog,sessionStatus,type OfficialCatalog,type LoginReply,type SessionInfo,type Course,type Preflight,type Snapshot,type Strategy} from "./bridge";
+import {applyPlan,blankCourse,createPlan,deletePlan,isDesktop,listPlans,preflight,saveCourses,saveStrategy,snapshot,windowAction,signedLogin,logout,manualCatalog,sessionStatus,startReadOnlyMonitor,stopReadOnlyMonitor,monitorStatus,type MonitorSnapshot,type OfficialCatalog,type LoginReply,type SessionInfo,type Course,type Preflight,type Snapshot,type Strategy} from "./bridge";
 
 type Page = "home" | "courses" | "execution" | "logs";
 const navigation = [
@@ -52,6 +52,7 @@ export default function App() {
   const [loginResult,setLoginResult]=useState<LoginReply|null>(null);
   const [catalog,setCatalog]=useState<OfficialCatalog|null>(null);
   const [schoolBusy,setSchoolBusy]=useState(false);
+  const [monitor,setMonitor]=useState<MonitorSnapshot|null>(null);
   const [plansOpen,setPlansOpen]=useState(false);
   const [planName,setPlanName]=useState("");
   const [plans,setPlans]=useState<string[]>([]);
@@ -81,7 +82,18 @@ export default function App() {
   useEffect(()=>{
     if(!isDesktop())return;
     void sessionStatus().then(setSession).catch(()=>setSession(null));
+    void monitorStatus().then(setMonitor).catch(()=>setMonitor(null));
   },[]);
+  useEffect(()=>{
+    if(!monitor || (monitor.phase!=="running"&&monitor.phase!=="stopping"))return;
+    let active=true;
+    const handle=window.setInterval(()=>{
+      void monitorStatus().then(value=>{if(active)setMonitor(value);}).catch(()=>{
+        if(active)setMonitor(null);
+      });
+    },2200);
+    return ()=>{active=false;window.clearInterval(handle);};
+  },[monitor?.phase]);
   useEffect(()=>{localStorage.setItem("kingo-lite.theme",theme);},[theme]);
   useEffect(()=>{localStorage.setItem("kingo-lite.nav.collapsed",String(collapsed));},[collapsed]);
   function openEditor(index:number) {
@@ -193,6 +205,28 @@ export default function App() {
     }catch(e){setDialogError(shortError(e));}
     finally{setLoading(false);}
   }
+  async function startMonitor() {
+    if(schoolBusy || monitor?.active || session?.status!=="verified")return;
+    if(dirty){setError("请先保存本机计划，再启动只读监测");return;}
+    setSchoolBusy(true);setError("");
+    try{
+      const result=await startReadOnlyMonitor();
+      setMonitor(result);
+      if(result.code==="started"){log("已启动原版只读监测；学校查询仍受请求预算限制");}
+      else if(result.code==="preflight_rejected"){setError("只读监测未启动：本机协议、课程或学校请求预算未通过核验");}
+      else{setError("只读监测未启动："+(result.code||"unknown"));}
+    }catch(e){setError(shortError(e));log("只读监测启动失败");}
+    finally{setSchoolBusy(false);}
+  }
+  async function stopMonitor() {
+    if(schoolBusy)return;
+    setSchoolBusy(true);setError("");
+    try{
+      const result=await stopReadOnlyMonitor();setMonitor(result);
+      log("已请求停止本次只读监测");
+    }catch(e){setError(shortError(e));}
+    finally{setSchoolBusy(false);}
+  }
   async function loginUser(event:FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if(schoolBusy || !username.trim() || !password)return;
@@ -203,7 +237,7 @@ export default function App() {
       setCatalog(null);
       log(result.session.verified_at_login?"本人账号身份回读通过（未查询课程）":"EXE 登录未通过："+result.code);
       if(result.session.verified_at_login){setLoginOpen(false);setUsername("");}
-    }catch(e){setError(shortError(e));log("EXE 登录服务请求失败（无凭据被保存）");}
+    }catch(e){setSession(null);setCatalog(null);setError(shortError(e));log("EXE 登录服务请求失败（无凭据被保存）");}
     finally{setPassword("");setSchoolBusy(false);}
   }
   async function endSession() {
@@ -222,7 +256,7 @@ export default function App() {
       const result=await manualCatalog();
       setCatalog(result);setSession(result.session);
       log(result.code==="catalog_read"?"S202 官网只读查询完成："+result.total_courses+" 条课程":"S202 官网查询未完成："+result.code);
-    }catch(e){setError(shortError(e));setCatalog(null);log("S202 只读查询失败，没有模拟数据");}
+    }catch(e){setSession(null);setError(shortError(e));setCatalog(null);log("S202 只读查询失败，没有模拟数据");}
     finally{setSchoolBusy(false);}
   }
   function go(next:Page) {setPage(next);setError("");}
@@ -236,7 +270,7 @@ export default function App() {
           <span className="window-divider" />
           <button title="最小化" aria-label="最小化" onClick={()=>void windowAction("minimize")}><Minus size={16}/></button>
           <button title="最大化或还原" aria-label="最大化或还原" onClick={()=>void windowAction("maximize")}><Square size={13}/></button>
-          <button title="关闭" aria-label="关闭" className="close-window" onClick={()=>void windowAction("close")}><X size={16}/></button>
+          <button title="关闭" aria-label="关闭" className="close-window" onClick={()=>{if((monitor?.active||dirty)&&!window.confirm("关闭将停止当前监测，并丢弃未保存的界面修改。确定关闭？"))return;void windowAction("close");}}><X size={16}/></button>
         </div>
       </header>
       <div className="workspace">
@@ -290,8 +324,8 @@ export default function App() {
               <div className="section-heading"><div><h3>教务登录</h3><p>在 EXE 内使用已有的 NCWU 原生签名登录；不会保存密码或 Cookie。</p></div></div>
               <div className="login-actions">
                 <span className={"status "+(session?.status==="verified"?"good":"muted")}>{session?.status==="verified"?"本次身份已核验":"尚无已核验会话"}</span>
-                {session?.status==="verified"?<button className="button" disabled={schoolBusy} onClick={()=>void endSession()}>清除会话</button>:<button className="button primary" disabled={schoolBusy||!isDesktop()} onClick={()=>{setLoginResult(null);setLoginOpen(true);}}>登录本人教务账号</button>}
-                {session?.status==="verified"&&<button className="button primary" disabled={schoolBusy} onClick={()=>{go("execution");void loadCatalog();}}>手动读取课程</button>}
+                {session?.status==="verified"?<button className="button" disabled={schoolBusy||monitor?.active} onClick={()=>void endSession()}>清除会话</button>:<button className="button primary" disabled={schoolBusy||!isDesktop()} onClick={()=>{setLoginResult(null);setLoginOpen(true);}}>登录本人教务账号</button>}
+                {session?.status==="verified"&&<button className="button primary" disabled={schoolBusy||monitor?.active} onClick={()=>{go("execution");void loadCatalog();}}>手动读取课程</button>}
               </div>
               {loginResult&&!loginResult.session.verified_at_login&&<div className="notice warning">{loginResult.message}</div>}
               <div className="section-heading" style={{marginTop:18}}><div><h3>快捷入口</h3><p>只展示当前有明确功能的操作</p></div></div>
@@ -319,11 +353,11 @@ export default function App() {
               <div className="cap-row"><span>本地课程计划</span><span className={"status "+(snapshotData?"good":"muted")}>{snapshotData?"可读取":"不可用"}</span></div>
               <div className="cap-row"><span>官方账号会话</span><span className={"status "+(session?.status==="verified"?"good":"muted")}>{session?.status==="verified"?"本次登录身份已核验":"未登录"}</span></div>
               <div className="cap-row"><span>学校实时课程</span><span className={"status "+(catalog?.code==="catalog_read"?"good":"muted")}>{catalog?.code==="catalog_read"?"最近一次查询已返回":"未获得可展示数据"}</span></div>
-              <div className="cap-row"><span>只读监测</span><span className="status muted">等待迁移后台控制器</span></div>
+              <div className="cap-row"><span>只读监测</span><span className={"status "+(monitor?.active?"good":"muted")}>{monitor?.active?"运行中":monitor?.phase==="stopped"?"已停止":monitor?.phase==="failed"?"执行失败":"未运行"}</span></div>
               <div className="cap-row"><span>自动提交</span><span className="status blocked">学校写入适配器缺失</span></div>
             </section>
             <section className="card section"><div className="section-heading"><div><h3>NCWU S202 课程目录</h3><p>仅在你点击时从官网读取一次。状态字段不是已选结果，也不包含已核验的剩余名额。</p></div>
-                <button className="button primary" disabled={schoolBusy||session?.status!=="verified"||!isDesktop()} onClick={()=>void loadCatalog()}>{schoolBusy?"读取中…":"手动读取官网目录"}</button></div>
+                <button className="button primary" disabled={schoolBusy||session?.status!=="verified"||!isDesktop()||monitor?.active} onClick={()=>void loadCatalog()}>{schoolBusy?"读取中…":"手动读取官网目录"}</button></div>
                 {catalog&&<div className={"notice "+(catalog.code==="catalog_read"?"warning":"error")}>{catalog.message}</div>}
                 {catalog?.code==="catalog_read"&&<><div className="course-footer"><small>学校返回 {catalog.total_courses} 条；显示 {catalog.courses.length} 条。本次读取不会提交选课。</small></div>
                   <div className="table-wrap"><table><thead><tr><th>课程名称</th><th>课程代码</th><th>教学班</th><th>任课教师</th><th>选课状态</th></tr></thead>
@@ -334,7 +368,17 @@ export default function App() {
             <section className="card section"><h3>当前本机查询配置</h3>
               <p>模式：{snapshotData?.mode==="burst"?"定时单次查询":"常规只读监测"}　查询间隔：{snapshotData?.interval_seconds?.join("–")||"未读取"} 秒</p>
               <p>此页不会自行启动任务或打开浏览器。原有 Tk Windows 客户端仍是当前监测入口，直到完成有状态任务桥接与 Windows 验收。</p>
-              <button disabled className="button primary" title="当前 Lite 版本未接入后台监测与学校提交">启动任务（尚未接入）</button>
+              <div className="monitor-actions">
+                <button className="button primary" disabled={schoolBusy||monitor?.active||session?.status!=="verified"||dirty} onClick={()=>void startMonitor()}>启动只读监测</button>
+                <button className="button" disabled={schoolBusy||!monitor?.active} onClick={()=>void stopMonitor()}>停止监测</button>
+              </div>
+              <div className="monitor-metrics">
+                <span>运行阶段：<strong>{monitor?.phase||"未初始化"}</strong></span>
+                <span>检查轮次：<strong>{monitor?.cycles??0}</strong></span>
+                <span>最近请求：<strong>{monitor?.last_ms==null?"—":monitor.last_ms.toFixed(1)+" ms"}</strong></span>
+              </div>
+              {monitor?.message&&<p>{monitor.message}</p>}
+              <p>仅迁移只读监测；学校选课提交依旧不可用。关闭 Lite 将终止进程内任务，当前版本不支持托盘驻留。</p>
             </section>
           </>}
           {page==="logs"&&<section className="card section"><div className="section-heading"><div><h3>本次界面操作</h3><p>仅用于 Lite 本机界面的临时记录，不是学校接口日志。</p></div></div>
