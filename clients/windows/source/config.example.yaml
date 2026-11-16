@@ -56,6 +56,17 @@ notify:
   include_teacher: false
   pushplus_token: ""  # optional PUSHPLUS_TOKEN env
   serverchan_token: "" # optional SERVERCHAN_TOKEN env
+# Previously observed real NCWU personal timetable POST (2026-11-11 HAR).
+# Only the URL/method and JSON response shape are confirmed. Body fields,
+# authorization and rate limits MUST be checked from an authorized read-only
+# request before enabling. Empty placeholders never trigger network calls.
+known_timetable:
+  verified: false
+  method: POST
+  path: "/hsjw//wap/mycourseschedule.action"
+  body_mode: ""          # form or json, as observed in own authorized capture
+  request_fields: {}     # never store token, password or session values here
+
 protocol:
   verified: false    # change to true ONLY after own authorized page validation
   # [TODO: 抓包核对] F12 > Network > Doc/Fetch/XHR > Request URL/Headers.
