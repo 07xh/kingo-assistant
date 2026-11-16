@@ -65,8 +65,8 @@ notify:
   pushplus_token: ""  # optional PUSHPLUS_TOKEN env
   serverchan_token: "" # optional SERVERCHAN_TOKEN env
 # Observed in the 2026-11-03 NCWU official school-web HAR.
-# Queryless URLs are NOT yet verified. The selected-results page originally
-# used a redacted `params` query value; it cannot be replayed from the HAR.
+# The actual Nov 03 HAR had `menucode` on timetable_entry and `params`
+# on selected_results. Their values cannot be guessed or replayed from HAR.
 # The read adapter is disabled until normal official access is verified.
 known_school_pages:
   timetable_entry:
@@ -74,7 +74,7 @@ known_school_pages:
     method: GET
     path: "/hsjw/student/xkjg.wdkb.jsp"
     query_verified: false
-    query_mode: none
+    query_mode: unverified
   selected_results:
     verified: false
     method: GET
@@ -99,7 +99,7 @@ known_timetable:
   verified: false
   method: POST
   path: "/hsjw//wap/mycourseschedule.action"
-  body_mode: ""          # form or json, as observed in own authorized capture
+  body_mode: form        # observed Content-Type: application/x-www-form-urlencoded
   request_fields: {}     # never store token, password or session values here
 
 protocol:
