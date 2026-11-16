@@ -23,6 +23,7 @@ from urllib.parse import urlsplit
 import httpx
 from bs4 import BeautifulSoup
 
+from core.client import html_encoding
 from core.native_login import NativeLoginResult, _same_origin_cookies
 from core.ncwu_legacy_encoder import encode_legacy_strenc
 
@@ -85,6 +86,15 @@ def _content(resp: httpx.Response, *, max_bytes: int, mime: tuple[str, ...]) -> 
     content_type = resp.headers.get("content-type", "").split(";", 1)[0].strip().lower()
     if content_type not in mime:
         raise ValueError("unexpected content type")
+    # The captured NCWU login page is GBK; the script / JSON paths remain UTF-8.
+    # Reuse the strict HTML charset selector so declarations cannot silently
+    # corrupt the original login form or its challenge indicators.
+    if content_type == "text/html":
+        try:
+            codec = html_encoding(resp.content, resp.headers.get("content-type", ""))
+            return resp.content.decode(codec, errors="strict")
+        except (UnicodeError, ValueError, RuntimeError) as exc:
+            raise ValueError("invalid login-page charset") from exc
     return resp.content.decode("utf-8-sig", errors="strict")
 
 

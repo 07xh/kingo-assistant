@@ -46,6 +46,7 @@ from core.known_school_pages import KnownSchoolPageResult, read_known_school_pag
 from core.ncwu_term_probe import TermProbeResult, probe_known_year_term, validate_term_contract
 from core.native_login import NativeLoginResult, login_with_verified_form, validate_login_contract
 from core.ncwu_signed_login import login_ncwusigned, validate_ncwulogin_entry
+from core.ncwu_elective_table import inspect_elective_table
 from core.official_entries import OFFICIAL_ENTRIES, probe_official_login_surfaces
 from core.scheduled_ui_bridge import prepare_scheduled_plan
 from core.attestation import AttestationError, AttestationRegistry, resolve_registry
@@ -542,7 +543,8 @@ class Application(tk.Tk):
             (("检查本机配置", self.check_config),
              ("登录 HAR 分析（离线）", self.audit_auth_route_har),
              ("课程 HAR 分析（离线）", self.audit_local_har)),
-            (("课程目录证据对照", self.review_catalog_evidence),
+            (("选课表头 HTML 核验（离线）", self.inspect_elective_table_file),
+             ("课程目录证据对照", self.review_catalog_evidence),
              ("离线 HTML 演练", self.replay_local),
              ("虚构示例（仅演示）", self.demo_next),
              ("本机离线调度测速", self.benchmark_offline)),
@@ -1354,6 +1356,36 @@ class Application(tk.Tk):
                 "认证链路分析失败",
                 "HAR 无效、过大或无法读取。请勿上传包含登录凭证的原始 HAR。"
             )
+
+    def inspect_elective_table_file(self) -> None:
+        """Inspect a locally saved S202 table only; never access campus services."""
+        if self.worker or self.__dict__.get("scheduled_worker"):
+            messagebox.showinfo("请先停止监测", "监测期间请勿切换离线分析。")
+            return
+        filename = filedialog.askopenfilename(
+            title="选择本人导出的选课表 HTML（完全离线）",
+            filetypes=[("HTML 文件", "*.html *.htm")],
+        )
+        if not filename:
+            return
+        try:
+            page = Path(filename)
+            if page.stat().st_size > 2 * 1024 * 1024:
+                raise ValueError("oversized HTML")
+            outcome = inspect_elective_table(page.read_bytes())
+        except (OSError, ValueError):
+            messagebox.showwarning(
+                "选课表头核验", "文件无法读取或超过 2 MiB；未访问学校。")
+            return
+        self.status.set("选课表头核验（离线）｜" + outcome.code)
+        self.log(
+            f"已识别 {outcome.recognized_headers} 个选课表字段；"
+            f"疑似数据行 {outcome.candidate_data_rows}；未联网。")
+        messagebox.showinfo(
+            "选课表头核验（仅离线）",
+            outcome.message + "\n\n此操作不能确认剩余名额或开放选课，"
+            "也不会启用自动提交。",
+        )
 
     def review_catalog_evidence(self) -> None:
         """Compare a locally redacted evidence pair; never enable live catalog mode."""
