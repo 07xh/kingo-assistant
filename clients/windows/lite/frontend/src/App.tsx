@@ -4,7 +4,7 @@ import {
   Minus,Monitor, Moon,PanelLeftClose,PanelLeftOpen,Plus,RefreshCw,
   Save,Settings,ShieldAlert,Sun,Trash2, X, Square, GraduationCap, Pencil
 } from "lucide-react";
-import {blankCourse,isDesktop,saveCourses,snapshot,windowAction,type Course,type Snapshot} from "./bridge";
+import {applyPlan,blankCourse,createPlan,deletePlan,isDesktop,listPlans,preflight,saveCourses,saveStrategy,snapshot,windowAction,type Course,type Preflight,type Snapshot,type Strategy} from "./bridge";
 
 type Page = "home" | "courses" | "execution" | "logs";
 const navigation = [
@@ -43,6 +43,14 @@ export default function App() {
   const [editError,setEditError]=useState("");
   const [events,setEvents]=useState<EventEntry[]>([]);
   const [editing,setEditing]=useState<number|null>(null);
+  const [plansOpen,setPlansOpen]=useState(false);
+  const [planName,setPlanName]=useState("");
+  const [plans,setPlans]=useState<string[]>([]);
+  const [planBusy,setPlanBusy]=useState(false);
+  const [readiness,setReadiness]=useState<Preflight|null>(null);
+  const [checking,setChecking]=useState(false);
+  const [strategyOpen,setStrategyOpen]=useState(false);
+  const [strategyDraft,setStrategyDraft]=useState<Strategy|null>(null);
   const [draft,setDraft]=useState<Course>(blankCourse());
 
   function log(message:string) {
@@ -105,6 +113,71 @@ export default function App() {
       return next;
     });
     setDirty(true);
+  }
+  async function showPlans() {
+    if(dirty){setError("请先保存课程修改，再管理课程方案");return;}
+    try {
+      setPlanBusy(true);setError("");
+      const result=await listPlans();
+      setPlans(result.plans);setPlansOpen(true);
+    }catch(e){setError(shortError(e));}
+    finally{setPlanBusy(false);}
+  }
+  async function handlePlan(action:"save"|"apply"|"delete",name:string) {
+    const trimmed=name.trim();
+    if(!trimmed || planBusy || !snapshotData) return;
+    if(action==="save" && plans.includes(trimmed) && !window.confirm("同名课程方案已存在，是否覆盖本机备份？"))return;
+    if(action==="apply" && !window.confirm("切换方案将改变当前课程计划；旧计划会另外保存恢复点。确定继续？"))return;
+    if(action==="delete" && !window.confirm("确定删除本机课程方案？"))return;
+    setPlanBusy(true);setError("");
+    try {
+      if(action==="save") {
+        const result=await createPlan(trimmed);setPlans(result.plans);
+        log("已保存本机课程方案："+trimmed);
+      } else if(action==="delete") {
+        const result=await deletePlan(trimmed);setPlans(result.plans);
+        log("已删除本机课程方案："+trimmed);
+      } else {
+        const result=await applyPlan(trimmed);
+        setSnapshotData(result);setCourses(result.courses);setDirty(false);
+        setPlans(result.plans);setPlansOpen(false);setReadiness(null);
+        log("已切换本机方案："+trimmed+"（旧方案已生成恢复点）");
+      }
+    }catch(e){setError(shortError(e));}
+    finally{setPlanBusy(false);}
+  }
+  async function checkReadiness() {
+    if(dirty){setError("先保存课程修改，才能对当前本机配置进行检查");return;}
+    setChecking(true);setError("");
+    try {
+      const result=await preflight();setReadiness(result);
+      log("完成本地运行条件检查：阻止项 "+result.blockers+"，提示 "+result.warnings);
+    }catch(e){setError(shortError(e));}
+    finally{setChecking(false);}
+  }
+  function editStrategy() {
+    if(!snapshotData||dirty){setError("请先保存课程草稿并刷新配置");return;}
+    setStrategyDraft({
+      semester:snapshotData.semester,
+      mode:snapshotData.mode==="burst"?"burst":"monitor",
+      target_time:snapshotData.target_time,
+      interval_low:snapshotData.interval_seconds[0],
+      interval_high:snapshotData.interval_seconds[1],
+      max_cycles:snapshotData.max_cycles,
+      max_duration_minutes:snapshotData.max_duration_minutes
+    });
+    setStrategyOpen(true);setError("");
+  }
+  async function persistStrategy(event:FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if(!strategyDraft||loading) return;
+    setLoading(true);setError("");
+    try {
+      const result=await saveStrategy(strategyDraft);
+      setSnapshotData(result);setCourses(result.courses);setStrategyOpen(false);setReadiness(null);
+      log("已保存本机只读查询设置；未开启学校查询");
+    }catch(e){setError(shortError(e));}
+    finally{setLoading(false);}
   }
   function go(next:Page) {setPage(next);setError("");}
   return (
@@ -176,7 +249,7 @@ export default function App() {
             </section>
           </>}
           {page==="courses"&&<>
-            <div className="section-heading top-actions"><div><h3>目标课程</h3><p>仅保存到本机配置，最多 30 门；示例课程不会作为真实在线课程显示。</p></div><button className="button primary" disabled={!snapshotData||courses.length>=30} onClick={()=>openEditor(-1)}><Plus size={16}/>添加课程</button></div>
+            <div className="section-heading top-actions"><div><h3>目标课程</h3><p>仅保存到本机配置，最多 30 门；示例课程不会作为真实在线课程显示。</p></div><div className="button-cluster"><button className="button" disabled={!snapshotData||planBusy} onClick={()=>void showPlans()}>管理方案</button><button className="button primary" disabled={!snapshotData||courses.length>=30} onClick={()=>openEditor(-1)}><Plus size={16}/>添加课程</button></div></div>
             <section className="card table-wrap">
               <table><thead><tr><th>优先级</th><th>志愿</th><th>课程</th><th>教学班</th><th>备选组</th><th>状态</th><th>操作</th></tr></thead>
               <tbody>{courses.map((course,index)=><tr key={index}><td>{index+1}</td><td>{course.key}</td><td><strong>{presentCourse(course)}</strong><small>{course.course_id||"无课程代码"} · {course.teacher||"未填教师"}</small></td><td>{course.class_id||"—"}</td><td>{course.group||"—"}</td><td><span className="status muted">{isPlaceholder(course)?"示例 · 未连接":"未查询"}</span></td><td><div className="row-actions"><button aria-label={"上移"+presentCourse(course)} disabled={index===0} onClick={()=>moveCourse(index,-1)}><ArrowUp size={15}/></button><button aria-label={"下移"+presentCourse(course)} disabled={index===courses.length-1} onClick={()=>moveCourse(index,1)}><ArrowDown size={15}/></button><button aria-label={"编辑"+presentCourse(course)} onClick={()=>openEditor(index)}><Pencil size={15}/></button><button aria-label={"删除"+presentCourse(course)} onClick={()=>removeCourse(index)}><Trash2 size={15}/></button></div></td></tr>)}</tbody></table>
@@ -185,6 +258,10 @@ export default function App() {
             <div className="course-footer"><small>学期：{snapshotData?.semester||"未读取"} · 当前界面不调用学校选课接口</small><button className="button primary" disabled={!dirty||loading} onClick={()=>void persist()}><Save size={16}/>保存本机计划</button></div>
           </>}
           {page==="execution"&&<>
+            <section className="card section"><div className="section-heading"><div><h3>本机运行前检查</h3><p>不访问教务系统，不证明账号有效或可选课程有余量。</p></div><button className="button" disabled={checking||!snapshotData} onClick={()=>void checkReadiness()}>{checking?"检查中…":"检查运行条件"}</button></div>
+              {readiness?<><div className="notice warning">发现 {readiness.blockers} 项本机阻止条件，{readiness.warnings} 项建议核对；不代表学校实时验收。</div>
+                {readiness.checks.map((check,index)=><div className="readiness-row" key={index}><span className={check.passed?"check-good":"check-warn"}>{check.passed?"通过":check.severity==="blocker"?"未通过":"提示"}</span><div><strong>{check.label}</strong>{!check.passed&&<small>{check.detail}</small>}</div></div>)}</>:<p>按需检查本机课程、节次和查询配置；结果不会发起任何网络请求。</p>}
+            </section>
             <section className="card section"><h3>真实能力状态</h3>
               <div className="cap-row"><span>本地课程计划</span><span className={"status "+(snapshotData?"good":"muted")}>{snapshotData?"可读取":"不可用"}</span></div>
               <div className="cap-row"><span>官方账号会话</span><span className="status muted">新界面未接通</span></div>
@@ -209,11 +286,32 @@ export default function App() {
           <div className="modal-heading"><div><span className="eyebrow">偏好与说明</span><h2>设置</h2></div><button aria-label="关闭设置" onClick={()=>setSettingsOpen(false)}><X size={19}/></button></div>
           <div className="settings-layout"><div className="settings-menu"><strong>通用设置</strong><small>外观与窗口</small><strong>关于</strong><small>版本与边界</small></div>
             <div className="settings-body"><h3>外观</h3><div className="setting-row"><div><strong>深色主题</strong><p>仅保存本机界面偏好</p></div><button className="button" onClick={()=>setTheme(x=>x==="dark"?"light":"dark")}>{theme==="dark"?"已启用":"切换深色"}</button></div>
-            <div className="setting-row"><div><strong>侧边栏</strong><p>收起后只显示图标</p></div><button className="button" onClick={()=>setCollapsed(x=>!x)}>{collapsed?"展开":"收起"}</button></div>
+            <div className="setting-row"><div><strong>侧边栏</strong><p>收起后只显示图标</p></div><button className="button" onClick={()=>setCollapsed(x=>!x)}>{collapsed?"展开":"收起"}</button></div><div className="setting-row"><div><strong>本机查询设置</strong><p>学期、查询模式、间隔及次数，不改变学校访问权限</p></div><button className="button" onClick={()=>{setSettingsOpen(false);editStrategy();}}>编辑</button></div>
             <h3>关于</h3><p>KingoAssistant Lite · 独立实现的轻量 UI。参考 LightC 的布局理念；不包含 LightC 原版源码、标识或受限资源。</p>
             <p>此版本正在迁移桌面界面。旧版已具备的真实业务逻辑不会被本界面替代或删除。</p></div>
           </div>
         </section>
+      </div>}
+      {plansOpen&&<div className="overlay" onMouseDown={e=>{if(e.target===e.currentTarget)setPlansOpen(false);}}>
+        <section className="modal" role="dialog" aria-modal="true" aria-label="管理课程方案">
+          <div className="modal-heading"><h2>本机课程方案</h2><button aria-label="关闭方案管理" onClick={()=>setPlansOpen(false)}><X size={18}/></button></div>
+          <p>保存课程和查询设置的本地快照，不包含账号、Cookie 或教务协议。</p>
+          <div className="plan-create"><input aria-label="新方案名称" value={planName} maxLength={40} placeholder="输入方案名称" onChange={e=>setPlanName(e.target.value)}/><button className="button primary" disabled={!planName.trim()||planBusy} onClick={()=>void handlePlan("save",planName)}>保存当前方案</button></div>
+          <div className="plan-list">{plans.length===0?<div className="empty">暂无保存的课程方案</div>:plans.map(name=><div className="plan-item" key={name}><strong>{name}</strong><div className="button-cluster"><button className="button" disabled={planBusy} onClick={()=>void handlePlan("apply",name)}>切换</button><button className="button" disabled={planBusy} onClick={()=>void handlePlan("delete",name)}>删除</button></div></div>)}</div>
+        </section>
+      </div>}
+      {strategyOpen&&strategyDraft&&<div className="overlay" onMouseDown={e=>{if(e.target===e.currentTarget)setStrategyOpen(false);}}>
+        <form className="modal edit-modal" role="dialog" aria-modal="true" aria-label="编辑本机查询设置" onSubmit={e=>void persistStrategy(e)}>
+          <div className="modal-heading"><h2>本机查询设置</h2><button type="button" aria-label="关闭查询设置" onClick={()=>setStrategyOpen(false)}><X size={18}/></button></div>
+          <p>使用原有 Python 配置校验。所有设置仅对允许范围内的只读查询生效，不提供选课提交。</p>
+          <div className="form-grid">
+            <label>学年学期<input value={strategyDraft.semester} maxLength={60} onChange={e=>setStrategyDraft(v=>v?{...v,semester:e.target.value}:v)}/></label>
+            <label>查询模式<select value={strategyDraft.mode} onChange={e=>setStrategyDraft(v=>v?{...v,mode:e.target.value as Strategy["mode"]}:v)}><option value="monitor">普通只读监测</option><option value="burst">定时单次查询</option></select></label>
+            <label>计划时间（北京时间）<input value={strategyDraft.target_time} maxLength={60} onChange={e=>setStrategyDraft(v=>v?{...v,target_time:e.target.value}:v)}/></label>
+            {(["interval_low","interval_high","max_cycles","max_duration_minutes"] as const).map(key=><label key={key}>{({interval_low:"查询间隔下限（秒）",interval_high:"查询间隔上限（秒）",max_cycles:"最多查询次数",max_duration_minutes:"最长监测时间（分钟）"})[key]}<input type="number" value={strategyDraft[key]} onChange={e=>setStrategyDraft(v=>v?{...v,[key]:Number(e.target.value)}:v)}/></label>)}
+          </div>
+          <div className="modal-actions"><button type="button" className="button" onClick={()=>setStrategyOpen(false)}>取消</button><button className="button primary" type="submit" disabled={loading}>保存本机设置</button></div>
+        </form>
       </div>}
       {editing!==null&&<div className="overlay" onMouseDown={event=>{if(event.target===event.currentTarget)setEditing(null);}}>
         <form className="modal edit-modal" role="dialog" aria-modal="true" aria-label="编辑目标课程" onSubmit={acceptEdit}>
