@@ -100,6 +100,16 @@ export async function signedLogin(username:string,password:string,remember:boole
     action:"login",payload:{username,password,remember}
   });
 }
+export type RestoreReadiness = {
+  code:"no_saved_session"|"identity_unverified"|"policy_unverified"|"ready_to_verify";
+  message:string;
+  may_attempt:boolean;
+  school_verified:false;
+};
+export async function restoreReadiness():Promise<RestoreReadiness>{
+  if(!isDesktop()) throw new Error("仅 Windows EXE 支持免密码会话检查");
+  return invoke<RestoreReadiness>("kingo_session_action",{action:"restore-readiness",payload:null});
+}
 export async function restoreSavedSession():Promise<LoginReply>{
   if(!isDesktop()) throw new Error("请在 Windows 客户端中恢复登录");
   return invoke<LoginReply>("kingo_session_action",{action:"restore",payload:null});
