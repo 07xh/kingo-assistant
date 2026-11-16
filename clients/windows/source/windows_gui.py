@@ -358,7 +358,7 @@ class Application(tk.Tk):
         auth_actions = ttk.Frame(auth_panel)
         auth_actions.pack(fill="x")
         self.native_login_button = ttk.Button(
-            auth_actions, text="在软件内登录", command=self.start_native_login)
+            auth_actions, text="软件内登录并核对账号", command=self.start_native_login)
         self.native_login_button.pack(side="left", padx=(0, 8))
         self.native_prepare_button = ttk.Button(
             auth_actions, text="检查登录与课程数据（只读）",
@@ -598,8 +598,8 @@ class Application(tk.Tk):
         messagebox.showinfo(
             "这些功能分别做什么？",
             "① 课程与志愿：编辑本地目标课程，已可使用，不会选课。\n\n"
-            "② 软件内登录 / 查课：使用 EXE 内的接口能力；华水真实协议还没验收，"
-            "目前不能保证可用。\n\n"
+            "② 软件内登录 / 查课：只有经过核验的登录协议和学期接口账号一致性"
+            "检查都通过，才会在内存保存会话。当前华水动态登录协议仍待验收。\n\n"
             "③ 课程余量监测：只读取学校允许提供的课程信息，"
             "不会提交选课；需要真实接口核验后才能启动。\n\n"
             "自动提交：目前未接入华水真实选课接口，按钮保持禁用。\n\n"
@@ -762,7 +762,7 @@ class Application(tk.Tk):
         self._native_session_origin = None
         self._native_login_in_progress = True
         self.native_login_button.configure(state="disabled")
-        self.native_login_status.set("正在通过已核验的官方接口进行登录与身份确认")
+        self.native_login_status.set("正在执行已核验的登录流程，并独立核对本人账号")
 
         def execute() -> None:
             try:
@@ -1497,8 +1497,10 @@ class Application(tk.Tk):
                     self._native_session_cookie = result.session_cookie if result.verified else None
                     self._native_session_origin = result.session_origin if result.verified else None
                     self.native_login_status.set(result.message)
-                    self.native_preparation_status.set("已登录，请手动执行 EXE 接口课程预检" if result.verified
-                                                       else "尚未通过身份核验，接口预检不会自动开始")
+                    self.native_preparation_status.set(
+                        "EXE 会话已通过账号核验；课程目录和余量需另行验证" if result.verified
+                        else "账号未核验通过；不会使用当前会话读取课程"
+                    )
                     self.status.set(result.message)
                     self.log(result.message)
                 elif event.kind == "known_timetable":
