@@ -13,9 +13,15 @@ flip, relative to the announced start time"**:
   and every one of those attempts is a wasted request against the budget;
 * start too late → the seats are gone before the first write.
 
-A 60 s poll cannot resolve a sub-second flip. So the client currently has no way
-to learn the offset at all, and `ClockSync` does not help: `Date` has 1 s
-resolution, so a Date-header-only sync cannot place T0 within a second either.
+A 60 s poll cannot resolve a sub-second flip. Until recently the client also had
+no way to learn the offset at all: `ClockSync` prefers NTP, which measures UTC
+rather than the school clock, and a single `Date` read has 1 s resolution.
+
+That second half is now solved —
+[`date-flip-sync`](date-flip-clock-sync.md) brackets the crossing instant from
+the rollover between two `Date` samples and reports a sub-second offset with an
+honest error bar. It still issues no requests, so the *measurement* half of this
+module's input remains blocked on the same capture as everything else.
 
 ## What it does
 
