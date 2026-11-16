@@ -1269,6 +1269,17 @@ def run_packaged_gui_smoke() -> None:
                     raise AssertionError("Typed plan preflight entry not mounted in main UI")
                 if str(app.scheduled_start_button.cget("state")) != "disabled":
                     raise AssertionError("Unverified live enrollment must never be enabled")
+                if app.native_login_button.winfo_manager() != "pack":
+                    raise AssertionError("In-EXE login button missing from primary Windows UI")
+                if app.native_prepare_button.winfo_manager() != "pack":
+                    raise AssertionError("Native identity/catalog API check not mounted")
+                # Placeholder auth contract must not open a password prompt or
+                # contact the network, even when clicked in a packaged EXE.
+                with patch.object(simpledialog, "askstring",
+                                  side_effect=AssertionError("unverified login asked for password")):
+                    app.start_native_login()
+                if app._native_session_cookie is not None:
+                    raise AssertionError("Unverified login must not produce a session")
                 if app.portal_panel.winfo_manager():
                     raise AssertionError("Manual-only fallback must stay hidden by default")
                 with patch("core.client.httpx.AsyncClient", side_effect=AssertionError("network attempted")):
