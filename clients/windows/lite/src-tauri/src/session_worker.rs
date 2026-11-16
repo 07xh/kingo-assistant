@@ -71,6 +71,15 @@ impl Drop for SessionWorker {
 pub struct SessionState(Arc<Mutex<Option<SessionWorker>>>);
 
 impl SessionState {
+    /// Called from Tauri's Exit event before the process terminates.
+    /// Discard volatile school cookies and terminate the owned Python
+    /// sidecar. The opt-in DPAPI token, if present, stays encrypted on disk.
+    pub(crate) fn shutdown(&self) {
+        if let Ok(mut worker) = self.0.lock() {
+            *worker = None;
+        }
+    }
+
     /// Serialize all local configuration writes against monitor-start and
     /// reject them while the original read-only monitoring worker is active.
     pub(crate) fn run_when_idle<F, T>(&self, operation: F) -> Result<T, String>
