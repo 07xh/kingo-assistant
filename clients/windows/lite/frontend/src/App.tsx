@@ -4,7 +4,7 @@ import {
   Minus,Monitor, Moon,PanelLeftClose,PanelLeftOpen,Plus,RefreshCw,
   Save,Settings,ShieldAlert,Sun,Trash2, X, Square, GraduationCap, Pencil
 } from "lucide-react";
-import {applyPlan,blankCourse,createPlan,deletePlan,isDesktop,listPlans,preflight,saveCourses,saveStrategy,snapshot,windowAction,signedLogin,logout,manualCatalog,sessionStatus,startReadOnlyMonitor,stopReadOnlyMonitor,monitorStatus,type MonitorSnapshot,type OfficialCatalog,type LoginReply,type SessionInfo,type Course,type Preflight,type Snapshot,type Strategy} from "./bridge";
+import {applyPlan,blankCourse,createPlan,deletePlan,isDesktop,listPlans,preflight,saveCourses,saveStrategy,snapshot,windowAction,signedLogin,logout,restoreSavedSession,forgetSavedSession,manualCatalog,sessionStatus,startReadOnlyMonitor,stopReadOnlyMonitor,monitorStatus,type MonitorSnapshot,type OfficialCatalog,type LoginReply,type SessionInfo,type Course,type Preflight,type Snapshot,type Strategy} from "./bridge";
 
 type Page = "home" | "courses" | "execution" | "logs";
 const navigation = [
@@ -48,6 +48,7 @@ export default function App() {
   const [loginOpen,setLoginOpen]=useState(false);
   const [username,setUsername]=useState("");
   const [password,setPassword]=useState("");
+  const [rememberLogin,setRememberLogin]=useState(false);
   const [session,setSession]=useState<SessionInfo|null>(null);
   const [loginResult,setLoginResult]=useState<LoginReply|null>(null);
   const [catalog,setCatalog]=useState<OfficialCatalog|null>(null);
@@ -239,20 +240,45 @@ export default function App() {
     if(schoolBusy || !username.trim() || !password)return;
     setSchoolBusy(true);setError("");setLoginResult(null);
     try {
-      const result=await signedLogin(username.trim(),password);
+      const result=await signedLogin(username.trim(),password,rememberLogin);
       setSession(result.session);setLoginResult(result);
       setCatalog(null);
       log(result.session.verified_at_login?"本人账号身份回读通过（未查询课程）":"EXE 登录未通过："+result.code);
-      if(result.session.verified_at_login){setLoginOpen(false);setUsername("");}
+      if(result.session.verified_at_login){
+        setLoginOpen(false);setUsername("");setRememberLogin(false);
+        if(result.remember_error)setError("本次登录成功，但 Windows 加密保存失败，下次启动仍需重新授权");
+      }
     }catch(e){setSession(null);setCatalog(null);setError(shortError(e));log("EXE 登录服务请求失败（无凭据被保存）");}
     finally{setPassword("");setSchoolBusy(false);}
+  }
+  async function restoreRememberedLogin() {
+    if(schoolBusy||monitor?.active||!session?.saved_session_available)return;
+    setSchoolBusy(true);setError("");setLoginResult(null);
+    try{
+      const result=await restoreSavedSession();setSession(result.session);setLoginResult(result);
+      setCatalog(null);
+      log(result.code==="restored"?"已重新核验并恢复保存的教务会话":"免密码会话未恢复："+result.code);
+    }catch(e){setError(shortError(e));log("免密码恢复未完成");}
+    finally{setSchoolBusy(false);}
+  }
+  async function forgetRememberedLogin() {
+    if(schoolBusy||monitor?.active)return;
+    if(!window.confirm("清除本机加密会话并退出当前登录？之后需要重新获取官方授权。"))return;
+    setSchoolBusy(true);setError("");
+    try{
+      const result=await forgetSavedSession();
+      setSession(result);setCatalog(null);setLoginResult(null);
+      setPassword("");setUsername("");log("已清除本机保存的加密会话");
+    }catch(e){setError(shortError(e));}
+    finally{setSchoolBusy(false);}
   }
   async function endSession() {
     if(schoolBusy)return;
     setSchoolBusy(true);setError("");
     try{
       const result=await logout();setSession(result);setCatalog(null);setLoginResult(null);
-      setUsername("");setPassword("");log("已清除进程内会话，未向教务系统发送退出请求");
+      setUsername("");setPassword("");setRememberLogin(false);
+      log("已退出并删除本机加密会话；未向教务系统发送退出请求");
     }catch(e){setError(shortError(e));}
     finally{setSchoolBusy(false);}
   }
@@ -328,10 +354,14 @@ export default function App() {
               <div className="card metric"><span>自动提交</span><strong className="metric-word">不可用</strong><small>真实提交适配器未验收</small></div>
             </div>
             <section className="card section">
-              <div className="section-heading"><div><h3>教务登录</h3><p>在 EXE 内使用已有的 NCWU 原生签名登录；不会保存密码或 Cookie。</p></div></div>
+              <div className="section-heading"><div><h3>教务登录</h3><p>支持账号密码登录，或使用 Windows 账户加密保存的有效学校会话免密码继续；不保存密码。</p></div></div>
               <div className="login-actions">
                 <span className={"status "+(session?.status==="verified"?"good":"muted")}>{session?.status==="verified"?"本次身份已核验":"尚无已核验会话"}</span>
-                {session?.status==="verified"?<button className="button" disabled={schoolBusy||monitor?.active} onClick={()=>void endSession()}>清除会话</button>:<button className="button primary" disabled={schoolBusy||!isDesktop()} onClick={()=>{setLoginResult(null);setLoginOpen(true);}}>登录本人教务账号</button>}
+                {session?.status==="verified"?<button className="button" disabled={schoolBusy||monitor?.active} onClick={()=>void endSession()}>退出登录</button>:<>
+                  {session?.saved_session_available&&<button className="button primary" disabled={schoolBusy||!isDesktop()} onClick={()=>void restoreRememberedLogin()}>{schoolBusy?"核验中…":"免密码继续"}</button>}
+                  <button className={session?.saved_session_available?"button":"button primary"} disabled={schoolBusy||!isDesktop()} onClick={()=>{setLoginResult(null);setLoginOpen(true);}}>账号密码登录</button>
+                  {session?.saved_session_available&&<button className="button subtle" disabled={schoolBusy} onClick={()=>void forgetRememberedLogin()}>清除已保存登录</button>}
+                </>}
                 {session?.status==="verified"&&<button className="button primary" disabled={schoolBusy||monitor?.active} onClick={()=>{go("execution");void loadCatalog();}}>手动读取课程</button>}
               </div>
               {loginResult&&!loginResult.session.verified_at_login&&<div className="notice warning">{loginResult.message}</div>}
@@ -408,11 +438,15 @@ export default function App() {
       {loginOpen&&<div className="overlay" onMouseDown={e=>{if(e.target===e.currentTarget&&!schoolBusy){setLoginOpen(false);setPassword("");}}}>
         <form className="modal edit-modal" role="dialog" aria-modal="true" aria-label="本人教务登录" onSubmit={e=>void loginUser(e)}>
           <div className="modal-heading"><h2>登录本人教务账号</h2><button type="button" aria-label="关闭登录" disabled={schoolBusy} onClick={()=>{setLoginOpen(false);setPassword("");}}><X size={18}/></button></div>
-          <p>使用旧版 EXE 已接入的 NCWU 签名协议。密码仅在本次授权时发送给本机业务进程，若学校要求验证码或额外认证则停止，不自动绕过。</p>
+          <p>账号密码只用于本次本人身份验证，不会保存在磁盘。可选记住学校颁发的会话，之后免密码恢复；每次恢复都必须通过学校身份回读。</p>
           <div className="form-grid">
             <label>教务账号<input required autoComplete="username" value={username} maxLength={128} onChange={e=>setUsername(e.target.value)}/></label>
             <label>教务密码<input required type="password" autoComplete="current-password" value={password} maxLength={256} onChange={e=>setPassword(e.target.value)}/></label>
           </div>
+          <label className="remember-row">
+            <input type="checkbox" checked={rememberLogin} onChange={e=>setRememberLogin(e.target.checked)} />
+            <span><strong>记住本机登录（Windows 加密）</strong><small>仅保存学校会话，不保存密码；本机最多保留 7 天，学校会话可提前失效</small></span>
+          </label>
           {loginResult&&!loginResult.session.verified_at_login&&<div className="notice warning" role="status">{loginResult.message}</div>}
           <div className="modal-actions"><button className="button" type="button" disabled={schoolBusy} onClick={()=>{setPassword("");setLoginOpen(false);}}>取消</button>
             <button className="button primary" type="submit" disabled={schoolBusy||!username.trim()||!password}>{schoolBusy?"登录核验中…":"登录并核验身份"}</button></div>
