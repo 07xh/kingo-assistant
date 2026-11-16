@@ -47,9 +47,12 @@ class RequestBudgetTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_retry_after_persists_on_restart(self):
         first = self.budget(((0.01, 10),))
+        # Begin timing before setting the server cooldown. On slow CI hosts,
+        # SQLite re-open time consumes part of that cooldown; measuring only
+        # after restart would incorrectly fail even when persistence works.
+        start = time.monotonic()
         await first.impose_retry_after(0.09)
         restarted = self.budget(((0.01, 10),))
-        start = time.monotonic()
         async with restarted.request():
             pass
         self.assertGreaterEqual(time.monotonic() - start, 0.075)
