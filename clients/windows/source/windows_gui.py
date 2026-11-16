@@ -1459,12 +1459,12 @@ class Application(tk.Tk):
         if popup is None or not popup.winfo_exists():
             popup = tk.Toplevel(self)
             popup.title("华水 S202 · 实时课程目录（非已选结果）")
-            popup.geometry("940x500")
+            popup.geometry("1160x530")
             popup.transient(self)
             self._live_catalog_popup = popup
             self._live_catalog_message = tk.StringVar(value="")
             ttk.Label(
-                popup, textvariable=self._live_catalog_message, wraplength=900,
+                popup, textvariable=self._live_catalog_message, wraplength=1120,
             ).pack(anchor="w", padx=12, pady=(12, 6))
             target_header = ttk.Frame(popup, padding=(12, 0, 12, 8))
             target_header.pack(fill="x")
@@ -1472,7 +1472,7 @@ class Application(tk.Tk):
                 value="尚未与本地志愿关联；仅供课程目录核对")
             ttk.Label(
                 target_header, textvariable=self._live_target_message,
-                wraplength=760, foreground="#41566c",
+                wraplength=955, foreground="#41566c",
             ).pack(side="left", fill="x", expand=True)
             self._live_target_review_button = ttk.Button(
                 target_header, text="查看志愿候选分析",
