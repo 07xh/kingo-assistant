@@ -22,7 +22,7 @@ from core.preflight import inspect_readiness
 from main import validate
 
 COURSE_COLUMNS = ("key", "course_id", "class_id", "course_name", "teacher", "group", "time_slots")
-MAX_INPUT_BYTES = 32 * 1024
+MAX_INPUT_BYTES = 128 * 1024
 
 
 def app_dir() -> Path:
