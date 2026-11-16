@@ -24,6 +24,9 @@ class LiteIpcTests(TestCase):
             env["APPDATA"] = directory
             # On non-Windows, app_dir() uses home; confine it to the test.
             env["HOME"] = directory
+            # Reproduce Windows console codepages that cannot encode Chinese.
+            # The IPC protocol itself must be explicit UTF-8 bytes.
+            env["PYTHONIOENCODING"] = "cp1252"
             lines = "\n".join(json.dumps(item) for item in commands)
             if final_newline:
                 lines += "\n"
@@ -56,6 +59,25 @@ class LiteIpcTests(TestCase):
         self.assertFalse(lines[1]["data"]["school_verified"])
         self.assertEqual(lines[2]["data"]["phase"], "idle")
         self.assertFalse(lines[2]["data"]["active"])
+
+    def test_chinese_preflight_response_survives_non_utf8_console(self):
+        with tempfile.TemporaryDirectory() as directory:
+            env = dict(os.environ)
+            env["LOCALAPPDATA"] = directory
+            env["APPDATA"] = directory
+            env["HOME"] = directory
+            env["PYTHONIOENCODING"] = "cp1252"
+            # The standalone command also uses the same JSONL emitter.
+            completed = subprocess.run(
+                [sys.executable, str(SCRIPT), "preflight"],
+                capture_output=True, cwd=str(SCRIPT.parent), env=env,
+                timeout=40, check=False,
+            )
+        self.assertEqual(completed.returncode, 0, completed.stderr.decode("utf-8", "replace"))
+        response = json.loads(completed.stdout.decode("utf-8"))
+        self.assertTrue(response["ok"])
+        self.assertEqual(response["data"]["source"], "local_only")
+        self.assertGreater(len(response["data"]["checks"]), 0)
 
     def test_secret_is_never_reflected_from_malformed_login_request(self):
         password = "never-echo-this-credential"
