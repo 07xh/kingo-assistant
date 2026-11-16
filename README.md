@@ -8,6 +8,8 @@ KingoAssistant is an independent personal course-selection assistant for the NCW
 
 - **Windows:** Three-page navigation (选课首页 / 手动官网备用 / 工具与日志), desktop course plans, read-only monitoring, native tray minimization, an offline automatic-enrollment plan preflight, and a separately tested enrollment state machine. The home page now distinguishes locally usable features, real official-interface gates, and disabled live enrollment. Closing the window keeps the current task; explicit tray quit stops it. [Beginner UI guide](docs/architecture/windows-simple-navigation-20261116.md).
 - **Windows verification:** Verify the latest Windows Actions CI for the current commit; independently passing PRs do not prove their combined GUI works. The packaged smoke test now verifies scheduled-plan preflight remains mounted after merging UI changes.
+- **Write gates are now evidence-backed (V5.1):** a gateway capability flag is no longer sufficient. Each of the four gates needs a hash-verified, unexpired local attestation pointing at the document that proved it; editing that document disarms the gate. `python main.py --attest status|issue|revoke` manages the registry offline. Currently **0/4 registered**, so the write path is blocked by missing evidence rather than by missing code. See [attestation design](docs/architecture/attestation.md).
+- **Read-only polls are instrumented (V5.1):** per-phase latency samples (`budget_wait` / `request` / `decode` / `parse` / `total`) are written to a local JSONL file with no course identifiers or session data, and summarised into an exported log. The `tools/bench` matrix is why — discovery latency spans 100×, submission latency 2×, and every concurrency strategy measured strictly worse. See [latency instrumentation](docs/architecture/latency-instrumentation.md).
 - **Build downloads:** [Windows Actions history](https://github.com/07xh/kingo-assistant/actions/workflows/windows-build.yml); choose a successful run from the commit you intend to use.
 - **Official NCWU auth route research (offline):** public school sources confirm a separate CAS authentication host and a teaching-system callback, so the existing single-origin form adapter is not a completed CAS integration. Windows 离线工具 now contains a privacy-preserving local HAR CAS route summary, and `auth.login.mode: cas` blocks unsupported credential submission. See [official evidence and remaining gates](docs/acceptance/ncwu-auth-route-public-20261116.md).
 - **EXE-native login/session (phase 2):** the Windows GUI now provides an **EXE 内登录** action using a separately verified, same-origin official form contract, with one bounded HTTP POST and an independent official identity check. Volatile session cookies are reused by read-only identity checks, catalog preparation and monitoring, without storing passwords/cookies on disk or importing browser sessions. It remains disabled until real NCWU login/identity fields and official request policy are verified; generic form code is **not a working NCWU CAS/SSO integration**. See [native login architecture](docs/architecture/native-login-session.md).
@@ -34,6 +36,32 @@ The engine requires all of the following before a school adapter can be used:
 5. Exact course + teaching-class matching and a durable pre-write intent journal.
 6. Official enrollment-list readback to confirm success; transport acknowledgements alone are insufficient.
 7. Serial writes only. Explicit rejection may move to the next configured preference after a fresh catalog read. Unknown outcomes stop and are never automatically retried.
+
+Gates 3 and 4 additionally require a **local evidence attestation**. A gateway
+flag alone is no longer sufficient: each of the four capability gates must be
+covered by a hash-verified, unexpired record pointing at the document that proves
+it. Editing that document disarms the gate until it is reissued. Manage the
+registry offline — no config file and no network needed:
+
+```bash
+python main.py --attest status
+python main.py --attest issue --gate official_write_verified \
+    --evidence docs/acceptance/ncwu-write-contract.md --reviewer <you> --days 90
+python main.py --attest revoke --gate official_write_verified
+```
+
+See [docs/architecture/attestation.md](docs/architecture/attestation.md). As of
+this commit **0 of 4 gates are registered**, so the write path is blocked by
+missing evidence rather than by missing code — arming all four still cannot
+submit, because no NCWU write adapter is shipped.
+
+Read-only polls now emit per-phase latency samples (`budget_wait` / `request` /
+`decode` / `parse` / `total`) to a local JSONL file, with no course identifiers or
+session data recorded; see
+[docs/architecture/latency-instrumentation.md](docs/architecture/latency-instrumentation.md).
+The benchmark matrix in `tools/bench` is why: discovery latency spans 100× while
+submission latency spans 2×, and every concurrency strategy measured strictly
+worse (8 concurrent submits: success 1.00 → 0.125).
 
 The 2026-11-11 HAR included an explicit “current time is not a valid selection window” response. Timetable data and `zxinfo.zxxq` records are not an elective catalog or seat count. See [the sanitized HAR audit](docs/acceptance/ncwu-xiqueer-har-2026-11-11.md) and [the execution architecture](docs/architecture/automatic-enrollment.md).
 

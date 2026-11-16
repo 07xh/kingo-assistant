@@ -48,6 +48,8 @@ from core.native_login import NativeLoginResult, login_with_verified_form, valid
 from core.ncwu_signed_login import login_ncwusigned, validate_ncwulogin_entry
 from core.official_entries import OFFICIAL_ENTRIES, probe_official_login_surfaces
 from core.scheduled_ui_bridge import prepare_scheduled_plan
+from core.attestation import AttestationError, AttestationRegistry, resolve_registry
+from core.latency import DEFAULT_LATENCY_FILE, LatencyRecorder, summarize_file
 from core.enrollment_schedule import ScheduledRunReport
 from core.time_sync import TimeSync
 from main import _read_local_html, validate
@@ -70,6 +72,20 @@ def scoped_native_cookie(app, config: dict) -> str | None:
     if parsed.scheme == "https" and parsed.netloc == origin:
         return cookie
     return ""  # Explicitly prevent fallback to a legacy environment session.
+
+
+def current_attestations() -> AttestationRegistry:
+    """Read the evidence registry for the four write gates.
+
+    A missing file yields an empty registry (every gate falls back to "not
+    verified"); a corrupt file also yields an empty registry so the UI can still
+    start. Neither case may ever enable a write.
+    """
+    try:
+        return resolve_registry(None, app_dir=app_dir())
+    except AttestationError as error:
+        logger.warning("验收登记表不可用：{}", type(error).__name__)
+        return AttestationRegistry(entries={}, root=app_dir())
 
 
 def app_dir() -> Path:
@@ -129,6 +145,7 @@ class MonitorWorker:
         self.thread: threading.Thread | None = None
         self.loop: asyncio.AbstractEventLoop | None = None
         self.client: KingoClient | None = None
+        self.latency: LatencyRecorder | None = None
         self.task: asyncio.Task | None = None
         self._stop_requested = threading.Event()
         self._had_scheduler_error = False
@@ -175,9 +192,14 @@ class MonitorWorker:
         self.loop = asyncio.get_running_loop()
         if self._stop_requested.is_set():
             return
-        client = (KingoClient(self.config, session_cookie=self.session_cookie)
-                  if self.session_cookie is not None else KingoClient(self.config))
+        # Phase timings land in the app data folder; see core/latency.py.
+        recorder = LatencyRecorder(app_dir() / DEFAULT_LATENCY_FILE)
+        client = (KingoClient(self.config, session_cookie=self.session_cookie,
+                              latency=recorder)
+                  if self.session_cookie is not None
+                  else KingoClient(self.config, latency=recorder))
         self.client = client
+        self.latency = recorder
         clock = TimeSync()
         try:
             if self._stop_requested.is_set():
@@ -241,6 +263,9 @@ class Application(tk.Tk):
         # No school submit adapter is shipped. An audited provider may inject
         # a factory later; local plan validation alone never arms execution.
         self._engine_factory = None
+        # Evidence-backed write gates. Gateway flags alone are no longer enough:
+        # each capability also needs a hash-verified, unexpired attestation.
+        self.attestations = current_attestations()
         self.scheduled_worker: DesktopScheduledWorker | None = None
         self._previous_states: dict[str, str] = {}
         self._display_courses: dict[str, dict] = {}
@@ -412,8 +437,9 @@ class Application(tk.Tk):
 
         enrollment = ttk.Frame(self.tab_home, padding=(12, 3))
         enrollment.pack(fill="x")
+        self.enrollment_gate_status = tk.StringVar(value=self.enrollment_gate_label())
         ttk.Label(
-            enrollment, text="自动选课：尚未接通官方提交接口",
+            enrollment, textvariable=self.enrollment_gate_status,
             foreground="#965b16",
         ).pack(side="left")
         self.scheduled_start_button = ttk.Button(
@@ -610,6 +636,21 @@ class Application(tk.Tk):
             "不代表学校接口已经接通。",
         )
 
+    def enrollment_gate_label(self) -> str:
+        """Show how many of the four write gates have valid evidence.
+
+        This is a read-only indicator. It never enables the submit button: no
+        NCWU write adapter is shipped, so 4/4 evidence still cannot submit.
+        """
+        registry = getattr(self, "attestations", None)
+        if registry is None:
+            return "自动选课：未接入提交适配器（验收证据 0/4）"
+        try:
+            report = registry.describe()
+        except AttestationError:
+            return "自动选课：未接入提交适配器（验收登记表无效）"
+        return f"自动选课：未接入提交适配器（验收证据 {report['valid']}/{report['total']}）"
+
     def log(self, message: str) -> None:
         self.log_box.configure(state="normal")
         self.log_box.insert("end", time.strftime("%H:%M:%S") + "  " + message + "\n")
@@ -645,9 +686,23 @@ class Application(tk.Tk):
             return
         try:
             # Only our own fixed, redacted status messages are present here.
-            Path(destination).write_text(self.log_box.get("1.0", "end-1c"), encoding="utf-8")
+            text = self.log_box.get("1.0", "end-1c")
+            body = text + self.latency_summary_text()
+            Path(destination).write_text(body, encoding="utf-8")
         except OSError:
             messagebox.showerror("导出失败", "无法写入该文件，请检查目录权限。")
+
+    def latency_summary_text(self) -> str:
+        """Append phase percentiles so a failed run can be diagnosed offline."""
+        report = summarize_file(app_dir() / DEFAULT_LATENCY_FILE)
+        if not report.get("samples"):
+            return "\n\n（暂无时延采样；本次运行没有完成任何课程读取。）\n"
+        lines = ["", "", "时延采样（毫秒，本机统计，不含课程或账号信息）：",
+                 f"  样本数：{report['samples']}"]
+        for name, stats in report["phases"].items():
+            lines.append(f"  {name}: p50={stats['p50']} p95={stats['p95']} "
+                         f"max={stats['max']}")
+        return "\n".join(lines) + "\n"
 
     def pick_config(self) -> None:
         name = filedialog.askopenfilename(title="选择配置文件", filetypes=[("YAML 文件", "*.yaml *.yml")])

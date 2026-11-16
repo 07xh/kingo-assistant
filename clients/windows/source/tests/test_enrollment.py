@@ -11,6 +11,9 @@ from core.enrollment import (
     Offering, SubmitReceipt, Target, WindowState, VerificationPolicy,
 )
 from core.course_models import ScheduleSnapshot
+from tests.attestation_support import (
+    expired_registry, registry_without, tampered_registry, valid_registry,
+)
 
 
 class FakeOfficialGateway:
@@ -89,12 +92,15 @@ class AutomaticEnrollmentTest(unittest.TestCase):
         self.a = Target("A", "COURSE-1", "CLASS-1", "optional")
         self.b = Target("B", "COURSE-2", "CLASS-2", "optional")
 
-    def engine(self, fake, *, opt_in=True, permission=True, journal=None):
+    def engine(self, fake, *, opt_in=True, permission=True, journal=None,
+               attestations=None):
         return EnrollmentEngine(fake, journal or self.journal,
                                 user_opted_in=opt_in,
                                 institution_permits_write=permission,
                                 verification_policy=VerificationPolicy(
-                                    max_reads=3, interval_seconds=0))
+                                    max_reads=3, interval_seconds=0),
+                                attestations=(valid_registry() if attestations is None
+                                              else attestations))
 
     def run_engine(self, engine, targets=None):
         return asyncio.run(engine.run(targets or [self.a]))

@@ -17,6 +17,7 @@ from core.enrollment_recovery import (
     RecoveryEntry, RecoveryReport, RecoveryStatus,
 )
 from tests.test_enrollment import FakeOfficialGateway
+from tests.attestation_support import valid_registry
 
 
 TERM = "2026-2027-1"
@@ -44,6 +45,7 @@ class ReadonlyRecoveryTests(unittest.TestCase):
             gateway, self.journal,
             user_opted_in=False,
             institution_permits_write=False,
+            attestations=valid_registry(),
         )
         return asyncio.run(engine.reconcile_pending(targets or [self.target]))
 

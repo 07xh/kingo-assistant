@@ -21,6 +21,7 @@ from core.enrollment_state import (
 )
 from core.preflight import inspect_enrollment_schedule
 from tests.test_enrollment import FakeOfficialGateway
+from tests.attestation_support import valid_registry
 
 
 TERM = "2026-2027-1"
@@ -134,12 +135,14 @@ class ControlledEnrollmentTests(unittest.TestCase):
         self.offer = CourseOffering("C1", "K1", 1, TERM,
                                     time_slots=(SLOT_ODD,))
 
-    def engine(self, gateway, *, max_reads=3):
+    def engine(self, gateway, *, max_reads=3, attestations=None):
         return EnrollmentEngine(
             gateway, self.journal,
             user_opted_in=True, institution_permits_write=True,
             verification_policy=VerificationPolicy(max_reads=max_reads,
-                                                    interval_seconds=0))
+                                                    interval_seconds=0),
+            attestations=(valid_registry() if attestations is None
+                          else attestations))
 
     @staticmethod
     def execute(engine, targets):

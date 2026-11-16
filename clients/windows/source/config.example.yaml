@@ -49,6 +49,20 @@ strategy:
   # Lower intervals require manually checking the school's published permission.
   # Do not change this without official evidence. 30 s is the absolute hard floor.
   official_frequency_policy: {manually_confirmed: false}
+  # Pickup mode: tighten polling inside known withdrawal peaks (just after the
+  # window opens, the hours before the deadline, the first supplementary
+  # morning). peak_interval_seconds may NOT go below 30.
+  # Disabled by default because the peak times below are an example, not a
+  # verified NCWU schedule.
+  pickup:
+    enabled: false
+    peak_interval_seconds: 30
+    offpeak_interval_seconds: 60
+    peak_windows: []
+    # Example shape only:
+    # peak_windows:
+    #   - {weekday: 0, start: "08:00", end: "09:30", label: "选课首日"}
+    #   - {weekday: null, start: "22:00", end: "23:59", label: "截止前"}
   # Only hashes of observed course+class IDs are stored; no Cookie or HTML.
   state_file: "data/notification-state.json"
   dry_run: true       # always read-only: no enrollment POST
@@ -130,3 +144,14 @@ protocol:
   # Add class_id: N to columns only when the actual table exposes that column.
   columns: {course_id: 1, course_name: 2, teacher: 3, remain: 4}
   # The following are intentionally absent: no submit endpoint or CAPTCHA bypass.
+
+# Evidence-backed capability gates. A gateway flag alone no longer authorizes a
+# write: each of the four gates needs a hash-verified, unexpired attestation.
+# Manage it offline with:  python main.py --attest status
+#                          python main.py --attest issue --gate <name> \
+#                              --evidence docs/acceptance/<note>.md --reviewer <you> --days 90
+# See docs/architecture/attestation.md. Omitting this section is safe: the
+# default file is auto-detected and, if absent, every gate reads as unverified.
+attestation:
+  path: "attestations.json"
+  root: "."      # evidence paths resolve against this directory

@@ -247,6 +247,8 @@ def main() -> int:
                          help="显示学校官方登录方式（不访问网络，不需要配置）")
     offline.add_argument("--probe-official-entries", action="store_true",
                          help="官网登录页只读探测（无已核实请求预算时跳过联网）")
+    parser.add_argument("--attest", nargs="+", metavar="ARG",
+                        help="写入门禁证据登记表管理（离线）：status / issue / revoke ...")
     args = parser.parse_args()
     messages = deque(maxlen=5)
     logger.remove()
@@ -256,6 +258,11 @@ def main() -> int:
                format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}")
     logger.add(lambda msg: messages.append(str(msg).strip()), format="{time:HH:mm:ss} | {message}")
     try:
+        if args.attest:
+            # Never loads config or touches the network: gate management must
+            # work on a machine with no verified protocol at all.
+            from core.attest_cli import main as attest_main
+            return attest_main(args.attest)
         if args.official_entries or args.probe_official_entries:
             display_official_entries(probe=args.probe_official_entries)
             return 0

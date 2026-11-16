@@ -4,12 +4,16 @@ Last source baseline: Windows V4.6, plus offline course-catalog evidence compari
 
 | Gate | Status | Evidence |
 |---|---|---|
-| Offline unit tests | Passed | **88 tests** passed on Windows 2022 GitHub Actions runner, 2026-11-11 |
+| Offline unit tests | Passed | **231 tests** passed in the author's local environment (272 collected; the remaining 41 are GUI/HTTP modules that need `httpx`/`tkinter`/`yaml`, which that sandbox lacked — CI runs them) |
 | Windows-native EXE build | Passed | PyInstaller one-file GUI build succeeded |
 | Packaged EXE offline self-test | Passed | `offline_self_test: passed` |
 | Packaged Tk GUI smoke test | Passed | `native_tk_gui_smoke: passed` |
 | Native build and artifact | Generated | [Successful Actions run](https://github.com/07xh/kingo-assistant/actions/runs/42980776360) and [artifact](https://github.com/07xh/kingo-assistant/actions/runs/42980776360/artifacts/13836679934), expires 2026-11-25 |
 | EXE SHA-256 | Recorded | `5cdeb5f4f6bae7f17cf89b7ab6989a31d5867c9f2e5e35722bfe194f815f91ba` |
+| Write-gate attestation registry | Implemented, offline | [Design](../architecture/attestation.md); 28 tests; `python main.py --attest status` |
+| Evidence for the four capability gates | **0/4 registered** | No evidence document has been issued yet, so the write path is now closed by missing evidence rather than by missing code |
+| Latency instrumentation | Implemented | [Design](../architecture/latency-instrumentation.md); per-phase JSONL + exported-log summary; 24 tests |
+| Pickup polling schedule | Implemented, disabled by default | Peak windows clamp into `interval_range` and never go below the 30 s floor; 8 tests |
 | Offline read-only catalog evidence helper | Ready for manual use | [Verification guide](catalog-readonly-verification.md); 10 new synthetic unit tests |
 | Offline Xiqueer HAR structure audit | Passed locally with user's prior capture | 67 entries, 55 gateway requests, 1 timetable schema match, 4 closed-window messages; see [guide](har-offline-audit.md) |
 | Offline GUI evidence review | Passed | Available under Windows 离线工具; 6 new synthetic tests across HAR + GUI |

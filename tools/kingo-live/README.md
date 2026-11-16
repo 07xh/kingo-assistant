@@ -15,7 +15,7 @@
 | 文件 | 作用 |
 |---|---|
 | `live_client.py` | 传输层、预算、意图日志、CLI 与链路编排。零第三方依赖，Python 3.10+ |
-| `optimizations.py` | 策略层：`ClockSync` / `Prewarmer` / `ReleaseMonitor` / `FailureClassifier` / `FailoverPlanner` |
+| `optimizations.py` | **再导出垫片**：实现已迁至 `clients/windows/source/core/selection_optim.py`，此处仅转发，避免两套副本漂移。策略层：`ClockSync` / `Prewarmer` / `ReleaseMonitor` / `FailureClassifier` / `FailoverPlanner` / `PollingSchedule` |
 | `config.example.json` | 配置模板，含全部待定位占位符 |
 | `selftest.py` | 8 项真实 HTTP 端到端回归测试 |
 | `test_optimizations.py` | 13 项真实 HTTP/1.1 策略层测试 |

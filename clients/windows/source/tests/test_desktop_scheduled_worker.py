@@ -13,6 +13,7 @@ from core.enrollment import EnrollmentEngine, RunReport
 from core.enrollment_schedule import ScheduledRunReport
 from core.scheduled_ui_bridge import PreparedScheduledPlan
 from desktop_scheduled_worker import DesktopScheduledWorker, ScheduledWorkerEvent
+from tests.attestation_support import valid_registry
 
 
 def plan():
@@ -38,6 +39,7 @@ def engine(*, verified=True, close=None):
         gateway, SimpleNamespace(account_scope="synthetic-account"),
         user_opted_in=True,
         institution_permits_write=True,
+        attestations=valid_registry(),
     )
 
 

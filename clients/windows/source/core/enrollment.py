@@ -24,6 +24,7 @@ import tempfile
 import threading
 from typing import Protocol, Sequence
 
+from core.attestation import AttestationError, AttestationRegistry, GATE_NAMES
 from core.course_models import (
     CourseTarget as Target, CourseOffering as Offering,
 )
@@ -398,32 +399,46 @@ class VerificationPolicy:
 
 
 class EnrollmentEngine:
-    """V5.1-capability-gated engine with V2 FSM flow (offline only)."""
+    """V5.1-capability-gated engine with V2 FSM flow (offline only).
+
+    A gateway flag alone no longer authorizes a write: each of the four
+    capability gates must also be covered by a hash-verified, unexpired local
+    attestation. This keeps fail-closed behaviour while giving a real, evidence
+    based path to arm live execution.
+    """
 
     def __init__(self, gateway: VerifiedGateway, journal: AttemptJournal,
                  *, user_opted_in: bool = False,
                  institution_permits_write: bool = False,
-                 verification_policy: VerificationPolicy | None = None):
+                 verification_policy: VerificationPolicy | None = None,
+                 attestations: AttestationRegistry | None = None):
         self.gateway = gateway
         self.journal = journal
         self.user_opted_in = user_opted_in
         self.institution_permits_write = institution_permits_write
         self.verification_policy = verification_policy or VerificationPolicy()
+        self.attestations = attestations
+
+    def _require_attestation(self, name: str) -> None:
+        if self.attestations is None:
+            raise EnrollmentNotReady(
+                f"{name} 缺少验收证据登记表，无法证明接口已验收（不放行写入）")
+        try:
+            self.attestations.require(name)
+        except AttestationError as error:
+            raise EnrollmentNotReady(str(error)) from error
 
     def _gate(self) -> None:
-        capabilities = (
-            "official_catalog_verified",
-            "official_enrollment_verified",
-            "official_window_verified",
-            "official_write_verified",
-        )
         scope = getattr(self.gateway, "account_scope", None)
         if (not isinstance(scope, str) or not scope.strip()
                 or scope != self.journal.account_scope):
             raise EnrollmentNotReady("当前官方账户与本地提交记录隔离范围不一致")
-        if not (self.user_opted_in is True and self.institution_permits_write is True
-                and all(getattr(self.gateway, name, False) is True for name in capabilities)):
-            raise EnrollmentNotReady("用户授权、学校许可及目录/窗口/已选/写入接口验收必须全部通过")
+        if not (self.user_opted_in is True and self.institution_permits_write is True):
+            raise EnrollmentNotReady("用户授权与学校许可必须同时通过")
+        for name in GATE_NAMES:
+            if getattr(self.gateway, name, False) is not True:
+                raise EnrollmentNotReady(f"{name} 未由适配器声明，禁止写入")
+            self._require_attestation(name)
 
     def validate_ready(self) -> None:
         """Public, network-free V5.1 readiness gate for scheduled runner."""

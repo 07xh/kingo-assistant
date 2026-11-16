@@ -22,6 +22,7 @@ from bs4 import BeautifulSoup
 from loguru import logger
 
 from .request_budget import SingleFlight, build_verified_budget
+from .latency import LatencyRecorder, LatencySample
 
 
 class Status(str, Enum):
@@ -228,7 +229,8 @@ def parse_courses(raw: bytes, config: dict, course_ids: list[str] | None = None,
 
 class KingoClient:
     def __init__(self, config: dict, *, offline_test_mode: bool = False,
-                 session_cookie: str | None = None):
+                 session_cookie: str | None = None,
+                 latency: LatencyRecorder | None = None):
         self.config = config
         self.p = config["protocol"]
         if self.p.get("verified") is not True:
@@ -257,6 +259,10 @@ class KingoClient:
         self.student = ""
         self.last_ms = 0.0
         self.parse_ms = 0.0
+        # Phase timings of the most recent successful read; see core/latency.py.
+        self.last_timing: dict[str, float] = {}
+        self.attempts = 0
+        self.latency = latency
         self.stop = asyncio.Event()
         self.lock = asyncio.Lock()
         self._single_flight = SingleFlight()
@@ -304,20 +310,34 @@ class KingoClient:
             return None
 
     async def _budgeted_request(self, method: str, url: str, headers: dict,
-                                body: bytes | None) -> httpx.Response:
+                                body: bytes | None) -> tuple[httpx.Response, dict]:
+        """One HTTP request plus its local phase timings.
+
+        ``budget_wait_ms`` is time spent waiting for the local quota lease and
+        is NOT network latency; mixing the two is what makes naive latency
+        tuning useless.
+        """
         if self._offline_test_mode:
             if not isinstance(self.http._transport, httpx.MockTransport):
                 raise ProtocolError("离线测试模式只允许 httpx.MockTransport，不可访问真实网络")
-            return await self.http.request(method, url, headers=headers, content=body)
-        async with self.budget.request():
+            started = time.perf_counter()
             response = await self.http.request(method, url, headers=headers, content=body)
+            return response, {"budget_wait_ms": 0.0,
+                              "request_ms": (time.perf_counter() - started) * 1000.0}
+        wait_started = time.perf_counter()
+        async with self.budget.request():
+            budget_wait_ms = (time.perf_counter() - wait_started) * 1000.0
+            started = time.perf_counter()
+            response = await self.http.request(method, url, headers=headers, content=body)
+            request_ms = (time.perf_counter() - started) * 1000.0
             if response.status_code in (429, 503):
                 seconds = self._retry_after_seconds(response.headers.get("Retry-After"))
                 if response.status_code == 429 and seconds is None:
                     seconds = 60.0  # Local protective cooldown, not a server policy.
                 if seconds is not None:
                     await self.budget.impose_retry_after(seconds)
-            return response
+            return response, {"budget_wait_ms": budget_wait_ms,
+                              "request_ms": request_ms}
 
     async def read(self, method: str, path: str, referer: str,
                    body: bytes | None = None) -> httpx.Response:
@@ -327,10 +347,14 @@ class KingoClient:
         headers = {"Referer": self.url(referer)}
         if body is not None:
             headers["Content-Type"] = "application/x-www-form-urlencoded; charset=GBK"
+        self.attempts = 0
         for attempt in range(3):
+            self.attempts = attempt + 1
             started = time.perf_counter()
             try:
-                response = await self._budgeted_request(method, self.url(path), headers, body)
+                response, timing = await self._budgeted_request(
+                    method, self.url(path), headers, body)
+                self.last_timing = timing
                 if response.status_code in (401, 403, 429):
                     if response.status_code == 401:
                         raise AuthenticationError("会话无效")
@@ -355,14 +379,18 @@ class KingoClient:
     async def identity(self) -> str:
         # [TODO: 抓包核对] The identity selector must return the authenticated
         # user's name in a protected official page, not merely a login label.
+        started = time.perf_counter()
         r = await self.read("GET", self.p["identity_path"], self.p["identity_referer"])
+        decode_started = time.perf_counter()
         text = decode_html(r)
+        decode_ms = (time.perf_counter() - decode_started) * 1000
         if _LOGIN.search(text):
             raise AuthenticationError("网页要求重新登录")
         element = BeautifulSoup(text, "lxml").select_one(self.p["identity_selector"])
         if element is None or not element.get_text(strip=True):
             raise AuthenticationError("未能验证当前本人身份")
         self.student = element.get_text(" ", strip=True)[:40]
+        self._record_latency("identity", r, decode_started, decode_ms, 1, started)
         return self.student
 
     async def warm_connection(self) -> None:
@@ -378,28 +406,63 @@ class KingoClient:
 
     async def _fetch_course_list_serial(self, term: str, course_ids: list[str] | None = None) -> list[CourseItem]:
         async with self.lock:
+            started = time.perf_counter()
             now = time.monotonic()
             if self.entry_url is None or now - self.entry_loaded_at > 1800:
                 # [TODO: 抓包核对] F12 -> Network -> Doc, enter official elective
                 # page; use actual entry URL and Referer, not guessed /wsxk/*.aspx.
                 r = await self.read("GET", self.p["entry"], self.p["entry_referer"])
+                decode_started = time.perf_counter()
                 text = decode_html(r)
                 if _LOGIN.search(text):
                     raise AuthenticationError("登录已失效")
                 self.entry_url = str(r.url)
                 self.entry_loaded_at = now
+                self._record_latency("entry", r, decode_started, 0.0, 0,
+                                     started, note="entry_refresh")
             path, body = self.prepare_query(term)
             r = await self.read(self.p["list_method"], path, self.entry_url, body)
+            decode_started = time.perf_counter()
             html = decode_html(r)
             if _LOGIN.search(html):
                 raise AuthenticationError("登录已失效")
             if _ALERT.search(html) and ("非法访问" in html or "验证码" in html):
                 raise ProtocolError("学校页面要求验证或拒绝访问")
+            decode_ms = (time.perf_counter() - decode_started) * 1000
             t0 = time.perf_counter()
             result = parse_courses(r.content, self.p, course_ids,
                                    content_type=r.headers.get("content-type", ""))
             self.parse_ms = (time.perf_counter() - t0) * 1000
+            self._record_latency("catalog", r, decode_started, decode_ms,
+                                 len(result), started)
             return result
+
+    def _record_latency(self, kind: str, response: httpx.Response,
+                        decode_started: float, decode_ms: float, rows: int,
+                        started: float, *, note: str = "") -> None:
+        """Best-effort sample; a recorder problem never breaks a poll."""
+        if self.latency is None:
+            return
+        try:
+            self.latency.record(LatencySample(
+                kind=kind,
+                status=response.status_code,
+                budget_wait_ms=self.last_timing.get("budget_wait_ms", 0.0),
+                request_ms=self.last_timing.get("request_ms", 0.0),
+                decode_ms=max(0.0, decode_ms),
+                parse_ms=max(0.0, self.parse_ms) if kind == "catalog" else 0.0,
+                total_ms=max(0.0, (time.perf_counter() - started) * 1000.0),
+                bytes_read=len(response.content),
+                rows=rows,
+                note=note or (f"attempt={self.attempts}" if self.attempts > 1 else ""),
+            ))
+        except (ValueError, OSError):
+            pass
+
+    def latency_report(self) -> dict:
+        return self.latency.report() if self.latency is not None else {
+            "enabled": False, "file": "", "last_error": "未启用时延埋点",
+            "overall": {"samples": 0}, "by_kind": {}}
 
     async def aclose(self) -> None:
         self.stop.set()

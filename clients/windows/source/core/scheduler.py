@@ -17,6 +17,7 @@ from loguru import logger
 from .client import AuthenticationError, ProtocolError, RateLimitError, Status
 from .monitor_state import MonitorStateStore
 from .monitor_policy import validate_limits
+from .selection_optim import PollingSchedule
 
 
 class Scheduler:
@@ -27,6 +28,12 @@ class Scheduler:
         self.strategy = config["strategy"]
         self.cycles = 0
         self.last_error: str | None = None
+        # Optional pickup schedule. Absent or disabled keeps the original random
+        # jitter, so existing deployments behave exactly as before.
+        pickup_cfg = self.strategy.get("pickup") or {}
+        self.pickup = (PollingSchedule.from_config(self.strategy)
+                       if isinstance(pickup_cfg, dict) and pickup_cfg.get("enabled") is True
+                       else None)
         self.states = {item["key"]: "待监测" for item in config["courses"]}
         state_file = self.strategy.get("state_file", "")
         self._state_store = MonitorStateStore(state_file) if state_file else None
@@ -155,6 +162,16 @@ class Scheduler:
         except asyncio.TimeoutError:
             return True
 
+    def _next_interval(self, limits) -> float:
+        """Random jitter normally; a precise cadence inside a pickup peak.
+
+        A peak window may only tighten polling down to the configured floor and
+        may never leave the operator-approved range.
+        """
+        if self.pickup is None:
+            return random.uniform(limits.low, limits.high)
+        return max(limits.low, min(self.pickup.interval(), limits.high))
+
     async def run(self) -> None:
         try:
             mode = self.strategy["mode"]
@@ -177,7 +194,7 @@ class Scheduler:
                 seconds_left = max(0.0, deadline - time.monotonic())
                 if seconds_left <= 0:
                     break
-                if not await self._sleep_or_stop(min(random.uniform(limits.low, limits.high), seconds_left)):
+                if not await self._sleep_or_stop(min(self._next_interval(limits), seconds_left)):
                     break
         except AuthenticationError:
             self.last_error = "本人会话无效或登录已过期；请在官方页面重新登录并核验授权"

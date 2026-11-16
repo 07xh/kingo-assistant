@@ -10,6 +10,7 @@ from core.enrollment import (
 )
 from core.enrollment_schedule import ScheduledEnrollmentRunner
 from core.course_models import ScheduleSnapshot
+from tests.attestation_support import valid_registry
 
 
 class FakeClock:
@@ -76,6 +77,7 @@ class ScheduledEnrollmentTest(unittest.TestCase):
         self.engine = EnrollmentEngine(
             self.gateway, self.journal,
             user_opted_in=True, institution_permits_write=True,
+            attestations=valid_registry(),
         )
 
     def make_runner(self, *, gateway=None, poll=(60, 60), wait=2, stop_event=None):
@@ -84,6 +86,7 @@ class ScheduledEnrollmentTest(unittest.TestCase):
             self.engine = EnrollmentEngine(
                 gateway, self.journal,
                 user_opted_in=True, institution_permits_write=True,
+                attestations=valid_registry(),
             )
 
         async def fake_sleep(seconds):
