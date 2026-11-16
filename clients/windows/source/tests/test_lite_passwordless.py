@@ -104,6 +104,37 @@ class PasswordlessRestoreTests(TestCase):
         self.assertEqual(proof.await_count, 1)
         self.assertEqual(proof.await_args.kwargs["expected_user_code"], "student01")
 
+    def test_passwordless_readiness_is_local_only_and_truthful(self):
+        vault = MemoryVault(SavedSchoolSession("student01", "SESSION_ID=sample", 0.0))
+        session = LiteSession(vault=vault)
+        with patch("lite_session.probe_known_year_term", new_callable=AsyncMock) as net:
+            denied = session.restore_readiness({"known_year_term": {"verified": False}})
+            self.assertEqual(denied["code"], "identity_unverified")
+            self.assertFalse(denied["may_attempt"])
+            with patch("lite_session.validate_term_contract", return_value=None):
+                missing_policy = session.restore_readiness({
+                    "known_year_term": {"identity_binding_verified": True},
+                    "server_policy": {"verified": False},
+                })
+                self.assertEqual(missing_policy["code"], "policy_unverified")
+                ready = session.restore_readiness({
+                    "known_year_term": {"identity_binding_verified": True},
+                    "server_policy": {"verified": True},
+                })
+            self.assertEqual(ready["code"], "ready_to_verify")
+            self.assertTrue(ready["may_attempt"])
+            self.assertFalse(ready["school_verified"])
+            net.assert_not_called()
+
+    def test_no_saved_session_never_advertises_passwordless_resume(self):
+        session = LiteSession(vault=MemoryVault())
+        ready = session.restore_readiness({
+            "known_year_term": {"verified": True, "identity_binding_verified": True},
+            "server_policy": {"verified": True},
+        })
+        self.assertEqual(ready["code"], "no_saved_session")
+        self.assertFalse(ready["may_attempt"])
+
     def test_unverified_identity_contract_never_sends_school_request(self):
         vault = MemoryVault(SavedSchoolSession("student01", "JSESSIONID=sensitive", 0.0))
         session = LiteSession(vault=vault)
