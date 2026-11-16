@@ -282,16 +282,11 @@ async def read_current_course_plan(
                         resp = await send()
                 else:
                     resp = await send()
-                if resp.status_code in (401, 302, 303, 307, 308):
-                    raise PermissionError("expired")
-                if resp.status_code in (403, 429):
-                    if resp.status_code == 429 and budget is not None:
-                        from core.client import KingoClient
-                        pause = KingoClient._retry_after_seconds(
-                            resp.headers.get("Retry-After"))
-                        await budget.impose_retry_after(pause or 60.0)
-                    raise PermissionError("restricted")
-                if resp.status_code != 200 or not resp.content or len(resp.content) > MAX_BODY:
+                error = await classify_read_response(
+                    resp, budget, max_bytes=MAX_BODY, require_content=True)
+                if error in ("expired", "restricted"):
+                    raise PermissionError(error)
+                if error:
                     raise ValueError("bad response")
                 return resp
             # Even if school reports time window closed, its read-only
