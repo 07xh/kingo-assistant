@@ -165,7 +165,7 @@ class LiveS202Tests(TestCase):
                 return httpx.Response(200, content=dynamic_page(), headers={
                     "content-type": "text/html; charset=GBK"})
             return httpx.Response(200, json={
-                "status": "200", "result": "{\\"xn\\":\\"2026\\"}",
+                "status": "200", "result": json.dumps({"xn": "2026"}),
             })
         result, requests = run(handler)
         self.assertEqual(result.code, "form_incomplete")
