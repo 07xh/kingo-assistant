@@ -171,7 +171,7 @@ async def login_with_verified_form(
                     return NativeLoginResult("challenge_required")
                 # Redirects are never followed. Only independent identity proof
                 # can establish whether this response authenticated.
-            if b"\\xe9\\xaa\\x8c\\xe8\\xaf\\x81\\xe7\\xa0\\x81" in response.content or b"captcha" in response.content.lower():
+            if "验证码" in response.text or b"captcha" in response.content.lower():
                 return NativeLoginResult("challenge_required")
             cookie = _same_origin_cookies(transport, host)
             if not cookie:
