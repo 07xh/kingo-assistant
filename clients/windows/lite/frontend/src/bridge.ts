@@ -110,3 +110,22 @@ export async function manualCatalog():Promise<OfficialCatalog>{
   if(!isDesktop()) throw new Error("请在 Windows 客户端中读取学校课程");
   return invoke<OfficialCatalog>("kingo_session_action",{action:"catalog",payload:null});
 }
+
+export type MonitorSnapshot = {
+  code?: "started"|"stop_requested"|"not_running"|"preflight_rejected"|"missing_session"|"busy"|"start_failed";
+  phase:"idle"|"running"|"stopping"|"completed"|"failed"|"stopped";
+  active:boolean;
+  cycles:number;
+  last_ms:number|null;
+  parse_ms:number|null;
+  message:string;
+  read_only:true;
+  enrollment_available:false;
+};
+function monitorAction(action:"monitor-start"|"monitor-stop"|"monitor-status"):Promise<MonitorSnapshot>{
+  if(!isDesktop()) throw new Error("只读监测仅支持 Windows EXE");
+  return invoke<MonitorSnapshot>("kingo_session_action",{action,payload:null});
+}
+export const startReadOnlyMonitor = () => monitorAction("monitor-start");
+export const stopReadOnlyMonitor = () => monitorAction("monitor-stop");
+export const monitorStatus = () => monitorAction("monitor-status");
