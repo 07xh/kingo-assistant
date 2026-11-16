@@ -45,6 +45,7 @@ from core.native_timetable import TimetableReadResult, read_known_timetable
 from core.known_school_pages import KnownSchoolPageResult, read_known_school_page, validate_known_page_contract
 from core.ncwu_term_probe import TermProbeResult, probe_known_year_term, validate_term_contract
 from core.native_login import NativeLoginResult, login_with_verified_form, validate_login_contract
+from core.ncwu_signed_login import login_ncwusigned, validate_ncwulogin_entry
 from core.official_entries import OFFICIAL_ENTRIES, probe_official_login_surfaces
 from core.scheduled_ui_bridge import prepare_scheduled_plan
 from core.enrollment_schedule import ScheduledRunReport
@@ -258,7 +259,7 @@ class Application(tk.Tk):
         self._native_login_in_progress = False
         self._native_session_cookie: str | None = None
         self._native_session_origin: str | None = None
-        self.native_login_status = tk.StringVar(value="EXE 尚未登录｜仅接受已核验的官方登录协议")
+        self.native_login_status = tk.StringVar(value="尚未登录｜已接入普通网页账号的签名协议，需本人实机验收")
         self.native_preparation_status = tk.StringVar(value="尚未通过 EXE 接口核验身份与课程目录")
         self.timetable_read_status = tk.StringVar(value="此前 HAR 已确认课表 JSON 路径；请求参数和 EXE 会话待核验")
         self.school_page_status = tk.StringVar(value="旧 HAR 已确认网页地址；已选结果的动态查询参数仍待核验")
@@ -299,7 +300,7 @@ class Application(tk.Tk):
                   style="KingoTitle.TLabel").pack(anchor="w")
         ttk.Label(
             header,
-            text="当前版本：课程方案可编辑；真实查询需要学校接口核验；自动提交尚未接通",
+            text="当前版本：EXE 原生登录已接入（待本人验证）；课程目录与自动提交尚未接通",
             foreground="#965b16",
         ).pack(anchor="w", pady=(4, 0))
 
@@ -325,12 +326,12 @@ class Application(tk.Tk):
         intro = ttk.Frame(self.tab_home, padding=(10, 6))
         intro.pack(fill="x")
         ttk.Label(
-            intro, text="建议顺序：填写课程 → 登录与查课 → 启动只读监测",
+            intro, text="建议顺序：填写目标课程 → 软件内登录 → 检查本人课程",
             font=("Microsoft YaHei UI", 10, "bold"),
         ).pack(anchor="w")
         ttk.Label(
             intro,
-            text="第 1 步可离线使用；第 2、3 步需华水真实接口核验。“自动选课”尚不可用。",
+            text="第 1 步可离线使用；EXE 登录等待本人实测，课程目录和自动选课尚未接通。",
             foreground="#965b16",
         ).pack(anchor="w", pady=(2, 0))
 
@@ -351,14 +352,14 @@ class Application(tk.Tk):
         ).pack(side="left")
 
         auth_panel = ttk.LabelFrame(
-            self.tab_home, text="第 2 步  ·  登录与查课（真实接口待核验）",
+            self.tab_home, text="第 2 步  ·  软件内登录（协议已接入 · 待实机验收）",
             padding=(10, 6), style="KingoStep.TLabelframe",
         )
         auth_panel.pack(fill="x", padx=10, pady=(0, 5))
         auth_actions = ttk.Frame(auth_panel)
         auth_actions.pack(fill="x")
         self.native_login_button = ttk.Button(
-            auth_actions, text="软件内登录并核对账号", command=self.start_native_login)
+            auth_actions, text="在 EXE 登录本人教务账号", command=self.start_native_login)
         self.native_login_button.pack(side="left", padx=(0, 8))
         self.native_prepare_button = ttk.Button(
             auth_actions, text="检查登录与课程数据（只读）",
@@ -745,7 +746,7 @@ class Application(tk.Tk):
         except (ValueError, TypeError, KeyError, OSError):
             self.native_login_status.set("本机配置无效，无法登录")
             return
-        code = validate_login_contract(config)
+        code = validate_ncwulogin_entry(config)
         if code is not None:
             self.native_login_status.set(NativeLoginResult(code).message)
             return
@@ -766,7 +767,7 @@ class Application(tk.Tk):
 
         def execute() -> None:
             try:
-                result = asyncio.run(login_with_verified_form(config, username, password))
+                result = asyncio.run(login_ncwusigned(config, username, password))
             except Exception:
                 result = NativeLoginResult("unavailable")
             self.events.put(MonitorEvent("native_login", result))
@@ -1726,11 +1727,13 @@ def run_packaged_gui_smoke() -> None:
                     app.check_known_year_term()
                 if "旧 HAR" not in app.term_probe_status.get():
                     raise AssertionError("Unverified term probe must stop without network")
-                # Placeholder auth contract must not open a password prompt or
-                # contact the network, even when clicked in a packaged EXE.
-                with patch.object(simpledialog, "askstring",
-                                  side_effect=AssertionError("unverified login asked for password")):
+                # Clicking native login can now collect credentials, but a
+                # cancelled account prompt must never issue network requests.
+                with patch.object(simpledialog, "askstring", return_value=None) as prompt, \
+                     patch("core.ncwu_signed_login.httpx.AsyncClient",
+                           side_effect=AssertionError("cancelled login attempted network")):
                     app.start_native_login()
+                    prompt.assert_called_once()
                 if app._native_session_cookie is not None:
                     raise AssertionError("Unverified login must not produce a session")
                 if app.notebook.index("current") != 0:
