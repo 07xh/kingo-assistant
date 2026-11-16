@@ -131,7 +131,9 @@ class LiteSession:
             config, session_cookie=self.cookie,
         ))
         if result.code in ("expired", "invalid_contract"):
-            self.clear()
+            # A school-expired session must not remain available for a later
+            # passwordless restore. Never keep a known-rejected bearer token.
+            self.clear(forget=result.code == "expired")
         return {
             "code": result.code,
             "message": result.message,
