@@ -1137,16 +1137,7 @@ class Application(tk.Tk):
 
     def check_course_plan(self) -> None:
         """One snapshot of historical NCWU 5327042 course-plan rows."""
-        if (self.worker or self.__dict__.get("scheduled_worker") or self._closing
-                or self._native_login_in_progress
-                or self._native_preparation_in_progress
-                or self._session_check_in_progress
-                or self.__dict__.get("_live_catalog_in_progress", False)
-                or self.__dict__.get("_live_polling", False)
-                or self.__dict__.get("_s202_round_probe_in_progress", False)
-                or self.__dict__.get("_s202_result_in_progress", False)
-                or self.__dict__.get("_s202_score_in_progress", False)
-                or self.__dict__.get("_course_plan_in_progress", False)):
+        if _ncwu_read_busy(self, include_polling=True):
             return
         if (not self._native_session_cookie
                 or self._native_session_origin != "jwmis.ncwu.edu.cn"):
@@ -1157,28 +1148,15 @@ class Application(tk.Tk):
         except (OSError, ValueError, TypeError, KeyError):
             self.course_plan_status.set("无法读取配置；未访问学校")
             return
-        cookie = scoped_native_cookie(self, config)
-        self._course_plan_in_progress = True
-        self.course_plan_button.configure(state="disabled")
-        self.course_plan_status.set("正在读取本学期开课计划快照；不查询正选实时余量")
-
-        def execute() -> None:
-            try:
-                result = asyncio.run(read_current_course_plan(
-                    config, session_cookie=cookie))
-            except Exception:
-                result = PlanSnapshot("unavailable")
-            self.events.put(MonitorEvent("ncwu_course_plan", result))
-
-        try:
-            threading.Thread(
-                target=execute, name="KingoCoursePlanRead",
-                daemon=True,
-            ).start()
-        except RuntimeError:
-            self._course_plan_in_progress = False
-            self.course_plan_button.configure(state="normal")
-            self.course_plan_status.set("开课计划读取线程未启动")
+        _start_ncwu_read_worker(
+            self, config=config, cookie=scoped_native_cookie(self, config),
+            read_call=read_current_course_plan, fallback_factory=PlanSnapshot,
+            flag="_course_plan_in_progress", button=self.course_plan_button,
+            status_var=self.course_plan_status,
+            running_message="正在读取本学期开课计划快照；不查询正选实时余量",
+            failure_message="开课计划读取线程未启动",
+            event_kind="ncwu_course_plan", thread_name="KingoCoursePlanRead",
+        )
 
     def show_course_plan_rows(self, result: PlanSnapshot) -> None:
         """One in-memory, explicitly historical plan snapshot popup."""
@@ -1281,15 +1259,7 @@ class Application(tk.Tk):
 
     def check_personal_s202_score(self) -> None:
         """Read own count using round fields from one current EXE session."""
-        if (self.worker or self.__dict__.get("scheduled_worker") or self._closing
-                or self._native_login_in_progress
-                or self._native_preparation_in_progress
-                or self._session_check_in_progress
-                or self.__dict__.get("_live_catalog_in_progress", False)
-                or self.__dict__.get("_s202_round_probe_in_progress", False)
-                or self.__dict__.get("_s202_result_in_progress", False)
-                or self.__dict__.get("_s202_score_in_progress", False)
-                or self.__dict__.get("_course_plan_in_progress", False)):
+        if _ncwu_read_busy(self):
             return
         if (not self._native_session_cookie
                 or self._native_session_origin != "jwmis.ncwu.edu.cn"):
@@ -1300,40 +1270,19 @@ class Application(tk.Tk):
         except (OSError, ValueError, TypeError, KeyError):
             self.s202_score_status.set("本地配置无效，没有访问学校")
             return
-        cookie = scoped_native_cookie(self, config)
-        self._s202_score_in_progress = True
-        self.s202_score_button.configure(state="disabled")
-        self.s202_score_status.set("正在读取本人当前 S202 已选门数（只读）")
-
-        def execute() -> None:
-            try:
-                result = asyncio.run(read_personal_s202_score(
-                    config, session_cookie=cookie))
-            except Exception:
-                result = PersonalScoreCount("unavailable")
-            self.events.put(MonitorEvent("ncwu_s202_score", result))
-
-        try:
-            threading.Thread(
-                target=execute, name="KingoS202ScoreRead",
-                daemon=True,
-            ).start()
-        except RuntimeError:
-            self._s202_score_in_progress = False
-            self.s202_score_button.configure(state="normal")
-            self.s202_score_status.set("查询线程启动失败；未访问学校")
+        _start_ncwu_read_worker(
+            self, config=config, cookie=scoped_native_cookie(self, config),
+            read_call=read_personal_s202_score, fallback_factory=PersonalScoreCount,
+            flag="_s202_score_in_progress", button=self.s202_score_button,
+            status_var=self.s202_score_status,
+            running_message="正在读取本人当前 S202 已选门数（只读）",
+            failure_message="查询线程启动失败；未访问学校",
+            event_kind="ncwu_s202_score", thread_name="KingoS202ScoreRead",
+        )
 
     def check_s202_round(self) -> None:
         """Fetch only official, non-sensitive S202 round/window metadata."""
-        if (self.worker or self.__dict__.get("scheduled_worker") or self._closing
-                or self._native_login_in_progress
-                or self._native_preparation_in_progress
-                or self._session_check_in_progress
-                or self.__dict__.get("_s202_result_in_progress", False)
-                or self.__dict__.get("_live_catalog_in_progress", False)
-                or self.__dict__.get("_s202_round_probe_in_progress", False)
-                or self.__dict__.get("_s202_score_in_progress", False)
-                or self.__dict__.get("_course_plan_in_progress", False)):
+        if _ncwu_read_busy(self):
             return
         if (self._native_session_cookie is None
                 or self._native_session_origin != "jwmis.ncwu.edu.cn"):
@@ -1344,40 +1293,19 @@ class Application(tk.Tk):
         except (OSError, ValueError, TypeError, KeyError):
             self.s202_round_status.set("配置无法读取，未查询学校")
             return
-        self._s202_round_probe_in_progress = True
-        self.s202_round_button.configure(state="disabled")
-        self.s202_round_status.set("正在读取学校官方 S202 轮次与时间窗（只读）")
-        cookie = scoped_native_cookie(self, config)
-
-        def execute() -> None:
-            try:
-                result = asyncio.run(probe_s202_round(
-                    config, session_cookie=cookie))
-            except Exception:
-                result = S202RoundStatus("unavailable")
-            self.events.put(MonitorEvent("ncwu_s202_round", result))
-
-        try:
-            threading.Thread(
-                target=execute, name="KingoS202RoundProbe",
-                daemon=True,
-            ).start()
-        except RuntimeError:
-            self._s202_round_probe_in_progress = False
-            self.s202_round_button.configure(state="normal")
-            self.s202_round_status.set("轮次查询线程未启动；未访问学校")
+        _start_ncwu_read_worker(
+            self, config=config, cookie=scoped_native_cookie(self, config),
+            read_call=probe_s202_round, fallback_factory=S202RoundStatus,
+            flag="_s202_round_probe_in_progress", button=self.s202_round_button,
+            status_var=self.s202_round_status,
+            running_message="正在读取学校官方 S202 轮次与时间窗（只读）",
+            failure_message="轮次查询线程未启动；未访问学校",
+            event_kind="ncwu_s202_round", thread_name="KingoS202RoundProbe",
+        )
 
     def check_s202_selected_results(self) -> None:
         """Single native GET of current user's S202 result page, no submit."""
-        if (self.worker or self.__dict__.get("scheduled_worker") or self._closing
-                or self._native_login_in_progress
-                or self._native_preparation_in_progress
-                or self._session_check_in_progress
-                or self.__dict__.get("_live_catalog_in_progress", False)
-                or self.__dict__.get("_s202_result_in_progress", False)
-                or self.__dict__.get("_s202_round_probe_in_progress", False)
-                or self.__dict__.get("_s202_score_in_progress", False)
-                or self.__dict__.get("_course_plan_in_progress", False)):
+        if _ncwu_read_busy(self):
             return
         if (self._native_session_cookie is None
                 or self._native_session_origin != "jwmis.ncwu.edu.cn"):
@@ -1388,28 +1316,15 @@ class Application(tk.Tk):
         except (OSError, ValueError, TypeError, KeyError):
             self.s202_result_status.set("配置读取失败，未访问学校")
             return
-        self._s202_result_in_progress = True
-        self.s202_result_button.configure(state="disabled")
-        self.s202_result_status.set("正在通过 EXE 会话读取当前 S202 已选结果页（只读）")
-        cookie = scoped_native_cookie(self, config)
-
-        def execute() -> None:
-            try:
-                result = asyncio.run(read_s202_selected_results(
-                    config, session_cookie=cookie))
-            except Exception:
-                result = S202ReadbackResult("unavailable")
-            self.events.put(MonitorEvent("ncwu_s202_results", result))
-
-        try:
-            threading.Thread(
-                target=execute, name="KingoS202ResultReadback",
-                daemon=True,
-            ).start()
-        except RuntimeError:
-            self._s202_result_in_progress = False
-            self.s202_result_button.configure(state="normal")
-            self.s202_result_status.set("只读结果读取线程未启动")
+        _start_ncwu_read_worker(
+            self, config=config, cookie=scoped_native_cookie(self, config),
+            read_call=read_s202_selected_results, fallback_factory=S202ReadbackResult,
+            flag="_s202_result_in_progress", button=self.s202_result_button,
+            status_var=self.s202_result_status,
+            running_message="正在通过 EXE 会话读取当前 S202 已选结果页（只读）",
+            failure_message="只读结果读取线程未启动",
+            event_kind="ncwu_s202_results", thread_name="KingoS202ResultReadback",
+        )
 
     def show_s202_candidate_results(self, result: S202ReadbackResult) -> None:
         """Memory-only candidates; a table cannot certify enrollment success."""
