@@ -81,6 +81,13 @@ def parse_s202_readback(html: str) -> S202ReadbackResult:
     soup = BeautifulSoup(html, "html.parser")
     if soup.find("html") is None and soup.find("body") is None:
         return S202ReadbackResult("unrecognized")
+    # The NCWU global filter can return HTTP 200 even on invalid sessions.
+    # A different sign-in page is likewise not evidence of enrollment data.
+    if soup.find("input", attrs={"type": "password"}) is not None:
+        return S202ReadbackResult("expired")
+    visible = soup.get_text(" ", strip=True).replace(" ", "")
+    if not any(marker in visible for marker in ("选课结果", "已选课程", "已选课")):
+        return S202ReadbackResult("unrecognized")
     tables = soup.find_all("table")
     if len(tables) > 30:
         return S202ReadbackResult("unrecognized")
