@@ -1,6 +1,6 @@
 //! Private, process-lifetime school session. Password and cookies never appear
 //! in a webview response, resource path, local file, or application log.
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use tauri::Manager;
@@ -43,7 +43,9 @@ impl SessionWorker {
         self.stdin.flush().map_err(|_| "登录服务连接中断".to_string())?;
         // The child writes exactly one bounded JSONL response per command.
         let mut line = Vec::new();
-        let read = self.stdout.read_until(b'\n', &mut line)
+        let read = self.stdout.by_ref()
+            .take((RESPONSE_LIMIT + 1) as u64)
+            .read_until(b'\n', &mut line)
             .map_err(|_| "登录服务读取失败".to_string())?;
         if read == 0 || read > RESPONSE_LIMIT || !line.ends_with(b"\n") {
             return Err("登录服务响应超出范围".to_string());
