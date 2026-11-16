@@ -194,11 +194,12 @@ def serve() -> int:
     """
     from lite_session import LiteSession
     from lite_monitor import LiteReadMonitor
+    from lite_session_vault import WindowsSessionVault
 
-    session = LiteSession()
+    session = LiteSession(vault=WindowsSessionVault(app_dir()))
     monitor = LiteReadMonitor()
     operations = {
-        "login", "catalog", "session", "logout",
+        "login", "catalog", "session", "logout", "restore",
         "monitor-start", "monitor-stop", "monitor-status",
     }
     while True:
@@ -220,7 +221,7 @@ def serve() -> int:
             if command not in operations:
                 raise ValueError("invalid action")
             if command == "login":
-                if not isinstance(payload, dict) or set(payload) != {"username", "password"}:
+                if not isinstance(payload, dict) or set(payload) != {"username", "password", "remember"} or type(payload.get("remember")) is not bool:
                     raise ValueError("invalid login envelope")
                 if monitor.status()["active"]:
                     result = {
@@ -229,7 +230,7 @@ def serve() -> int:
                         "session": session.info(),
                     }
                 else:
-                    result = session.login(load_config(ensure_config()), payload["username"], payload["password"])
+                    result = session.login(load_config(ensure_config()), payload["username"], payload["password"], remember=payload["remember"])
             else:
                 if payload is not None:
                     raise ValueError("unexpected payload")
@@ -246,7 +247,11 @@ def serve() -> int:
                 elif command == "logout":
                     if monitor.status()["active"]:
                         raise ValueError("monitor running")
-                    result = session.clear()
+                    result = session.clear(forget=True)
+                elif command == "restore":
+                    if monitor.status()["active"]:
+                        raise ValueError("monitor running")
+                    result = session.restore(load_config(ensure_config()))
                 elif command == "monitor-start":
                     if session.status != "verified":
                         result = {"code": "missing_session", **monitor.status()}
