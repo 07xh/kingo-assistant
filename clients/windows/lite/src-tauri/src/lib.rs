@@ -1,5 +1,7 @@
 //! A deliberately small desktop adapter for the existing KingoAssistant core.
 //! No school endpoints, login credentials or write operations are exposed here.
+mod local_actions;
+use local_actions::kingo_local_action;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -91,7 +93,7 @@ fn kingo_window_action(window: tauri::WebviewWindow, action: &str) -> Result<(),
 pub fn run() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
-            kingo_snapshot, kingo_save_courses, kingo_window_action
+            kingo_snapshot, kingo_save_courses, kingo_local_action, kingo_window_action
         ])
         .run(tauri::generate_context!())
         .expect("Unable to start KingoAssistant Lite");
