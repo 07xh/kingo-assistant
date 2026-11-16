@@ -5,7 +5,7 @@ from unittest import TestCase
 from unittest.mock import AsyncMock, Mock, patch
 
 from core.ncwu_s202_round import S202RoundStatus
-from windows_gui import _ncwu_read_busy, _start_ncwu_read_worker
+from windows_gui import _ncwu_read_busy, _start_ncwu_read_worker, _finish_ncwu_read_event
 
 
 def fake_app():
@@ -87,6 +87,53 @@ class NativeReadWorkerLifecycleTests(TestCase):
             ["running", "thread unavailable"],
         )
         self.assertTrue(app.events.empty())
+
+    def test_completion_restores_ui_and_preserves_cookies_when_valid(self):
+        app = fake_app()
+        app.status = Mock()
+        app.log = Mock()
+        app.native_login_status = Mock()
+        app._native_session_cookie = "JSESSIONID=TEST"
+        app._native_session_origin = "jwmis.ncwu.edu.cn"
+        app.stop_live_polling = Mock()
+        status, button = Mock(), Mock()
+        result = S202RoundStatus("observed", "closed")
+        app._s202_round_probe_in_progress = True
+        _finish_ncwu_read_event(
+            app, result, flag="_s202_round_probe_in_progress",
+            button=button, status_var=status,
+            log_message="S202 round read without secrets",
+            expired_message="expired",
+        )
+        self.assertFalse(app._s202_round_probe_in_progress)
+        button.configure.assert_called_once_with(state="normal")
+        status.set.assert_called_once_with(result.message)
+        app.status.set.assert_called_once_with(result.message)
+        app.log.assert_called_once_with("S202 round read without secrets")
+        app.native_login_status.set.assert_not_called()
+        app.stop_live_polling.assert_not_called()
+        self.assertEqual(app._native_session_cookie, "JSESSIONID=TEST")
+
+    def test_expired_completion_clears_only_in_memory_session_and_stops_polling(self):
+        app = fake_app()
+        app.status = Mock()
+        app.log = Mock()
+        app.native_login_status = Mock()
+        app.stop_live_polling = Mock()
+        app._native_session_cookie = "JSESSIONID=OLD_SECRET"
+        app._native_session_origin = "jwmis.ncwu.edu.cn"
+        app._live_polling = True
+        _finish_ncwu_read_event(
+            app, S202RoundStatus("expired"),
+            flag="_s202_round_probe_in_progress", button=Mock(),
+            status_var=Mock(), log_message="S202: expired",
+            expired_message="请重新登录",
+        )
+        self.assertIsNone(app._native_session_cookie)
+        self.assertIsNone(app._native_session_origin)
+        app.native_login_status.set.assert_called_once_with("请重新登录")
+        app.stop_live_polling.assert_called_once()
+        self.assertNotIn("OLD_SECRET", str(app.log.call_args))
 
     def test_read_failure_becomes_safe_unavailable_without_raw_errors(self):
         app = fake_app()
