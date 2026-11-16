@@ -74,13 +74,22 @@ def save_courses(raw_courses: Any) -> dict:
     """Update only approved local plan fields; keep all protocol gates untouched."""
     if not isinstance(raw_courses, list) or len(raw_courses) > 30:
         raise ValueError("course count")
+    path = ensure_config()
+    current = load_config(path)
+    # The frontend only changes its seven approved visible fields. Preserve
+    # ancillary fields owned by the existing course-plan engine by stable key.
+    # Removing a course removes its metadata intentionally; no bulk overwrite.
+    existing_by_key = {
+        row["key"]: row for row in current["courses"]
+        if isinstance(row, dict) and isinstance(row.get("key"), str)
+    }
     cleaned = []
     for row in raw_courses:
         if not isinstance(row, dict):
             raise ValueError("course type")
-        cleaned.append({key: row.get(key, "") for key in COURSE_COLUMNS})
-    path = ensure_config()
-    current = load_config(path)
+        visible = {key: row.get(key, "") for key in COURSE_COLUMNS}
+        old = existing_by_key.get(visible["key"], {})
+        cleaned.append({**old, **visible})
     strategy = current["strategy"]
     updated = update_config(
         current,
