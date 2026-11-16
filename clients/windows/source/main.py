@@ -249,6 +249,8 @@ def main() -> int:
                          help="官网登录页只读探测（无已核实请求预算时跳过联网）")
     parser.add_argument("--attest", nargs="+", metavar="ARG",
                         help="写入门禁证据登记表管理（离线）：status / issue / revoke ...")
+    parser.add_argument("--latency", nargs="+", metavar="ARG",
+                        help="时延采样报表（离线，不联网）：[文件或目录] [--compare 基线] [--json]")
     args = parser.parse_args()
     messages = deque(maxlen=5)
     logger.remove()
@@ -263,6 +265,10 @@ def main() -> int:
             # work on a machine with no verified protocol at all.
             from core.attest_cli import main as attest_main
             return attest_main(args.attest)
+        if args.latency:
+            # Reads the local JSONL capture only; no config, no network.
+            from core.latency_report import main as latency_main
+            return latency_main(args.latency)
         if args.official_entries or args.probe_official_entries:
             display_official_entries(probe=args.probe_official_entries)
             return 0
