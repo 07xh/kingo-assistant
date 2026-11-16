@@ -28,6 +28,8 @@ function isPlaceholder(course:Course) {
 }
 function shortError(error:unknown) {
   const msg = String(error);
+  if(msg.includes("LOCAL_CONFIG_ValueError")) return "配置未通过校验，请核对名称、课程数据或查询参数";
+  if(msg.includes("LOCAL_CONFIG_OSError")) return "本机文件操作失败，请检查权限及磁盘空间";
   return msg.length > 140 ? "操作失败；请在日志中查看本机诊断" : msg;
 }
 export default function App() {
@@ -47,6 +49,7 @@ export default function App() {
   const [planName,setPlanName]=useState("");
   const [plans,setPlans]=useState<string[]>([]);
   const [planBusy,setPlanBusy]=useState(false);
+  const [dialogError,setDialogError]=useState("");
   const [readiness,setReadiness]=useState<Preflight|null>(null);
   const [checking,setChecking]=useState(false);
   const [strategyOpen,setStrategyOpen]=useState(false);
@@ -117,7 +120,7 @@ export default function App() {
   async function showPlans() {
     if(dirty){setError("请先保存课程修改，再管理课程方案");return;}
     try {
-      setPlanBusy(true);setError("");
+      setPlanBusy(true);setError("");setDialogError("");
       const result=await listPlans();
       setPlans(result.plans);setPlansOpen(true);
     }catch(e){setError(shortError(e));}
@@ -129,7 +132,7 @@ export default function App() {
     if(action==="save" && plans.includes(trimmed) && !window.confirm("同名课程方案已存在，是否覆盖本机备份？"))return;
     if(action==="apply" && !window.confirm("切换方案将改变当前课程计划；旧计划会另外保存恢复点。确定继续？"))return;
     if(action==="delete" && !window.confirm("确定删除本机课程方案？"))return;
-    setPlanBusy(true);setError("");
+    setPlanBusy(true);setError("");setDialogError("");
     try {
       if(action==="save") {
         const result=await createPlan(trimmed);setPlans(result.plans);
@@ -143,7 +146,7 @@ export default function App() {
         setPlans(result.plans);setPlansOpen(false);setReadiness(null);
         log("已切换本机方案："+trimmed+"（旧方案已生成恢复点）");
       }
-    }catch(e){setError(shortError(e));}
+    }catch(e){setDialogError(shortError(e));}
     finally{setPlanBusy(false);}
   }
   async function checkReadiness() {
@@ -166,17 +169,17 @@ export default function App() {
       max_cycles:snapshotData.max_cycles,
       max_duration_minutes:snapshotData.max_duration_minutes
     });
-    setStrategyOpen(true);setError("");
+    setStrategyOpen(true);setError("");setDialogError("");
   }
   async function persistStrategy(event:FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if(!strategyDraft||loading) return;
-    setLoading(true);setError("");
+    setLoading(true);setError("");setDialogError("");
     try {
       const result=await saveStrategy(strategyDraft);
       setSnapshotData(result);setCourses(result.courses);setStrategyOpen(false);setReadiness(null);
       log("已保存本机只读查询设置；未开启学校查询");
-    }catch(e){setError(shortError(e));}
+    }catch(e){setDialogError(shortError(e));}
     finally{setLoading(false);}
   }
   function go(next:Page) {setPage(next);setError("");}
@@ -296,6 +299,7 @@ export default function App() {
         <section className="modal" role="dialog" aria-modal="true" aria-label="管理课程方案">
           <div className="modal-heading"><h2>本机课程方案</h2><button aria-label="关闭方案管理" onClick={()=>setPlansOpen(false)}><X size={18}/></button></div>
           <p>保存课程和查询设置的本地快照，不包含账号、Cookie 或教务协议。</p>
+          {dialogError&&<div role="alert" className="notice error">{dialogError}</div>}
           <div className="plan-create"><input aria-label="新方案名称" value={planName} maxLength={40} placeholder="输入方案名称" onChange={e=>setPlanName(e.target.value)}/><button className="button primary" disabled={!planName.trim()||planBusy} onClick={()=>void handlePlan("save",planName)}>保存当前方案</button></div>
           <div className="plan-list">{plans.length===0?<div className="empty">暂无保存的课程方案</div>:plans.map(name=><div className="plan-item" key={name}><strong>{name}</strong><div className="button-cluster"><button className="button" disabled={planBusy} onClick={()=>void handlePlan("apply",name)}>切换</button><button className="button" disabled={planBusy} onClick={()=>void handlePlan("delete",name)}>删除</button></div></div>)}</div>
         </section>
@@ -304,6 +308,7 @@ export default function App() {
         <form className="modal edit-modal" role="dialog" aria-modal="true" aria-label="编辑本机查询设置" onSubmit={e=>void persistStrategy(e)}>
           <div className="modal-heading"><h2>本机查询设置</h2><button type="button" aria-label="关闭查询设置" onClick={()=>setStrategyOpen(false)}><X size={18}/></button></div>
           <p>使用原有 Python 配置校验。所有设置仅对允许范围内的只读查询生效，不提供选课提交。</p>
+          {dialogError&&<div role="alert" className="notice error">{dialogError}</div>}
           <div className="form-grid">
             <label>学年学期<input value={strategyDraft.semester} maxLength={60} onChange={e=>setStrategyDraft(v=>v?{...v,semester:e.target.value}:v)}/></label>
             <label>查询模式<select value={strategyDraft.mode} onChange={e=>setStrategyDraft(v=>v?{...v,mode:e.target.value as Strategy["mode"]}:v)}><option value="monitor">普通只读监测</option><option value="burst">定时单次查询</option></select></label>
