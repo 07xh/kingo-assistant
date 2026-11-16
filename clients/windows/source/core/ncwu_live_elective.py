@@ -20,7 +20,7 @@ from urllib.parse import urlsplit
 import httpx
 from bs4 import BeautifulSoup
 
-from core.client import html_encoding
+from core.client import encode_gbk_form, html_encoding
 from core.ncwu_elective_table import EXPECTED_HEADINGS
 from core.request_budget import build_verified_budget
 
@@ -175,6 +175,12 @@ def _cell_value(cell) -> str:
 
 
 def _parse_catalog(page: str) -> tuple[tuple[LiveElectiveCourse, ...], int]:
+    """Map current 2568 columns by first-party IDs, not stale column offsets.
+
+    NCWU DataTable pages may use either positional `<td>` cells or
+    `<td id="trN_kcdm">` fields.  Never derive class identity or seats from
+    unlabelled/unknown columns.
+    """
     soup = BeautifulSoup(page, "html.parser")
     known = set(EXPECTED_HEADINGS)
     matches = []
@@ -188,26 +194,53 @@ def _parse_catalog(page: str) -> tuple[tuple[LiveElectiveCourse, ...], int]:
     table, ids = matches[0]
     if ids != known:
         raise ValueError("incomplete catalog columns")
-    # The observed first-party table has 17 fixed columns; never reinterpret
-    # 'selection status' or 'selection coins' as remaining-seat quantity.
-    index = {key: n for n, key in enumerate(EXPECTED_HEADINGS)}
+    header_orders = []
+    for tr in table.find_all("tr"):
+        cells = tr.find_all(["th", "td"], recursive=False)
+        keys = [c.get("id") for c in cells if c.get("id") in known]
+        if keys:
+            if len(keys) != len(known) or len(set(keys)) != len(known):
+                raise ValueError("incomplete or duplicated header")
+            header_orders.append(tuple(keys))
+    if len(header_orders) != 1:
+        raise ValueError("ambiguous header row")
+    ordered_fields = tuple(k.removeprefix("head_") for k in header_orders[0])
+    recognized_fields = set(ordered_fields)
     courses: list[LiveElectiveCourse] = []
     for tr in table.find_all("tr"):
         if any(node.get("id") in known for node in tr.find_all(attrs={"id": True})):
             continue
         cells = tr.find_all("td", recursive=False)
-        if len(cells) != len(EXPECTED_HEADINGS):
+        if not cells:
             continue
-        get = lambda key: _cell_value(cells[index[key]])
-        code = get("head_kcdm")
-        class_number = get("head_skbh")
+        by_name: dict[str, str] = {}
+        row_id = tr.get("id", "")
+        prefix = row_id + "_" if re.fullmatch(r"tr[0-9]+", row_id) else ""
+        for cell in cells:
+            key = cell.get("name") or ""
+            cid = cell.get("id", "")
+            if not key and prefix and cid.startswith(prefix):
+                key = cid[len(prefix):]
+            if key in recognized_fields:
+                if key in by_name:
+                    raise ValueError("ambiguous duplicate cell name")
+                by_name[key] = _cell_value(cell)
+        if all(k in by_name for k in ("kcdm", "skbh", "kc")):
+            get = lambda key: by_name.get(key, "")
+        elif not by_name and len(cells) == len(ordered_fields):
+            by_position = dict(zip(ordered_fields, (_cell_value(c) for c in cells)))
+            get = lambda key: by_position.get(key, "")
+        else:
+            continue  # Continuation or incomplete row is not a course.
+        code = get("kcdm")
+        class_number = get("skbh")
         if not code or not class_number:
             continue
         courses.append(LiveElectiveCourse(
-            course_name=get("head_kc"), course_code=code,
-            class_number=class_number, teacher=get("head_rkjs"),
-            selection_status=get("head_xk_status"),
-            points_label=get("head_xk_points"),
+            course_name=get("kc"), course_code=code,
+            class_number=class_number, teacher=get("rkjs"),
+            selection_status=get("xk_status"),
+            points_label=get("xk_points"),
         ))
         if len(courses) >= 500:
             break
@@ -326,11 +359,22 @@ async def live_s202_snapshot(
                 client.cookies.set(name, value, domain=HOST, path="/hsjw")
             async def request(method: str, path: str, *, form=None):
                 async with _budget_slot(budget):
+                    headers = {
+                        "Referer": REFERER,
+                        "Accept": "text/html,application/json,text/plain",
+                    }
+                    request_opts = {}
+                    if form is not None:
+                        # The first-party DataTable.jsp expects GBK-encoded
+                        # x-www-form-urlencoded bytes. httpx's automatic
+                        # dict encoding would use UTF-8 for Chinese values,
+                        # producing an apparently valid but empty catalog.
+                        headers["Content-Type"] = (
+                            "application/x-www-form-urlencoded; charset=GBK")
+                        request_opts["content"] = encode_gbk_form(list(form.items()))
                     response = await client.request(
-                        method, ORIGIN + path, data=form,
-                        headers={"Referer": REFERER,
-                                 "Accept": "text/html,application/json,text/plain"},
-                        follow_redirects=False,
+                        method, ORIGIN + path, headers=headers,
+                        follow_redirects=False, **request_opts,
                     )
                 if response.status_code in (401, 302, 303, 307, 308):
                     raise PermissionError("expired")

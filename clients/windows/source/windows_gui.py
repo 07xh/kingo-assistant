@@ -49,6 +49,7 @@ from core.ncwu_signed_login import login_ncwusigned, validate_ncwulogin_entry
 from core.ncwu_elective_table import inspect_elective_table
 from core.ncwu_live_elective import LiveElectiveSnapshot, live_s202_snapshot
 from core.ncwu_s202_readback import S202ReadbackResult, read_s202_selected_results
+from core.ncwu_s202_round import S202RoundStatus, probe_s202_round
 from core.official_entries import OFFICIAL_ENTRIES, probe_official_login_surfaces
 from core.scheduled_ui_bridge import prepare_scheduled_plan
 from core.attestation import AttestationError, AttestationRegistry, resolve_registry
@@ -287,6 +288,7 @@ class Application(tk.Tk):
         self._native_login_in_progress = False
         self._live_catalog_in_progress = False
         self._s202_result_in_progress = False
+        self._s202_round_probe_in_progress = False
         self._live_polling = False
         self._live_poll_timer = None
         self._live_catalog_popup = None
@@ -298,6 +300,7 @@ class Application(tk.Tk):
         self.native_preparation_status = tk.StringVar(value="尚未通过 EXE 接口核验身份与课程目录")
         self.live_catalog_status = tk.StringVar(value="实时 S202 查询：先登录本人账号，再点击读取；选课未开放也可查询页面")
         self.s202_result_status = tk.StringVar(value="S202 官方已选结果页尚未读取；只读检查不能直接确认选课成功")
+        self.s202_round_status = tk.StringVar(value="S202 本轮次尚未核对；选课未开放也可读取官方时间窗信息")
         self.timetable_read_status = tk.StringVar(value="此前 HAR 已确认课表 JSON 路径；请求参数和 EXE 会话待核验")
         self.school_page_status = tk.StringVar(value="旧 HAR 已确认网页地址；已选结果的动态查询参数仍待核验")
         self.term_probe_status = tk.StringVar(value="11月3日及14日 HAR 均观察到无需表单参数的学年学期接口")
@@ -608,6 +611,16 @@ class Application(tk.Tk):
         ttk.Label(s202_result_row, textvariable=self.s202_result_status,
                   foreground="#666", wraplength=670).pack(
                       side="left", fill="x", expand=True)
+        round_row = ttk.Frame(self.tools_operations)
+        round_row.pack(fill="x", pady=(4, 1))
+        self.s202_round_button = ttk.Button(
+            round_row, text="核对当前 S202 轮次（只读）",
+            command=self.check_s202_round,
+        )
+        self.s202_round_button.pack(side="left", padx=(0, 8))
+        ttk.Label(round_row, textvariable=self.s202_round_status,
+                  foreground="#666", wraplength=670).pack(
+                      side="left", fill="x", expand=True)
         term_row = ttk.Frame(self.tools_operations)
         term_row.pack(fill="x", pady=(4, 1))
         self.term_probe_button = ttk.Button(
@@ -830,6 +843,7 @@ class Application(tk.Tk):
                 or self._native_login_in_progress or self._native_preparation_in_progress
                 or self.__dict__.get("_live_catalog_in_progress", False)
                 or self.__dict__.get("_s202_result_in_progress", False)
+                or self.__dict__.get("_s202_round_probe_in_progress", False)
                 or self._session_check_in_progress
                 or self.__dict__.get("_timetable_read_in_progress", False)
                 or self.__dict__.get("_school_page_read_in_progress", False)
@@ -1016,6 +1030,48 @@ class Application(tk.Tk):
             self.school_page_button.configure(state="normal")
             self.school_page_status.set("读取线程启动失败；没有访问学校")
 
+    def check_s202_round(self) -> None:
+        """Fetch only official, non-sensitive S202 round/window metadata."""
+        if (self.worker or self.__dict__.get("scheduled_worker") or self._closing
+                or self._native_login_in_progress
+                or self._native_preparation_in_progress
+                or self._session_check_in_progress
+                or self.__dict__.get("_s202_result_in_progress", False)
+                or self.__dict__.get("_live_catalog_in_progress", False)
+                or self.__dict__.get("_s202_round_probe_in_progress", False)):
+            return
+        if (self._native_session_cookie is None
+                or self._native_session_origin != "jwmis.ncwu.edu.cn"):
+            self.s202_round_status.set("请先在 EXE 内登录本人教务账号")
+            return
+        try:
+            config = read_config(Path(self.path.get()), offline=True)
+        except (OSError, ValueError, TypeError, KeyError):
+            self.s202_round_status.set("配置无法读取，未查询学校")
+            return
+        self._s202_round_probe_in_progress = True
+        self.s202_round_button.configure(state="disabled")
+        self.s202_round_status.set("正在读取学校官方 S202 轮次与时间窗（只读）")
+        cookie = scoped_native_cookie(self, config)
+
+        def execute() -> None:
+            try:
+                result = asyncio.run(probe_s202_round(
+                    config, session_cookie=cookie))
+            except Exception:
+                result = S202RoundStatus("unavailable")
+            self.events.put(MonitorEvent("ncwu_s202_round", result))
+
+        try:
+            threading.Thread(
+                target=execute, name="KingoS202RoundProbe",
+                daemon=True,
+            ).start()
+        except RuntimeError:
+            self._s202_round_probe_in_progress = False
+            self.s202_round_button.configure(state="normal")
+            self.s202_round_status.set("轮次查询线程未启动；未访问学校")
+
     def check_s202_selected_results(self) -> None:
         """Single native GET of current user's S202 result page, no submit."""
         if (self.worker or self.__dict__.get("scheduled_worker") or self._closing
@@ -1023,7 +1079,8 @@ class Application(tk.Tk):
                 or self._native_preparation_in_progress
                 or self._session_check_in_progress
                 or self.__dict__.get("_live_catalog_in_progress", False)
-                or self.__dict__.get("_s202_result_in_progress", False)):
+                or self.__dict__.get("_s202_result_in_progress", False)
+                or self.__dict__.get("_s202_round_probe_in_progress", False)):
             return
         if (self._native_session_cookie is None
                 or self._native_session_origin != "jwmis.ncwu.edu.cn"):
@@ -1086,7 +1143,8 @@ class Application(tk.Tk):
                 or self._native_preparation_in_progress
                 or self._session_check_in_progress
                 or self.__dict__.get("_live_catalog_in_progress", False)
-                or self.__dict__.get("_s202_result_in_progress", False)):
+                or self.__dict__.get("_s202_result_in_progress", False)
+                or self.__dict__.get("_s202_round_probe_in_progress", False)):
             return
         if not self._native_session_cookie or self._native_session_origin != "jwmis.ncwu.edu.cn":
             self.live_catalog_status.set("请先点击「在 EXE 登录本人教务账号」")
@@ -1848,6 +1906,21 @@ class Application(tk.Tk):
                         self._native_session_cookie = None
                         self._native_session_origin = None
                         self.native_login_status.set("学期接口提示会话过期，请重新授权")
+                elif event.kind == "ncwu_s202_round":
+                    self._s202_round_probe_in_progress = False
+                    self.s202_round_button.configure(state="normal")
+                    result = event.value
+                    self.s202_round_status.set(result.message)
+                    self.status.set(result.message)
+                    self.log(
+                        f"S202 轮次核验：{result.code}，窗口={result.window}，"
+                        f"轮次字段={result.field_count}/6；未提交选课。")
+                    if result.code == "expired":
+                        self._native_session_cookie = None
+                        self._native_session_origin = None
+                        self.native_login_status.set("S202 轮次接口提示登录失效，请重新登录")
+                        if self.__dict__.get("_live_polling", False):
+                            self.stop_live_polling()
                 elif event.kind == "ncwu_s202_results":
                     self._s202_result_in_progress = False
                     self.s202_result_button.configure(state="normal")
