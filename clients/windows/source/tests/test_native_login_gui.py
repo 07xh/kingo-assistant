@@ -30,12 +30,12 @@ class NativeLoginGuiTests(TestCase):
         thread.assert_not_called()
 
     def test_verified_login_runs_in_background_without_browser(self):
-        cfg = {"protocol": {"verified": True}}
+        cfg = {"base_url": "https://jwmis.ncwu.edu.cn"}
         response = NativeLoginResult("verified", "SID=mock-private", "jwmis.ncwu.edu.cn")
         with patch("windows_gui.read_config", return_value=cfg), \
-             patch("windows_gui.validate_login_contract", return_value=None), \
+             patch("windows_gui.validate_ncwulogin_entry", return_value=None), \
              patch("windows_gui.simpledialog.askstring", side_effect=["alice", "secret"]) as dialog, \
-             patch("windows_gui.login_with_verified_form", new_callable=AsyncMock,
+             patch("windows_gui.login_ncwusigned", new_callable=AsyncMock,
                    return_value=response) as login, \
              patch("windows_gui.threading.Thread") as thread, \
              patch("windows_gui.webbrowser.open") as browser:
