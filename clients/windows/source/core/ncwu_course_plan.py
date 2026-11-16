@@ -58,6 +58,10 @@ class PlanSnapshot:
     rows: tuple[CoursePlanRow, ...] = ()
     record_count: int | None = None
     stage: str = ""
+    # Non-sensitive term metadata from the current first-party window.
+    # Optional to preserve existing callers and synthetic unit fixtures.
+    academic_year: str = ""
+    academic_term: str = ""
 
     @property
     def message(self) -> str:
@@ -324,7 +328,9 @@ async def read_current_course_plan(
                 rows, total = parse_course_plan(body)
             except ValueError:
                 return PlanSnapshot("plan_unrecognized", stage="table")
-            return PlanSnapshot("read", rows, total, "table")
+            return PlanSnapshot(
+                "read", rows, total, "table",
+                academic_year=scope["xn"], academic_term=scope["xqM"])
     except PermissionError as err:
         return PlanSnapshot("restricted" if str(err) == "restricted" else "expired")
     except (httpx.HTTPError, ValueError, KeyError, UnicodeError, TypeError):
