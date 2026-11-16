@@ -49,6 +49,39 @@ known_timetable:
 
 设置 `verified: true` 只是软件内部的手动前提，**不是**学校真实授权和正确请求体的独立证明。当前还缺少可用于直接联机验收的完整 POST 参数及软件自己的 CAS 登录会话，所以默认不联网；程序不会猜测字段。
 
+## 2026-11-16 续：复用旧 HAR 的网页课表和已选结果路径
+
+在本人此前上传的 2026-11-03 结构报告中，确认了：
+- `GET /hsjw/student/xkjg.wdkb.jsp`：个人课表入口 HTML
+- `GET /hsjw/student/wsxk.xskcb10319.jsp`：实际个人课表 HTML，抓包的 `params` 查询值已经脱敏
+- `GET /hsjw/wsxk/xkjg.ckdgxsxdkchj_data10319.jsp`：已选课程结果 HTML，实际查询参数是否必需仍待核验
+- `POST /hsjw/cas/logon.action`：账号登录表单包含 `username`、`password`、`loginmethod` 三个字段名；`loginmethod` 的有效取值仍未知
+
+新增 `core/known_school_pages.py`，将上述**前两种不同性质的已知网页**（课表入口和已选结果）作为独立单次 GET 只读候选，实现严格的 HTTPS 官方域名与固定路径、已验证查询契约、EXE 内本人会话、共享请求预算、无重试、无自动跳转、有限的 GBK/GB18030 编码支持及 HTML 表头结构识别。结果仅反馈统计计数，**不输出任何姓名、课表或选课数据**；返回 HTML 200 不等于选课成功或身份核验成功。
+
+主界面的“工具与日志”新增 **核验已选课程结果网页（只读）** 按钮，不把该请求混入选课目录或实际自动选课流程。
+
+新增配置：
+```yaml
+known_school_pages:
+  timetable_entry:
+    verified: false
+    method: GET
+    path: "/hsjw/student/xkjg.wdkb.jsp"
+    query_verified: false
+    query_mode: none
+  selected_results:
+    verified: false
+    method: GET
+    path: "/hsjw/wsxk/xkjg.ckdgxsxdkchj_data10319.jsp"
+    query_verified: false
+    query_mode: unverified
+```
+
+这些标志默认关闭。过去 HAR 里的动态 `params` 值无法安全复用；当某入口仍依赖动态查询参数时，这个版本**拒绝构造请求**，而不是复用一次性的签名、票据或猜测参数。只有经独立核验“无需查询参数”时才能启用 `query_mode: none`。
+
+另外，`native_login._contract` 针对已观察到的 `/hsjw/cas/logon.action` 表单会检查非空 `loginmethod`，在缺少经核验取值时提前告知，不会弹出密码输入框后发送不完整登录请求。**此校内表单路径与跨域 CAS/SSO 仍然属于不同登录流程**，不能混用。
+
 ## 仍未完成的真实验收
 
 1. 从本人获准读取的真实请求确定课表 POST 的 `Content-Type`、必要的非敏感请求字段，以及会话有效性；不要上传或记录凭证值。
