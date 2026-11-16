@@ -162,10 +162,10 @@ async def read_personal_s202_score(
                 return await classify_read_response(
                     response, budget,
                     expired_markers=_EXPIRED,
-                    # Keep the original score parser's 16 KiB cap and
-                    # expired-text scan bound: oversized 200 still reaches
-                    # the parser, which returns 'score_unrecognized'.
-                    # The shared helper only scans when within the bound.
+                    # The original status classifier scans only <=16 KiB.
+                    # Oversized 200 bodies still reach the bounded JSON
+                    # parser, which returns a safe unrecognized status.
+                    expired_scan_max_bytes=_MAX_RESPONSE,
                 )
 
             window_resp = await post(WINDOW_PATH + "?xktype=2", b"")
