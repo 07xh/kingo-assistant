@@ -704,7 +704,8 @@ class Application(tk.Tk):
         if (self.worker or self.__dict__.get("scheduled_worker")
                 or self._session_check_in_progress or self._closing
                 or self.__dict__.get("_timetable_read_in_progress", False)
-                or self.__dict__.get("_school_page_read_in_progress", False)):
+                or self.__dict__.get("_school_page_read_in_progress", False)
+                or self.__dict__.get("_term_probe_in_progress", False)):
             return
         try:
             config = read_config(Path(self.path.get()), offline=True)
@@ -736,7 +737,8 @@ class Application(tk.Tk):
                 or self._native_login_in_progress or self._native_preparation_in_progress
                 or self._session_check_in_progress
                 or self.__dict__.get("_timetable_read_in_progress", False)
-                or self.__dict__.get("_school_page_read_in_progress", False)):
+                or self.__dict__.get("_school_page_read_in_progress", False)
+                or self.__dict__.get("_term_probe_in_progress", False)):
             return
         try:
             config = read_config(Path(self.path.get()), offline=True)
@@ -782,7 +784,8 @@ class Application(tk.Tk):
                 or self._native_login_in_progress
                 or self._native_preparation_in_progress or self._session_check_in_progress
                 or self.__dict__.get("_timetable_read_in_progress", False)
-                or self.__dict__.get("_school_page_read_in_progress", False)):
+                or self.__dict__.get("_school_page_read_in_progress", False)
+                or self.__dict__.get("_term_probe_in_progress", False)):
             return
         self._native_session_cookie = None
         self._native_session_origin = None
@@ -796,7 +799,8 @@ class Application(tk.Tk):
                 or self._native_preparation_in_progress
                 or self._session_check_in_progress
                 or self._timetable_read_in_progress
-                or self.__dict__.get("_school_page_read_in_progress", False)):
+                or self.__dict__.get("_school_page_read_in_progress", False)
+                or self.__dict__.get("_term_probe_in_progress", False)):
             return
         try:
             config = read_config(Path(self.path.get()), offline=True)
@@ -877,7 +881,8 @@ class Application(tk.Tk):
                 or self._native_preparation_in_progress
                 or self._session_check_in_progress
                 or self._timetable_read_in_progress
-                or self._school_page_read_in_progress):
+                or self._school_page_read_in_progress
+                or self.__dict__.get("_term_probe_in_progress", False)):
             return
         try:
             config = read_config(Path(self.path.get()), offline=True)
@@ -921,7 +926,8 @@ class Application(tk.Tk):
                 or self.__dict__.get("_native_login_in_progress", False)
                 or self._native_preparation_in_progress or self._closing
                 or self.__dict__.get("_timetable_read_in_progress", False)
-                or self.__dict__.get("_school_page_read_in_progress", False)):
+                or self.__dict__.get("_school_page_read_in_progress", False)
+                or self.__dict__.get("_term_probe_in_progress", False)):
             return
         try:
             config = read_config(Path(self.path.get()), offline=True)
