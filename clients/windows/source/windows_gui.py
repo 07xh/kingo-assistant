@@ -42,6 +42,7 @@ from core.official_portal_schedule import OfficialPortalAppointment, prepare_app
 from core.session_probe import SessionProbeResult, probe_own_session
 from core.native_preparation import NativePreparationResult, prepare_native_api
 from core.native_timetable import TimetableReadResult, read_known_timetable
+from core.known_school_pages import KnownSchoolPageResult, read_known_school_page, validate_known_page_contract
 from core.native_login import NativeLoginResult, login_with_verified_form, validate_login_contract
 from core.official_entries import OFFICIAL_ENTRIES, probe_official_login_surfaces
 from core.scheduled_ui_bridge import prepare_scheduled_plan
@@ -251,12 +252,14 @@ class Application(tk.Tk):
         self._session_check_in_progress = False
         self._native_preparation_in_progress = False
         self._timetable_read_in_progress = False
+        self._school_page_read_in_progress = False
         self._native_login_in_progress = False
         self._native_session_cookie: str | None = None
         self._native_session_origin: str | None = None
         self.native_login_status = tk.StringVar(value="EXE 尚未登录｜仅接受已核验的官方登录协议")
         self.native_preparation_status = tk.StringVar(value="尚未通过 EXE 接口核验身份与课程目录")
         self.timetable_read_status = tk.StringVar(value="此前 HAR 已确认课表 JSON 路径；请求参数和 EXE 会话待核验")
+        self.school_page_status = tk.StringVar(value="旧 HAR 已确认网页地址；已选结果的动态查询参数仍待核验")
         self.portal_appointment_status = tk.StringVar(value="官网预约未启动（与自动提交无关）")
         self.path = tk.StringVar(value=str(ensure_config()))
         self.status = tk.StringVar(value="未启动｜本机离线检查可直接使用")
@@ -528,6 +531,16 @@ class Application(tk.Tk):
             self.tools_operations, text="检查自动选课计划（离线）",
             command=self.inspect_scheduled_runner)
         self.scheduled_preflight_button.pack(anchor="w", pady=(3, 0))
+        # Readback evidence is separate from an elective-catalog query.
+        result_row = ttk.Frame(self.tools_operations)
+        result_row.pack(fill="x", pady=(5, 1))
+        self.school_page_button = ttk.Button(
+            result_row, text="核验已选课程结果网页（只读）",
+            command=self.check_known_school_results,
+        )
+        self.school_page_button.pack(side="left", padx=(0, 8))
+        ttk.Label(result_row, textvariable=self.school_page_status,
+                  foreground="#666", wraplength=670).pack(side="left", fill="x", expand=True)
 
         self.advanced_panel = ttk.LabelFrame(
             self.tab_tools, text="高级协议配置 · 仅适合调试",
@@ -678,7 +691,8 @@ class Application(tk.Tk):
         """
         if (self.worker or self.__dict__.get("scheduled_worker")
                 or self._session_check_in_progress or self._closing
-                or self.__dict__.get("_timetable_read_in_progress", False)):
+                or self.__dict__.get("_timetable_read_in_progress", False)
+                or self.__dict__.get("_school_page_read_in_progress", False)):
             return
         try:
             config = read_config(Path(self.path.get()), offline=True)
@@ -709,7 +723,8 @@ class Application(tk.Tk):
         if (self.worker or self.__dict__.get("scheduled_worker") or self._closing
                 or self._native_login_in_progress or self._native_preparation_in_progress
                 or self._session_check_in_progress
-                or self.__dict__.get("_timetable_read_in_progress", False)):
+                or self.__dict__.get("_timetable_read_in_progress", False)
+                or self.__dict__.get("_school_page_read_in_progress", False)):
             return
         try:
             config = read_config(Path(self.path.get()), offline=True)
@@ -754,7 +769,8 @@ class Application(tk.Tk):
         if (self.worker or self.__dict__.get("scheduled_worker")
                 or self._native_login_in_progress
                 or self._native_preparation_in_progress or self._session_check_in_progress
-                or self.__dict__.get("_timetable_read_in_progress", False)):
+                or self.__dict__.get("_timetable_read_in_progress", False)
+                or self.__dict__.get("_school_page_read_in_progress", False)):
             return
         self._native_session_cookie = None
         self._native_session_origin = None
@@ -767,7 +783,8 @@ class Application(tk.Tk):
                 or self._closing or self._native_login_in_progress
                 or self._native_preparation_in_progress
                 or self._session_check_in_progress
-                or self._timetable_read_in_progress):
+                or self._timetable_read_in_progress
+                or self.__dict__.get("_school_page_read_in_progress", False)):
             return
         try:
             config = read_config(Path(self.path.get()), offline=True)
@@ -798,13 +815,58 @@ class Application(tk.Tk):
             self.timetable_read_button.configure(state="normal")
             self.timetable_read_status.set("课表读取线程启动失败；没有联网")
 
+    def check_known_school_results(self) -> None:
+        """Check the HAR-observed selected-course HTML page, never submit."""
+        if (self.worker or self.__dict__.get("scheduled_worker")
+                or self._closing or self._native_login_in_progress
+                or self._native_preparation_in_progress
+                or self._session_check_in_progress
+                or self._timetable_read_in_progress
+                or self._school_page_read_in_progress):
+            return
+        try:
+            config = read_config(Path(self.path.get()), offline=True)
+        except (OSError, ValueError, TypeError, KeyError):
+            self.school_page_status.set("本机配置无效；没有访问学校")
+            return
+        # Fail closed offline if a school query contract is incomplete.
+        error = validate_known_page_contract(config, "selected_results")
+        if error is not None:
+            result = KnownSchoolPageResult(error, "selected_results")
+            self.school_page_status.set(result.message)
+            self.status.set(result.message)
+            return
+        cookie = scoped_native_cookie(self, config)
+        self._school_page_read_in_progress = True
+        self.school_page_button.configure(state="disabled")
+        self.school_page_status.set("正在核验本人已选课程结果网页（只读）")
+
+        def execute() -> None:
+            try:
+                result = asyncio.run(read_known_school_page(
+                    config, "selected_results", session_cookie=cookie))
+            except Exception:
+                result = KnownSchoolPageResult("unavailable", "selected_results")
+            self.events.put(MonitorEvent("known_school_results", result))
+
+        try:
+            threading.Thread(
+                target=execute, name="KingoKnownSchoolResults",
+                daemon=True,
+            ).start()
+        except RuntimeError:
+            self._school_page_read_in_progress = False
+            self.school_page_button.configure(state="normal")
+            self.school_page_status.set("读取线程启动失败；没有访问学校")
+
     def check_native_preparation(self) -> None:
         """Explicit in-EXE identity + catalog HTTP checks, never browser automation."""
         if (self.worker or self.__dict__.get("scheduled_worker")
                 or self._session_check_in_progress
                 or self.__dict__.get("_native_login_in_progress", False)
                 or self._native_preparation_in_progress or self._closing
-                or self.__dict__.get("_timetable_read_in_progress", False)):
+                or self.__dict__.get("_timetable_read_in_progress", False)
+                or self.__dict__.get("_school_page_read_in_progress", False)):
             return
         try:
             config = read_config(Path(self.path.get()), offline=True)
@@ -1389,6 +1451,17 @@ class Application(tk.Tk):
                         self._native_session_cookie = None
                         self._native_session_origin = None
                         self.native_login_status.set("课表接口提示登录失效，请重新授权")
+                elif event.kind == "known_school_results":
+                    self._school_page_read_in_progress = False
+                    self.school_page_button.configure(state="normal")
+                    result = event.value
+                    self.school_page_status.set(result.message)
+                    self.status.set(result.message)
+                    self.log(result.message)
+                    if result.code == "expired":
+                        self._native_session_cookie = None
+                        self._native_session_origin = None
+                        self.native_login_status.set("学校页面提示登录失效，请重新授权")
                 elif event.kind == "native_preparation":
                     self._native_preparation_in_progress = False
                     self.native_prepare_button.configure(state="normal")
@@ -1563,6 +1636,15 @@ def run_packaged_gui_smoke() -> None:
                     raise AssertionError("Previously captured native timetable action missing")
                 if "既有接口" not in str(app.timetable_read_button.cget("text")):
                     raise AssertionError("Known timetable API must be distinguished from elective catalog")
+                if app.school_page_button.winfo_manager() != "pack":
+                    raise AssertionError("Observed school results readback must be mounted under tools")
+                if app.school_page_button.winfo_ismapped():
+                    raise AssertionError("Advanced readback action must stay off the home tab")
+                with patch("core.known_school_pages.httpx.AsyncClient",
+                           side_effect=AssertionError("unverified result-page query attempted network")):
+                    app.check_known_school_results()
+                if "旧 HAR" not in app.school_page_status.get():
+                    raise AssertionError("Unverified school query must stop with an explicit message")
                 # Placeholder auth contract must not open a password prompt or
                 # contact the network, even when clicked in a packaged EXE.
                 with patch.object(simpledialog, "askstring",

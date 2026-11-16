@@ -37,6 +37,7 @@ class NativeLoginResult:
         return {
             "protocol_unverified": "学校身份接口尚未核验；未执行 EXE 登录",
             "login_unverified": "EXE 登录协议尚未核验；未发送账号密码",
+            "loginmethod_unverified": "此前 HAR 确认登录包含 loginmethod，但必需取值尚未核验；未发送账号密码",
             "cas_adapter_missing": "已选择学校统一认证 CAS；目前未接入跨域认证协议，未请求密码",
             "invalid_contract": "登录协议字段不完整或不安全；未发送账号密码",
             "invalid_credentials": "请输入有效的本人账号和密码；未联网",
@@ -87,6 +88,13 @@ def _contract(config: Mapping) -> tuple[str | None, tuple | None]:
             or user_field == pass_field
             or not isinstance(extras, dict) or len(extras) > 12):
         return "invalid_contract", None
+    # 2026-11-03 school HAR explicitly observed loginmethod alongside
+    # username/password; never silently omit it in the known form contract.
+    if (parts.hostname == "jwmis.ncwu.edu.cn"
+            and path == "/hsjw/cas/logon.action"
+            and ("loginmethod" not in extras or not isinstance(extras["loginmethod"], str)
+                 or not extras["loginmethod"].strip())):
+        return "loginmethod_unverified", None
     for key, value in extras.items():
         if (not isinstance(key, str) or not _FIELD.fullmatch(key)
                 or key in (user_field, pass_field)
