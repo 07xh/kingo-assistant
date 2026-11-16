@@ -1,0 +1,33 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "KingoAssistant Lite",
+  "version": "0.1.0-alpha.1",
+  "identifier": "app.kingoassistant.lite",
+  "build": {
+    "frontendDist": "../frontend/dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "KingoAssistant Lite",
+        "width": 1050,
+        "height": 730,
+        "minWidth": 720,
+        "minHeight": 560,
+        "center": true,
+        "decorations": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "resources": {
+      "../packaging/sidecar/kingo-sidecar.exe": "bin/kingo-sidecar.exe"
+    }
+  }
+}
