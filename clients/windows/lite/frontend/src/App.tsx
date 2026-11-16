@@ -1,6 +1,6 @@
 import {useEffect,useState,type FormEvent} from "react";
 import {
-  Activity,BookOpen,Check,ChevronRight,Clock3,FileText,LayoutDashboard,
+  Activity,ArrowDown,ArrowUp,BookOpen,Check,ChevronRight,Clock3,FileText,LayoutDashboard,
   Minus,Monitor, Moon,PanelLeftClose,PanelLeftOpen,Plus,RefreshCw,
   Save,Settings,ShieldAlert,Sun,Trash2, X, Square, GraduationCap, Pencil
 } from "lucide-react";
@@ -96,6 +96,16 @@ export default function App() {
     if(!window.confirm("仅从本机计划中移除此课程？不会访问教务网站。"))return;
     setCourses(current=>current.filter((_,i)=>i!==index));setDirty(true);
   }
+  function moveCourse(index:number,direction:-1|1) {
+    const target=index+direction;
+    if(target<0||target>=courses.length)return;
+    setCourses(current=>{
+      const next=[...current];
+      [next[index],next[target]]=[next[target],next[index]];
+      return next;
+    });
+    setDirty(true);
+  }
   function go(next:Page) {setPage(next);setError("");}
   return (
     <div className={"app "+theme}>
@@ -169,7 +179,7 @@ export default function App() {
             <div className="section-heading top-actions"><div><h3>目标课程</h3><p>仅保存到本机配置，最多 30 门；示例课程不会作为真实在线课程显示。</p></div><button className="button primary" disabled={!snapshotData||courses.length>=30} onClick={()=>openEditor(-1)}><Plus size={16}/>添加课程</button></div>
             <section className="card table-wrap">
               <table><thead><tr><th>优先级</th><th>志愿</th><th>课程</th><th>教学班</th><th>备选组</th><th>状态</th><th>操作</th></tr></thead>
-              <tbody>{courses.map((course,index)=><tr key={index}><td>{index+1}</td><td>{course.key}</td><td><strong>{presentCourse(course)}</strong><small>{course.course_id||"无课程代码"} · {course.teacher||"未填教师"}</small></td><td>{course.class_id||"—"}</td><td>{course.group||"—"}</td><td><span className="status muted">{isPlaceholder(course)?"示例 · 未连接":"未查询"}</span></td><td><div className="row-actions"><button aria-label={"编辑"+presentCourse(course)} onClick={()=>openEditor(index)}><Pencil size={15}/></button><button aria-label={"删除"+presentCourse(course)} onClick={()=>removeCourse(index)}><Trash2 size={15}/></button></div></td></tr>)}</tbody></table>
+              <tbody>{courses.map((course,index)=><tr key={index}><td>{index+1}</td><td>{course.key}</td><td><strong>{presentCourse(course)}</strong><small>{course.course_id||"无课程代码"} · {course.teacher||"未填教师"}</small></td><td>{course.class_id||"—"}</td><td>{course.group||"—"}</td><td><span className="status muted">{isPlaceholder(course)?"示例 · 未连接":"未查询"}</span></td><td><div className="row-actions"><button aria-label={"上移"+presentCourse(course)} disabled={index===0} onClick={()=>moveCourse(index,-1)}><ArrowUp size={15}/></button><button aria-label={"下移"+presentCourse(course)} disabled={index===courses.length-1} onClick={()=>moveCourse(index,1)}><ArrowDown size={15}/></button><button aria-label={"编辑"+presentCourse(course)} onClick={()=>openEditor(index)}><Pencil size={15}/></button><button aria-label={"删除"+presentCourse(course)} onClick={()=>removeCourse(index)}><Trash2 size={15}/></button></div></td></tr>)}</tbody></table>
               {courses.length===0&&<div className="empty"><BookOpen size={26}/><strong>还没有配置课程</strong><span>使用右上角「添加课程」建立本机计划</span></div>}
             </section>
             <div className="course-footer"><small>学期：{snapshotData?.semester||"未读取"} · 当前界面不调用学校选课接口</small><button className="button primary" disabled={!dirty||loading} onClick={()=>void persist()}><Save size={16}/>保存本机计划</button></div>
