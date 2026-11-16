@@ -105,7 +105,7 @@ pub async fn kingo_session_action(
                 return Err("登录请求格式无效".to_string());
             }
         }
-        "catalog" | "session" | "logout" | "restore" | "forget" | "monitor-start" | "monitor-stop" | "monitor-status" if payload.is_none() => {}
+        "catalog" | "session" | "logout" | "restore" | "forget" | "check-session" | "monitor-start" | "monitor-stop" | "monitor-status" if payload.is_none() => {}
         _ => return Err("不支持的登录服务操作".to_string()),
     }
     let session = state.inner().0.clone();
