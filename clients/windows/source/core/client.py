@@ -227,7 +227,8 @@ def parse_courses(raw: bytes, config: dict, course_ids: list[str] | None = None,
 
 
 class KingoClient:
-    def __init__(self, config: dict, *, offline_test_mode: bool = False):
+    def __init__(self, config: dict, *, offline_test_mode: bool = False,
+                 session_cookie: str | None = None):
         self.config = config
         self.p = config["protocol"]
         if self.p.get("verified") is not True:
@@ -245,7 +246,9 @@ class KingoClient:
             limits=httpx.Limits(max_connections=2, max_keepalive_connections=2,
                                 keepalive_expiry=60),
             headers={"User-Agent": "KingoReadOnly/3.0", "Accept": "text/html,*/*"})
-        cookie = os.environ.get("KINGO_COOKIE") or config.get("auth", {}).get("cookie", "")
+        # Explicit volatile session takes precedence, without an env fallback.
+        cookie = (session_cookie if session_cookie is not None else
+                  (os.environ.get("KINGO_COOKIE") or config.get("auth", {}).get("cookie", "")))
         for part in cookie.split(";"):
             if "=" in part:
                 name, value = part.strip().split("=", 1)

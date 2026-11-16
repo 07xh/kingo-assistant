@@ -49,7 +49,8 @@ def format_checks(checks: list[Check], *, max_detail: int = 4) -> str:
     return "\n".join(lines)
 
 
-def inspect_readiness(config: dict, env: dict | None = None) -> list[Check]:
+def inspect_readiness(config: dict, env: dict | None = None,
+                      session_cookie: str | None = None) -> list[Check]:
     environment = os.environ if env is None else env
     protocol = config.get('protocol', {})
     auth = config.get('auth', {})
@@ -58,7 +59,8 @@ def inspect_readiness(config: dict, env: dict | None = None) -> list[Check]:
     fields = ('identity_path', 'identity_referer', 'identity_selector',
               'entry', 'entry_referer', 'list', 'term_field', 'columns')
     verified = protocol.get('verified') is True
-    has_auth = bool(environment.get('KINGO_COOKIE') or auth.get('cookie'))
+    has_auth = bool(session_cookie if session_cookie is not None else
+                    (environment.get('KINGO_COOKIE') or auth.get('cookie')))
     all_paths = all(bool(protocol.get(field)) for field in fields) and bool(protocol.get('table_marker'))
     valid_courses = isinstance(courses, list) and bool(courses) and all(isinstance(c, dict) for c in courses)
     placeholders = any('FILL_FROM_' in str(c.get('course_id', '')) or

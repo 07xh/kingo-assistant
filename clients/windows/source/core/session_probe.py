@@ -35,6 +35,7 @@ class SessionProbeResult:
 async def probe_own_session(
     config: Mapping, *, environment: Mapping[str, str] | None = None,
     factory: Callable[[dict], KingoClient] = KingoClient,
+    session_cookie: str | None = None,
 ) -> SessionProbeResult:
     """Perform at most one identity operation using an explicitly verified adapter.
 
@@ -47,13 +48,15 @@ async def probe_own_session(
         return SessionProbeResult("protocol_unverified", False)
     env = os.environ if environment is None else environment
     auth = config.get("auth")
-    cookie = (env.get("KINGO_COOKIE") or
-              (auth.get("cookie") if isinstance(auth, dict) else None))
+    cookie = (session_cookie if session_cookie is not None else
+              (env.get("KINGO_COOKIE") or
+               (auth.get("cookie") if isinstance(auth, dict) else None)))
     if not isinstance(cookie, str) or not cookie.strip():
         return SessionProbeResult("missing_session", False)
     client = None
     try:
-        client = factory(dict(config))
+        client = (factory(dict(config), session_cookie=cookie)
+                  if session_cookie is not None else factory(dict(config)))
         await client.identity()
         return SessionProbeResult("verified", True)
     except AuthenticationError:

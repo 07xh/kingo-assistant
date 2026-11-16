@@ -52,6 +52,7 @@ async def prepare_native_api(
     config: Mapping, *,
     environment: Mapping[str, str] | None = None,
     factory: Callable[[dict], KingoClient] = KingoClient,
+    session_cookie: str | None = None,
 ) -> NativePreparationResult:
     """Check identity and query catalog with the EXE's own HTTP client.
 
@@ -67,9 +68,9 @@ async def prepare_native_api(
 
     env = os.environ if environment is None else environment
     auth = config.get("auth")
-    cookie = env.get("KINGO_COOKIE") or (
-        auth.get("cookie") if isinstance(auth, dict) else None
-    )
+    cookie = (session_cookie if session_cookie is not None else
+              (env.get("KINGO_COOKIE") or
+               (auth.get("cookie") if isinstance(auth, dict) else None)))
     if not isinstance(cookie, str) or not cookie.strip():
         return NativePreparationResult("missing_session")
 
@@ -93,7 +94,8 @@ async def prepare_native_api(
 
     client = None
     try:
-        client = factory(dict(config))
+        client = (factory(dict(config), session_cookie=cookie)
+                  if session_cookie is not None else factory(dict(config)))
         # This must be an authenticated official identity read, not a homepage
         # HTTP 200 and not a "Cookie exists" heuristic.
         await client.identity()
