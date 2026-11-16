@@ -25,7 +25,8 @@ from core.time_sync import TimeSync
 from core.official_entries import OFFICIAL_ENTRIES, probe_official_login_surfaces
 
 
-def validate(config: dict, check_only: bool = False) -> None:
+def validate(config: dict, check_only: bool = False, *,
+             session_cookie: str | None = None) -> None:
     if not isinstance(config, dict):
         raise ValueError("配置根节点必须为对象")
     url = urlsplit(str(config["base_url"]))
@@ -63,7 +64,8 @@ def validate(config: dict, check_only: bool = False) -> None:
         raise ValueError("courses[].key 不允许重复")
     if not all(any(t.get(k) for k in ("course_id", "course_name", "teacher")) for t in targets):
         raise ValueError("课程至少提供一个真实的匹配条件")
-    if not check_only and not (config.get("auth", {}).get("cookie") or __import__("os").getenv("KINGO_COOKIE")):
+    if not check_only and not (session_cookie if session_cookie is not None else
+                               (config.get("auth", {}).get("cookie") or __import__("os").getenv("KINGO_COOKIE"))):
         raise ValueError("未找到本人官方登录的会话 Cookie；建议通过 KINGO_COOKIE 配置")
     if not check_only:
         # No network operation may begin with an unspecified or unverified budget.
