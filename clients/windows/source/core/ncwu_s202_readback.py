@@ -21,6 +21,10 @@ from core.ncwu_live_elective import (
     _decode_html, _validate_origin,
 )
 from core.request_budget import build_verified_budget
+from core.ncwu_read_support import (
+    default_read_client, set_scoped_cookie,
+    get_optional_verified_budget, classify_read_response,
+)
 
 _LOCK = threading.Lock()
 _NEXT_AT = 0.0
@@ -146,23 +150,14 @@ async def read_s202_selected_results(
             if time.monotonic() < _NEXT_AT:
                 return S202ReadbackResult("cooldown")
             _NEXT_AT = time.monotonic() + 60.0
-        policy = config.get("server_policy", {})
-        budget = None
-        if isinstance(policy, Mapping) and policy.get("verified") is True:
-            try:
-                budget = budget_factory(dict(config), ("https", HOST))
-            except Exception:
-                return S202ReadbackResult("policy_unverified")
+        try:
+            budget = get_optional_verified_budget(config, budget_factory)
+        except Exception:
+            return S202ReadbackResult("policy_unverified")
         if http_factory is None:
-            http_factory = lambda: httpx.AsyncClient(
-                follow_redirects=False, trust_env=False,
-                timeout=httpx.Timeout(connect=5, read=10, write=10, pool=5),
-                limits=httpx.Limits(max_connections=1, max_keepalive_connections=1),
-            )
+            http_factory = default_read_client
         async with http_factory() as client:
-            for pair in session_cookie.split(";"):
-                key, value = pair.strip().split("=", 1)
-                client.cookies.set(key, value, domain=HOST, path="/hsjw")
+            set_scoped_cookie(client, session_cookie)
             if budget is not None:
                 async with budget.request():
                     response = await client.get(
