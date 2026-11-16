@@ -12,8 +12,18 @@ server_policy:
   max_concurrency: 1
   database: "data/request-budget.sqlite"  # resolved under app data directory on Windows
 auth:
-  # Prefer environment variable KINGO_COOKIE. Do not store passwords/cookies in this file.
+  # Legacy external session is still supported; never save passwords/cookies here.
   cookie: ""
+  # EXE-native login requires a separately verified SAME-ORIGIN official form.
+  # Empty placeholders intentionally disable network authentication.
+  # This is NOT a working NCWU login endpoint, and CAS/SSO is not yet adapted.
+  login:
+    verified: false
+    method: POST
+    path: ""
+    username_field: ""
+    password_field: ""
+    static_fields: {}
 strategy:
   mode: monitor       # monitor or burst; burst means ONE scheduled read-only check
   target_time: "2026-12-21 08:00:00" # timezone: Asia/Shanghai; confirm official announcement
