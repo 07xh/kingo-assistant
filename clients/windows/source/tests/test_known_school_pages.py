@@ -143,6 +143,8 @@ class SchoolPageTests(TestCase):
                    "username_field": "username", "password_field": "password",
                    "static_fields": {},
                }}}
+        self.assertEqual(validate_login_contract(cfg), "login_variant_unverified")
+        cfg["auth"]["login"]["contract_variant"] = "plain_20261103"
         self.assertEqual(validate_login_contract(cfg), "loginmethod_unverified")
         cfg["auth"]["login"]["static_fields"]["loginmethod"] = "MANUALLY_VERIFIED_ONLY"
         self.assertIsNone(validate_login_contract(cfg))
