@@ -53,6 +53,7 @@ def get_optional_verified_budget(
 async def classify_read_response(
     response: httpx.Response, budget=None, *, max_bytes: int | None = None,
     require_content: bool = False, expired_markers: tuple[str, ...] = (),
+    expired_scan_max_bytes: int | None = None,
 ) -> str | None:
     """Return transport-level category only; business parsing stays at caller.
 
@@ -75,7 +76,7 @@ async def classify_read_response(
         return "unavailable"
     if require_content and not content:
         return "unavailable"
-    if expired_markers and content and (max_bytes is None or len(content) <= max_bytes):
+    if expired_markers and content and (expired_scan_max_bytes is None or len(content) <= expired_scan_max_bytes):
         text = content.decode("utf-8", errors="ignore")
         if any(word in text for word in expired_markers):
             return "expired"
