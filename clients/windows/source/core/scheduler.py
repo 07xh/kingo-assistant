@@ -18,6 +18,17 @@ from .client import AuthenticationError, ProtocolError, RateLimitError, Status
 from .monitor_state import MonitorStateStore
 from .monitor_policy import validate_limits
 from .selection_optim import PollingSchedule
+from .release_watch import (
+    NotificationLedger, WatchState, apply_observations, observe_all, target_matches,
+)
+
+#: Watch classification -> the user-facing Status string defined in client.py.
+_STATE_STATUS = {
+    WatchState.AMBIGUOUS: Status.AMBIGUOUS,
+    WatchState.MISSING: Status.MISSING,
+    WatchState.UNKNOWN: Status.UNKNOWN,
+    WatchState.FULL: Status.FULL,
+}
 
 
 class Scheduler:
@@ -38,24 +49,15 @@ class Scheduler:
         state_file = self.strategy.get("state_file", "")
         self._state_store = MonitorStateStore(state_file) if state_file else None
         remembered = self._state_store.load() if self._state_store else {}
-        self._already_notified = {key: value for key, value in remembered.items()
-                                  if key in self.states}
+        self._ledger = NotificationLedger(
+            {key: value for key, value in remembered.items() if key in self.states})
+        # Kept as the same dict object so save/compare paths stay unchanged.
+        self._already_notified = self._ledger.active
 
     @staticmethod
     def matches(target: dict, item) -> bool:
-        for key in ("course_id", "class_id", "course_name", "teacher"):
-            needle = target.get(key)
-            if not needle:
-                continue
-            value = getattr(item, key, None)
-            if value is None:
-                return False
-            if key in ("course_id", "class_id"):
-                if str(needle).strip() != str(value).strip():
-                    return False
-            elif str(needle).strip().casefold() not in str(value).casefold():
-                return False
-        return True
+        """Kept for callers and tests; the rule now lives in release_watch."""
+        return target_matches(target, item)
 
     async def notify(self, target: dict, item) -> bool:
         """True only after at least one push endpoint accepts a notification.
@@ -111,30 +113,18 @@ class Scheduler:
         catalog = await self.client.fetch_course_list(
             self.config["xnxq"], target_ids if len(target_ids) == len(self.config["courses"]) else None)
         notifications = []
-        previous = self._already_notified.copy()
-        for target in self.config["courses"]:
-            key = target["key"]
-            matching = [course for course in catalog if self.matches(target, course)]
-            if len(matching) > 1:
-                self.states[key] = Status.AMBIGUOUS.value
-                self._already_notified.pop(key, None)
-                continue
-            if not matching:
-                self.states[key] = Status.MISSING.value
-                self._already_notified.pop(key, None)
-                continue
-            item = matching[0]
-            if item.remain is None:
-                self.states[key] = Status.UNKNOWN.value
-                self._already_notified.pop(key, None)
-            elif item.remain <= 0:
-                self.states[key] = Status.FULL.value
-                self._already_notified.pop(key, None)
+        target_list = self.config["courses"]
+        observations = observe_all(target_list, catalog,
+                                   fingerprint_of=MonitorStateStore.fingerprint)
+        previous = self._ledger.snapshot()
+        for observation in observations:
+            if observation.state is WatchState.AVAILABLE:
+                self.states[observation.key] = (
+                    f"{Status.AVAILABLE.value}（{observation.remain}）")
             else:
-                self.states[key] = f"{Status.AVAILABLE.value}（{item.remain}）"
-                fingerprint = MonitorStateStore.fingerprint(item.course_id, item.class_id)
-                if self._already_notified.get(key) != fingerprint:
-                    notifications.append((key, fingerprint, target, item))
+                self.states[observation.key] = _STATE_STATUS[observation.state].value
+        # Rearming happens here; marking waits for delivery confirmation below.
+        notifications = apply_observations(target_list, observations, self._ledger)
 
         # Mark an alert delivered only after the notification channel accepts it.
         # Disabled notifications still get local in-memory de-duplication, but
@@ -148,12 +138,12 @@ class Scheduler:
                 logger.warning("通知失败：{}；本机状态保留，下一轮可重试", type(error).__name__)
                 outcome = False
             if not opted_in or outcome is True:
-                self._already_notified[key] = fingerprint
+                self._ledger.mark(key, fingerprint)
 
         # Persist only successful provider-accepted notification fingerprints.
         # Full/unknown/missing classes rearm previously delivered notifications.
-        if self._state_store and opted_in and self._already_notified != previous:
-            self._state_store.save(self._already_notified)
+        if self._state_store and opted_in and self._ledger.snapshot() != previous:
+            self._state_store.save(self._ledger.snapshot())
 
     async def _sleep_or_stop(self, seconds: float) -> bool:
         try:
