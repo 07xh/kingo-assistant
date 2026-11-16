@@ -860,7 +860,8 @@ class Application(tk.Tk):
 
     def clear_native_session(self) -> None:
         """Clear in-process credentials; this is not a verified server logout."""
-        self.stop_live_polling()
+        if self.__dict__.get("_live_polling", False):
+            self.stop_live_polling()
         if (self.worker or self.__dict__.get("scheduled_worker")
                 or self._native_login_in_progress
                 or self._native_preparation_in_progress or self._session_check_in_progress
