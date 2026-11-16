@@ -186,11 +186,64 @@ def save_strategy(data: Any) -> dict:
     return get_snapshot()
 
 
+def serve() -> int:
+    """Private request/response JSONL over inherited pipes; no network on boot.
+
+    Each request contains an action and optional data. Never serializes a
+    password, session cookie or a raw school response back to the UI.
+    """
+    from lite_session import LiteSession
+
+    session = LiteSession()
+    operations = {"login", "catalog", "session", "logout"}
+    while True:
+        line = sys.stdin.buffer.readline(MAX_INPUT_BYTES + 1)
+        if not line:
+            session.clear()
+            return 0
+        if len(line) > MAX_INPUT_BYTES or not line.endswith(b"\n"):
+            # Refuse an unframed/oversized request; don't retry on an
+            # untrusted remainder that could masquerade as a new request.
+            session.clear()
+            return 1
+        try:
+            request = json.loads(line.decode("utf-8"))
+            if not isinstance(request, dict) or set(request) != {"action", "payload"}:
+                raise ValueError("invalid request envelope")
+            command = request["action"]
+            payload = request["payload"]
+            if command not in operations:
+                raise ValueError("invalid action")
+            if command == "login":
+                if not isinstance(payload, dict) or set(payload) != {"username", "password"}:
+                    raise ValueError("invalid login envelope")
+                result = session.login(load_config(ensure_config()), payload["username"], payload["password"])
+            else:
+                if payload is not None:
+                    raise ValueError("unexpected payload")
+                if command == "catalog":
+                    result = session.catalog(load_config(ensure_config()))
+                elif command == "logout":
+                    result = session.clear()
+                else:
+                    result = session.info()
+            output = {"ok": True, "data": result}
+        except (ValueError, TypeError, OSError, KeyError, UnicodeError):
+            output = {"ok": False, "error": "SESSION_REQUEST_INVALID"}
+        except Exception:
+            # Even unanticipated errors must not include secret values or URLs.
+            output = {"ok": False, "error": "SESSION_UNAVAILABLE"}
+        sys.stdout.write(json.dumps(output, ensure_ascii=False, separators=(",", ":")) + "\n")
+        sys.stdout.flush()
+
+
 def main() -> int:
     try:
         if len(sys.argv) != 2:
             raise ValueError("invalid arguments")
         command = sys.argv[1]
+        if command == "--serve":
+            return serve()
         if command == "snapshot":
             result = get_snapshot()
         elif command == "preflight":
