@@ -11,6 +11,12 @@ This stage implements **one-shot, same-origin, verified-form authentication insi
 5. Only on successful identity proof does the GUI retain the volatile session. **EXE 接口提前预检（只读）**, **核验应用会话（只读）**, and **启动只读监测** may then reuse the cookie in their existing HTTP client. An explicit cookie overrides, but never silently falls back to, a stale environment cookie.
 6. **清除本机会话** clears the volatile cookie locally. It does not claim to log out of the university server. Process quit also drops the volatile session. Windows sleep/reboot does not preserve it.
 
+## Authentication route discovery (offline)
+
+The official school CAS entry currently uses a distinct authentication host from the teaching-system host. The program cannot pretend the direct-form adapter supports it. The offline HAR authentication audit (`离线工具 → 华水认证链路识别`) classifies known official hosts and redirects using fixed aggregate labels; see [NCWU public evidence](../acceptance/ncwu-auth-route-public-20261116.md). It does not promote any endpoint to verified.
+
+`auth.login.mode` supports `direct_form` only for verified same-origin login. Set `cas` only as a descriptive declaration: the app responds with `cas_adapter_missing` before displaying any password prompt, and never silently submits a cross-origin login. Unknown modes are rejected.
+
 ## Configuration contract (disabled by default)
 
 ```yaml
