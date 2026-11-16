@@ -32,16 +32,18 @@ jobs:
         run: |
           python -m pip install -r requirements.txt "pyinstaller>=6,<7"
           if ($LASTEXITCODE -ne 0) { throw "pip install failed" }
-          python -m unittest tests.test_lite_bridge tests.test_lite_session -v
+          python -m unittest tests.test_lite_bridge tests.test_lite_session tests.test_lite_monitor -v
           if ($LASTEXITCODE -ne 0) { throw "Lite bridge tests failed" }
       - name: Build Python local plan sidecar
         shell: pwsh
         working-directory: clients/windows/source
         run: |
-          python -m PyInstaller --noconfirm --clean --onefile --name kingo-sidecar --distpath ../lite/packaging/sidecar --add-data "config.example.yaml;." lite_bridge.py
+          python -m PyInstaller --noconfirm --clean --onefile --name kingo-sidecar --distpath ../lite/packaging/sidecar --add-data "config.example.yaml;." --collect-submodules pystray lite_bridge.py
           if ($LASTEXITCODE -ne 0) { throw "Sidecar packaging failed" }
           $response = (& ../lite/packaging/sidecar/kingo-sidecar.exe snapshot | ConvertFrom-Json)
           if ($LASTEXITCODE -ne 0 -or !$response.ok -or $response.data.data_source -ne "local_config" -or $response.data.automatic_submit_available) { throw "Local sidecar smoke failed" }
+          $session = ('{"action":"session","payload":null}' | & ../lite/packaging/sidecar/kingo-sidecar.exe --serve | Select-Object -First 1 | ConvertFrom-Json)
+          if (!$session.ok -or $session.data.status -ne "not_logged_in") { throw "Private session smoke failed" }
       - name: Build frontend
         shell: pwsh
         working-directory: clients/windows/lite
