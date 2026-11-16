@@ -104,6 +104,10 @@ export async function restoreSavedSession():Promise<LoginReply>{
   if(!isDesktop()) throw new Error("请在 Windows 客户端中恢复登录");
   return invoke<LoginReply>("kingo_session_action",{action:"restore",payload:null});
 }
+export async function recheckSession():Promise<LoginReply>{
+  if(!isDesktop()) throw new Error("身份复核仅可在 Windows EXE 内执行");
+  return invoke<LoginReply>("kingo_session_action",{action:"check-session",payload:null});
+}
 export async function sessionStatus():Promise<SessionInfo>{
   if(!isDesktop()) throw new Error("请在 Windows 客户端中查看会话状态");
   return invoke<SessionInfo>("kingo_session_action",{action:"session",payload:null});
