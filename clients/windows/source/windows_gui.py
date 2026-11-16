@@ -805,7 +805,7 @@ class Application(tk.Tk):
         """One credential form submission in the EXE, never browser automation."""
         if (self.worker or self.__dict__.get("scheduled_worker") or self._closing
                 or self._native_login_in_progress or self._native_preparation_in_progress
-                or self._live_catalog_in_progress or self._session_check_in_progress
+                or self.__dict__.get("_live_catalog_in_progress", False) or self._session_check_in_progress
                 or self.__dict__.get("_timetable_read_in_progress", False)
                 or self.__dict__.get("_school_page_read_in_progress", False)
                 or self.__dict__.get("_term_probe_in_progress", False)):
@@ -995,7 +995,7 @@ class Application(tk.Tk):
                 or self._native_login_in_progress
                 or self._native_preparation_in_progress
                 or self._session_check_in_progress
-                or self._live_catalog_in_progress):
+                or self.__dict__.get("_live_catalog_in_progress", False)):
             return
         if not self._native_session_cookie or self._native_session_origin != "jwmis.ncwu.edu.cn":
             self.live_catalog_status.set("请先点击「在 EXE 登录本人教务账号」")
@@ -1060,7 +1060,7 @@ class Application(tk.Tk):
         """Explicit in-EXE identity + catalog HTTP checks, never browser automation."""
         if (self.worker or self.__dict__.get("scheduled_worker")
                 or self._session_check_in_progress
-                or self._live_catalog_in_progress
+                or self.__dict__.get("_live_catalog_in_progress", False)
                 or self.__dict__.get("_native_login_in_progress", False)
                 or self._native_preparation_in_progress or self._closing
                 or self.__dict__.get("_timetable_read_in_progress", False)
