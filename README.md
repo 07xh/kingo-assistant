@@ -6,7 +6,7 @@ KingoAssistant is an independent personal course-selection assistant for the NCW
 
 ## Current status
 
-- **Windows:** Desktop course plans, read-only monitoring, native tray minimization, an offline automatic-enrollment plan preflight, and a separately tested enrollment state machine. Closing the window keeps the current task; explicit tray quit stops it.
+- **Windows:** Three-page navigation (选课首页 / 手动官网备用 / 工具与日志), desktop course plans, read-only monitoring, native tray minimization, an offline automatic-enrollment plan preflight, and a separately tested enrollment state machine. The home page now distinguishes locally usable features, real official-interface gates, and disabled live enrollment. Closing the window keeps the current task; explicit tray quit stops it. [Beginner UI guide](docs/architecture/windows-simple-navigation-20261116.md).
 - **Windows verification:** Verify the latest Windows Actions CI for the current commit; independently passing PRs do not prove their combined GUI works. The packaged smoke test now verifies scheduled-plan preflight remains mounted after merging UI changes.
 - **Build downloads:** [Windows Actions history](https://github.com/07xh/kingo-assistant/actions/workflows/windows-build.yml); choose a successful run from the commit you intend to use.
 - **Official NCWU auth route research (offline):** public school sources confirm a separate CAS authentication host and a teaching-system callback, so the existing single-origin form adapter is not a completed CAS integration. Windows 离线工具 now contains a privacy-preserving local HAR CAS route summary, and `auth.login.mode: cas` blocks unsupported credential submission. See [official evidence and remaining gates](docs/acceptance/ncwu-auth-route-public-20261116.md).
@@ -80,7 +80,7 @@ and any actual enrollment POST are **not enabled**. See
 
 - Closing the main window **minimizes to the Windows system tray** if the native tray backend is available. The running read-only monitor and one-shot official-browser appointment are not canceled by that action.
 - Use the tray menu **显示主窗口** to restore the UI and **完全退出** to stop tasks and exit. If the tray backend cannot initialize, the application minimizes to the normal taskbar instead of becoming invisible.
-- The main screen separates course plans and **只读监测** from the **手动辅助** menu (official-site opening / copied course codes) and **离线工具**. Advanced YAML controls are hidden under **程序 → 显示/隐藏高级配置**; read-only polling knobs are collapsed by default in the course editor.
+- The main screen uses a **three-tab layout**: **① 选课首页** contains step-by-step course plans / in-EXE login and catalog checks / read-only monitoring, **② 手动官网备用** holds browser-opening fallback and its countdown, and **③ 工具与日志** contains HAR analysis, offline demo/benchmarks, advanced YAML and logs. A persistent status line remains at the bottom. The enrollment submit button remains visibly disabled. Advanced YAML can also be toggled through **程序 → 显示/隐藏高级配置**.
 - These UI improvements **do not enable automated school enrollment**. The NCWU live submission adapter is still unverified and disabled. Tray background operation also requires Windows to stay awake; it is not a background service or a reboot-persistent appointment.
 
 ## Engineering audit
