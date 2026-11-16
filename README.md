@@ -122,7 +122,7 @@ and any actual enrollment POST are **not enabled**. See
 ## Repository layout
 
 - `clients/windows/source/` — Windows source and tests.
-- `clients/windows/kingo-windows-v4.6.tar.xz` — immutable source bootstrap snapshot.
+- `clients/windows/README.md` — 当前 Windows 源码、独立 EXE 构建方式与真实验收边界（已移除旧 V4.6 启动压缩包，历史版本可从 Git 历史查看）。
 - `clients/android/` — future Android client.
 - `docs/architecture/` — architecture decisions.
 - `docs/acceptance/` — evidence and acceptance gates.
