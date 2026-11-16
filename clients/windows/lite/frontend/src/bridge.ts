@@ -60,3 +60,53 @@ export const createPlan = (name:string) => action<Plans>("save-plan",{name});
 export const applyPlan = (name:string) => action<AppliedPlan>("apply-plan",{name});
 export const deletePlan = (name:string) => action<Plans>("delete-plan",{name});
 export const saveStrategy = (settings:Strategy) => action<Snapshot>("save-strategy",settings);
+
+export type SessionInfo = {
+  status:"not_logged_in"|"verified";
+  verified_at_login:boolean;
+  persistent:false;
+  origin:string;
+};
+export type LoginReply = {
+  code:string;
+  message:string;
+  session:SessionInfo;
+};
+export type OfficialCatalogCourse = {
+  course_name:string;
+  course_code:string;
+  class_number:string;
+  teacher:string;
+  selection_status:string;
+  points_label:string;
+};
+export type OfficialCatalog = {
+  code:string;
+  message:string;
+  window:"closed"|"reported_open"|"unknown";
+  stage:string;
+  courses:OfficialCatalogCourse[];
+  total_courses:number;
+  display_limit:number;
+  data_source:"live_school"|"unavailable";
+  seat_count_verified:false;
+  session:SessionInfo;
+};
+export async function signedLogin(username:string,password:string):Promise<LoginReply>{
+  if(!isDesktop()) throw new Error("请在 Windows 客户端中登录");
+  return invoke<LoginReply>("kingo_session_action",{
+    action:"login",payload:{username,password}
+  });
+}
+export async function sessionStatus():Promise<SessionInfo>{
+  if(!isDesktop()) throw new Error("请在 Windows 客户端中查看会话状态");
+  return invoke<SessionInfo>("kingo_session_action",{action:"session",payload:null});
+}
+export async function logout():Promise<SessionInfo>{
+  if(!isDesktop()) throw new Error("请在 Windows 客户端中退出登录");
+  return invoke<SessionInfo>("kingo_session_action",{action:"logout",payload:null});
+}
+export async function manualCatalog():Promise<OfficialCatalog>{
+  if(!isDesktop()) throw new Error("请在 Windows 客户端中读取学校课程");
+  return invoke<OfficialCatalog>("kingo_session_action",{action:"catalog",payload:null});
+}
