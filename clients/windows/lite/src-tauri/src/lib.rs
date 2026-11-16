@@ -70,7 +70,7 @@ async fn kingo_save_courses(app: tauri::AppHandle, courses: serde_json::Value)
         return Err("目标课程不能超过 30 门".to_string());
     }
     let body = serde_json::to_vec(&courses).map_err(|_| "课程序列化失败")?;
-    if body.len() > 32_000 {
+    if body.len() > 128_000 {
         return Err("课程配置超过大小限制".to_string());
     }
     tauri::async_runtime::spawn_blocking(move || call_sidecar(&app, "save-courses", Some(body)))
