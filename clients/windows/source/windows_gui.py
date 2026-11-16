@@ -38,6 +38,7 @@ from core.offline_selftest import run_selftest
 from core.offline_benchmark import format_benchmark, run_offline_benchmark
 from core.official_portal_schedule import OfficialPortalAppointment, prepare_appointment, format_countdown
 from core.session_probe import SessionProbeResult, probe_own_session
+from core.native_preparation import NativePreparationResult, prepare_native_api
 from core.official_entries import OFFICIAL_ENTRIES, probe_official_login_surfaces
 from core.scheduled_ui_bridge import prepare_scheduled_plan
 from core.enrollment_schedule import ScheduledRunReport
@@ -225,6 +226,8 @@ class Application(tk.Tk):
         self._official_portal_appointment: OfficialPortalAppointment | None = None
         self._portal_prelogin_opened = False
         self._session_check_in_progress = False
+        self._native_preparation_in_progress = False
+        self.native_preparation_status = tk.StringVar(value="尚未通过 EXE 接口核验身份与课程目录")
         self.portal_appointment_status = tk.StringVar(value="官网预约未启动（与自动提交无关）")
         self.path = tk.StringVar(value=str(ensure_config()))
         self.status = tk.StringVar(value="未启动｜本机离线检查可直接使用")
@@ -304,6 +307,16 @@ class Application(tk.Tk):
             command=self.stop_scheduled_enrollment, state="disabled",
         )
         self.scheduled_stop_button.pack(side="right", padx=(0, 8))
+
+        native_panel = ttk.Frame(self, padding=(16, 4))
+        native_panel.pack(fill="x")
+        self.native_prepare_button = ttk.Button(
+            native_panel, text="EXE 接口提前预检（只读）",
+            command=self.check_native_preparation,
+        )
+        self.native_prepare_button.pack(side="left", padx=(0, 8))
+        ttk.Label(native_panel, textvariable=self.native_preparation_status,
+                  foreground="#666", wraplength=680).pack(side="left", fill="x", expand=True)
 
         self.portal_panel = ttk.LabelFrame(self, text="手动官网备用（不自动提交）", padding=8)
         self.portal_appointment_button = ttk.Button(
@@ -474,6 +487,36 @@ class Application(tk.Tk):
             self._session_check_in_progress = False
             self.session_check_button.configure(state="normal")
             self.status.set("会话核验线程无法启动；未请求学校")
+
+    def check_native_preparation(self) -> None:
+        """Explicit in-EXE identity + catalog HTTP checks, never browser automation."""
+        if (self.worker or self.__dict__.get("scheduled_worker")
+                or self._session_check_in_progress
+                or self._native_preparation_in_progress or self._closing):
+            return
+        try:
+            config = read_config(Path(self.path.get()), offline=True)
+        except (ValueError, TypeError, KeyError, OSError):
+            messagebox.showwarning("接口准备失败", "本机配置无效，请先修正。")
+            return
+        self._native_preparation_in_progress = True
+        self.native_prepare_button.configure(state="disabled")
+        self.native_preparation_status.set("EXE 正在核验会话和课程目录（只读）")
+
+        def execute() -> None:
+            try:
+                result = asyncio.run(prepare_native_api(config))
+            except Exception:
+                result = NativePreparationResult("unavailable")
+            self.events.put(MonitorEvent("native_preparation", result))
+
+        try:
+            threading.Thread(target=execute, name="KingoNativeApiPreparation",
+                             daemon=True).start()
+        except RuntimeError:
+            self._native_preparation_in_progress = False
+            self.native_prepare_button.configure(state="normal")
+            self.native_preparation_status.set("接口准备线程启动失败；未访问学校")
 
     def inspect_scheduled_runner(self) -> None:
         """Validate the real runner's local admission contract, never start it."""
@@ -970,6 +1013,13 @@ class Application(tk.Tk):
                     self._session_check_in_progress = False
                     self.session_check_button.configure(state="normal")
                     result = event.value
+                    self.status.set(result.message)
+                    self.log(result.message)
+                elif event.kind == "native_preparation":
+                    self._native_preparation_in_progress = False
+                    self.native_prepare_button.configure(state="normal")
+                    result = event.value
+                    self.native_preparation_status.set(result.message)
                     self.status.set(result.message)
                     self.log(result.message)
                 elif event.kind == "benchmark_done":
