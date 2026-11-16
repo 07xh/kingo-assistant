@@ -63,7 +63,10 @@ def _contract(config: Mapping) -> tuple[str | None, tuple | None]:
     if identity_mode == "year_term":
         # Validated, known, no-body school action. Presence of userCode alone
         # is insufficient: caller must also bind it to the entered account.
-        if validate_term_contract(config) is not None:
+        if (validate_term_contract(config) is not None
+                or config.get("known_year_term", {}).get("identity_binding_verified") is not True):
+            # Shape alone isn't proof. The official action must first be
+            # confirmed to require a signed-in account in an approved test.
             return "identity_unverified", None
     elif identity_mode == "configured_identity":
         protocol = config.get("protocol")
