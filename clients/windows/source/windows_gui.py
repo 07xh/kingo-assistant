@@ -200,6 +200,24 @@ def _start_ncwu_read_worker(
         status_var.set(failure_message)
 
 
+def _finish_ncwu_read_event(
+    app, result, *, flag: str, button, status_var,
+    log_message: str, expired_message: str,
+) -> None:
+    """One Tk-thread completion path for four read-only NCWU screens."""
+    setattr(app, flag, False)
+    button.configure(state="normal")
+    status_var.set(result.message)
+    app.status.set(result.message)
+    app.log(log_message)
+    if result.code == "expired":
+        app._native_session_cookie = None
+        app._native_session_origin = None
+        app.native_login_status.set(expired_message)
+        if app.__dict__.get("_live_polling", False):
+            app.stop_live_polling()
+
+
 class MonitorWorker:
     """Async network loop runs on a background thread. Tk lives on the main thread."""
 
