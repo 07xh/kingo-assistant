@@ -24,6 +24,10 @@ from core.ncwu_live_elective import (
 from core.ncwu_s202_score import _context_from_window
 from core.ncwu_live_elective import WINDOW_PATH
 from core.request_budget import build_verified_budget
+from core.ncwu_read_support import (
+    default_read_client, set_scoped_cookie,
+    get_optional_verified_budget, classify_read_response,
+)
 
 PAGE = "/hsjw/student/wsxk.kcbcx10319.html?menucode=S2020103"
 TABLE = "/hsjw/taglib/DataTable.jsp?tableId=5327042&clientWidth=1210"
@@ -249,23 +253,14 @@ async def read_current_course_plan(
             if time.monotonic() < _NEXT_AT:
                 return PlanSnapshot("cooldown")
             _NEXT_AT = time.monotonic() + 60.0
-        policy = config.get("server_policy", {})
-        budget = None
-        if isinstance(policy, Mapping) and policy.get("verified") is True:
-            try:
-                budget = budget_factory(dict(config), ("https", HOST))
-            except Exception:
-                return PlanSnapshot("policy_unverified")
+        try:
+            budget = get_optional_verified_budget(config, budget_factory)
+        except Exception:
+            return PlanSnapshot("policy_unverified")
         if http_factory is None:
-            http_factory = lambda: httpx.AsyncClient(
-                follow_redirects=False, trust_env=False,
-                timeout=httpx.Timeout(connect=5, read=10, write=10, pool=5),
-                limits=httpx.Limits(max_connections=1, max_keepalive_connections=1),
-            )
+            http_factory = default_read_client
         async with http_factory() as client:
-            for pair in session_cookie.split(";"):
-                name, value = pair.strip().split("=", 1)
-                client.cookies.set(name, value, domain=HOST, path="/hsjw")
+            set_scoped_cookie(client, session_cookie)
             stage = "window"
 
             async def req(method: str, path: str, *, content: bytes | None = None,
