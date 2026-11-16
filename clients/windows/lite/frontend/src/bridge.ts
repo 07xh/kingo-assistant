@@ -108,6 +108,10 @@ export async function sessionStatus():Promise<SessionInfo>{
   if(!isDesktop()) throw new Error("请在 Windows 客户端中查看会话状态");
   return invoke<SessionInfo>("kingo_session_action",{action:"session",payload:null});
 }
+export async function forgetSavedSession():Promise<SessionInfo>{
+  if(!isDesktop()) throw new Error("仅 Windows 客户端可以清除本机加密会话");
+  return invoke<SessionInfo>("kingo_session_action",{action:"forget",payload:null});
+}
 export async function logout():Promise<SessionInfo>{
   if(!isDesktop()) throw new Error("请在 Windows 客户端中退出登录");
   return invoke<SessionInfo>("kingo_session_action",{action:"logout",payload:null});
