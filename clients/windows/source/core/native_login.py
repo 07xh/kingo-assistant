@@ -16,6 +16,7 @@ import httpx
 
 from core.client import AuthenticationError, KingoClient, RateLimitError
 from core.request_budget import build_verified_budget
+from core.ncwu_term_probe import validate_term_contract, probe_known_year_term
 
 _FIELD = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,63}$")
 _COOKIE_NAME = re.compile(r"^[!#$%&'*+.^_`|~0-9A-Za-z-]{1,128}$")
@@ -36,6 +37,8 @@ class NativeLoginResult:
     def message(self) -> str:
         return {
             "protocol_unverified": "学校身份接口尚未核验；未执行 EXE 登录",
+            "identity_unverified": "学期账号身份回读协议尚未核验；未发送账号密码",
+            "identity_mismatch": "登录后的学期接口账号标识与本次输入不一致；已丢弃会话",
             "login_unverified": "EXE 登录协议尚未核验；未发送账号密码",
             "loginmethod_unverified": "旧版学校登录包含 loginmethod，但必需取值尚未核验；未发送账号密码",
             "login_variant_unverified": "11月3日与11月14日登录请求格式不同；请先核验所属协议版本，未发送账号密码",
@@ -53,14 +56,24 @@ class NativeLoginResult:
 
 
 def _contract(config: Mapping) -> tuple[str | None, tuple | None]:
-    protocol = config.get("protocol")
-    if not isinstance(protocol, dict) or protocol.get("verified") is not True:
-        return "protocol_unverified", None
-    for key in ("identity_path", "identity_selector", "identity_referer"):
-        if not protocol.get(key):
-            return "protocol_unverified", None
     auth = config.get("auth")
     login = auth.get("login") if isinstance(auth, dict) else None
+    identity_mode = (login.get("identity_mode", "configured_identity")
+                     if isinstance(login, dict) else "configured_identity")
+    if identity_mode == "year_term":
+        # Validated, known, no-body school action. Presence of userCode alone
+        # is insufficient: caller must also bind it to the entered account.
+        if validate_term_contract(config) is not None:
+            return "identity_unverified", None
+    elif identity_mode == "configured_identity":
+        protocol = config.get("protocol")
+        if not isinstance(protocol, dict) or protocol.get("verified") is not True:
+            return "protocol_unverified", None
+        for key in ("identity_path", "identity_selector", "identity_referer"):
+            if not protocol.get(key):
+                return "protocol_unverified", None
+    else:
+        return "invalid_contract", None
     if isinstance(login, dict) and login.get("mode") == "cas":
         # A public school CAS entry is NOT a verified cross-origin login
         # protocol, and must not be sent to the single-origin form client.
@@ -200,6 +213,20 @@ async def login_with_verified_form(
             cookie = _same_origin_cookies(transport, host)
             if not cookie:
                 return NativeLoginResult("unavailable")
+        identity_mode = config["auth"]["login"].get("identity_mode", "configured_identity")
+        if identity_mode == "year_term":
+            term = await probe_known_year_term(
+                config, session_cookie=cookie, expected_user_code=username,
+            )
+            if term.code == "identity_verified":
+                return NativeLoginResult("verified", cookie, netloc)
+            if term.code == "identity_mismatch":
+                return NativeLoginResult("identity_mismatch")
+            if term.code == "restricted":
+                return NativeLoginResult("restricted")
+            if term.code == "expired":
+                return NativeLoginResult("expired")
+            return NativeLoginResult("unavailable")
         client = identity_factory(dict(config), session_cookie=cookie)
         await client.identity()
         return NativeLoginResult("verified", cookie, netloc)
