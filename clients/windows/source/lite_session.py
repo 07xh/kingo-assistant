@@ -118,10 +118,12 @@ class LiteSession:
         # Switching to a different account, or declining "remember", must
         # not silently leave another account's bearer token in Windows storage.
         # Fail closed if the old credential cannot be safely revoked.
+        cleared_existing = False
         if self.vault is not None:
             existing = self.vault.load()
             if existing is not None and (existing.username != username or not remember):
                 self.vault.clear()
+                cleared_existing = True
         self.clear()
         result = asyncio.run(login_ncwusigned(config, username, password))
         saved_error = False
@@ -134,7 +136,7 @@ class LiteSession:
                 try:
                     if remember:
                         self.vault.save(username, result.session_cookie)
-                    else:
+                    elif not cleared_existing:
                         self.vault.clear()
                 except (OSError, ValueError):
                     saved_error = True
