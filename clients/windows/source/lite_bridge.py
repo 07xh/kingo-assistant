@@ -199,7 +199,7 @@ def serve() -> int:
     session = LiteSession(vault=WindowsSessionVault(app_dir()))
     monitor = LiteReadMonitor()
     operations = {
-        "login", "catalog", "session", "logout", "restore", "forget",
+        "login", "catalog", "session", "logout", "restore", "forget", "check-session",
         "monitor-start", "monitor-stop", "monitor-status",
     }
     while True:
@@ -252,6 +252,10 @@ def serve() -> int:
                     if monitor.status()["active"]:
                         raise ValueError("monitor running")
                     result = session.restore(load_config(ensure_config()))
+                elif command == "check-session":
+                    if monitor.status()["active"]:
+                        raise ValueError("monitor running")
+                    result = session.check(load_config(ensure_config()))
                 elif command == "monitor-start":
                     if session.status != "verified":
                         result = {"code": "missing_session", **monitor.status()}
