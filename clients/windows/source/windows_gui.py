@@ -31,6 +31,9 @@ from windows_config_runtime import (
     app_dir, bundled_config, bundled_demo, ensure_user_config, load_validated_config,
 )
 from windows_monitor_runtime import MonitorEvent, MonitorWorker
+from windows_monitor_events import (
+    apply_monitor_status, format_official_probe_results, scheduled_reason_text,
+)
 from windows_readonly_widgets import _open_readonly_popup, _create_readonly_tree
 from desktop_scheduled_worker import DesktopScheduledWorker, ScheduledWorkerEvent
 from core.inspector import inspect_html
@@ -1879,36 +1882,16 @@ class Application(tk.Tk):
                     self.restore_window()
                     self.log("系统托盘不可用，主窗口已恢复；任务未被静默终止。")
                 elif event.kind == "status":
-                    cycles, states, request_ms, parse_ms = event.value
-                    self.status.set(f"只读监测｜查询 {cycles} 次｜最近请求 {request_ms:.0f} ms｜解析 {parse_ms:.1f} ms｜请以官网为准")
-                    newly_available = status_changes(self._previous_states, states)
-                    if newly_available:
-                        self.bell()
-                        self.log(f"检测到 {len(newly_available)} 个目标课程有余量，请前往官网确认；不代表选课成功。")
-                    self._previous_states = dict(states)
-                    for key, state in states.items():
-                        if self.table.exists(key):
-                            self.table.set(key, "status", str(state))
+                    apply_monitor_status(
+                        self, event.value, change_detector=status_changes)
                 elif event.kind == "official_probe_done":
                     self._entry_probe_in_progress = False
-                    results = event.value
-                    names = {entry.identifier: entry.name for entry in OFFICIAL_ENTRIES}
-                    lines = []
-                    for item in results:
-                        if item.elapsed_ms is None:
-                            elapsed = "—"
-                        else:
-                            elapsed = f"{item.elapsed_ms:.0f} ms"
-                        lines.append(
-                            f"{names.get(item.entry_id, '未知入口')}："
-                            f"{item.state.value} / HTTP {item.http_status or '—'} / {elapsed}"
-                        )
                     self.status.set("官网登录页检测完毕｜未验证课程查询接口")
                     self.log("本次官网登录页检测结束；不代表本人已登录或课程余量可读取。")
                     messagebox.showinfo(
                         "官方登录页可达性（非选课接口）",
-                        "\n".join(lines) +
-                        "\n\n登录页响应速度不能用于证明选课后端速度或名额。"
+                        format_official_probe_results(
+                            event.value, entries=OFFICIAL_ENTRIES),
                     )
                 elif event.kind == "official_probe_error":
                     self._entry_probe_in_progress = False
@@ -2078,16 +2061,7 @@ class Application(tk.Tk):
                 elif event.kind == "scheduled_result":
                     outcome = event.value
                     if isinstance(outcome, ScheduledRunReport):
-                        descriptions = {
-                            "engine_completed": "自动执行结束｜按官方已选记录核验结果",
-                            "engine_halted": "选课引擎保护性停止｜请核对官方已选记录",
-                            "window_timeout": "等待官方选课窗口超时｜未提交选课",
-                            "window_unknown": "无法确认官方开放状态｜已停止",
-                            "cancelled_before_start": "预约尚未到点已取消",
-                            "cancelled_waiting_for_window": "等待窗口期间已取消",
-                            "invalid_poll_interval": "请求窗口本地策略无效｜已停止",
-                        }
-                        label = descriptions.get(outcome.reason, "自动选课任务已结束｜结果待确认")
+                        label = scheduled_reason_text(outcome.reason)
                         self.status.set(label)
                         self.log(label + "；请以真实教务记录为准。")
                     elif outcome == "cancelled_before_start":
