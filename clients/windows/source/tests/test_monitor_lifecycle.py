@@ -29,7 +29,7 @@ class MonitorWorkerLifecycleTests(TestCase):
     def test_stop_before_start_never_attempts_network(self):
         self.worker._stop_requested.set()
         # Real _run exits immediately when the stop flag is already set.
-        with patch("windows_gui.KingoClient", side_effect=AssertionError("network")):
+        with patch("windows_monitor_runtime.KingoClient", side_effect=AssertionError("network")):
             self.worker._thread_main()
         events = self.events_collected()
         self.assertEqual([(event.kind, event.value) for event in events],
