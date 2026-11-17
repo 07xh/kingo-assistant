@@ -36,6 +36,7 @@ from windows_monitor_events import (
 )
 from windows_readonly_widgets import _open_readonly_popup, _create_readonly_tree
 from windows_page_sections import build_home_page, build_manual_page, build_tools_page
+from windows_visual_shell import apply_light_theme, make_visual_shell, connect_sidebar
 from desktop_scheduled_worker import DesktopScheduledWorker
 from core.inspector import inspect_html
 from core.har_audit import summarize_har, format_summary
@@ -219,8 +220,8 @@ class Application(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title(APP_TITLE)
-        self.geometry("1040x780")
-        self.minsize(860, 640)
+        self.geometry("1210x820")
+        self.minsize(1020, 680)
         self.events: queue.Queue[MonitorEvent] = queue.Queue()
         self._tray = TrayController(lambda kind: self.events.put(MonitorEvent(kind)))
         self.worker: MonitorWorker | None = None
@@ -292,48 +293,54 @@ class Application(tk.Tk):
         self.check_config()
 
     def _build(self) -> None:
-        """Three clearly separated user journeys. Preserve legacy callbacks."""
-        style = ttk.Style(self)
-        style.configure("KingoTitle.TLabel", font=("Microsoft YaHei UI", 17, "bold"))
-        style.configure("KingoStep.TLabelframe.Label",
-                        font=("Microsoft YaHei UI", 10, "bold"))
+        """LightC-inspired compact shell around the unchanged business views."""
+        apply_light_theme(self)
+        main = make_visual_shell(self)
 
-        header = ttk.Frame(self, padding=(16, 12))
+        header = ttk.Frame(main, padding=(18, 16, 18, 12))
         header.pack(fill="x")
         ttk.Button(
-            header, text="功能说明", command=self.show_function_guide,
-        ).pack(side="right", padx=(10, 0))
-        ttk.Label(header, text="KingoAssistant · 选课助手",
-                  style="KingoTitle.TLabel").pack(anchor="w")
+            header, text="使用说明", command=self.show_function_guide,
+            style="KingoQuiet.TButton",
+        ).pack(side="right", padx=(10, 0), pady=(5, 0))
+        ttk.Label(
+            header, text="工作台  /  课程管理",
+            style="KingoSubtitle.TLabel",
+        ).pack(anchor="w")
+        ttk.Label(
+            header, text="KingoAssistant",
+            style="KingoTitle.TLabel",
+        ).pack(anchor="w", pady=(3, 0))
         ttk.Label(
             header,
-            text="当前版本：原生登录和 S202 只读目录已实现（待本人验收）；自动提交尚未接通",
-            foreground="#965b16",
-        ).pack(anchor="w", pady=(4, 0))
+            text="原生登录与 S202 只读查询已实现 · 待本人账号验收  |  自动提交未接通",
+            style="KingoSubtitle.TLabel",
+        ).pack(anchor="w", pady=(6, 0))
 
-        # Allocate the persistent status footer before the expanding
-        # Notebook so it never gets squeezed out on smaller Windows screens.
+        # Stable footer is allocated before the expanding content; status
+        # remains the original Application StringVar, never copied to the shell.
         self.status_bar = ttk.Label(
-            self, textvariable=self.status, foreground="#3b4757",
-            padding=(16, 7), wraplength=990,
+            main, textvariable=self.status, style="KingoStatus.TLabel",
+            padding=(18, 11), wraplength=940,
         )
-        self.status_bar.pack(side="bottom", fill="x")
+        self.status_bar.pack(side="bottom", fill="x", padx=13, pady=(5, 9))
 
-        self.notebook = ttk.Notebook(self)
+        # Keep Notebook and original page attributes for all callbacks/tests.
+        # Only the old tab strip is hidden; navigation lives in the sidebar.
+        self.notebook = ttk.Notebook(main, style="Kingo.Content.TNotebook")
         self.tab_home = ttk.Frame(self.notebook)
         self.tab_manual = ttk.Frame(self.notebook)
         self.tab_tools = ttk.Frame(self.notebook)
         self.notebook.add(self.tab_home, text="① 选课首页")
         self.notebook.add(self.tab_manual, text="② 手动官网备用")
         self.notebook.add(self.tab_tools, text="③ 工具与日志")
-        self.notebook.pack(fill="both", expand=True, padx=10, pady=(0, 4))
-
-        # Home controls are one cohesive view; no controller state is moved.
+        self.notebook.pack(
+            fill="both", expand=True, padx=(11, 12), pady=(0, 4),
+        )
         build_home_page(self)
-
-        # Page layouts remain independent; Application owns all state and callbacks.
         build_manual_page(self)
         build_tools_page(self)
+        connect_sidebar(self)
 
     def toggle_advanced_panel(self) -> None:
         self.notebook.select(self.tab_tools)
@@ -1859,6 +1866,26 @@ def run_packaged_gui_smoke() -> None:
                         raise AssertionError("Official entry inventory missing mobile app")
                 if len(app.table.get_children()) != 2:
                     raise AssertionError("Expected two placeholder courses in packaged template")
+                if not app.sidebar.winfo_exists():
+                    raise AssertionError("Compact visual sidebar missing")
+                if set(app.sidebar_buttons) != {"home", "manual", "tools"}:
+                    raise AssertionError("Three native sidebar destinations required")
+                if app.notebook.cget("style") != "Kingo.Content.TNotebook":
+                    raise AssertionError("Old top-tab layout still active")
+                if app.sidebar_buttons["home"].cget("bg") != "#4869E8":
+                    raise AssertionError("Home navigation should start selected")
+                app.sidebar_buttons["tools"].invoke()
+                app.update()
+                if app.notebook.select() != str(app.tab_tools):
+                    raise AssertionError("Tools sidebar failed to navigate")
+                if app.sidebar_buttons["tools"].cget("bg") != "#4869E8":
+                    raise AssertionError("Tools active navigation highlight missing")
+                app.notebook.select(app.tab_home)
+                app.update()
+                if app.sidebar_buttons["home"].cget("bg") != "#4869E8":
+                    raise AssertionError("Sidebar must sync with existing Notebook changes")
+                if app.scheduled_start_button.cget("style") == "KingoPrimary.TButton":
+                    raise AssertionError("Unverified submit must not appear as primary action")
                 # Regression for PR #19/#20 GUI composition: main previously
                 # referenced a deleted 'portal_row' frame and could not open.
                 if app.scheduled_preflight_button.winfo_manager() != "pack":

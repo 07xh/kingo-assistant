@@ -20,6 +20,26 @@ def main():
             # attached to the same Tk Application and live StringVars.
             assert tuple(app.notebook.tab(tab, 'text') for tab in app.notebook.tabs()) == (
                 '① 选课首页', '② 手动官网备用', '③ 工具与日志')
+            assert app.sidebar.winfo_exists()
+            assert app.visual_content.winfo_exists()
+            assert set(app.sidebar_buttons) == {'home', 'manual', 'tools'}
+            assert app.notebook.cget('style') == 'Kingo.Content.TNotebook'
+            assert app.sidebar.winfo_width() <= 110
+            assert app.sidebar_buttons['home'].cget('bg') == '#4869E8'
+            app.sidebar_buttons['manual'].invoke()
+            app.update()
+            assert app.notebook.select() == str(app.tab_manual)
+            assert app.sidebar_buttons['manual'].cget('bg') == '#4869E8'
+            app.sidebar_buttons['tools'].invoke()
+            app.update()
+            assert app.notebook.select() == str(app.tab_tools)
+            assert app.sidebar_buttons['tools'].cget('bg') == '#4869E8'
+            app.notebook.select(app.tab_home)
+            app.update()
+            assert app.sidebar_buttons['home'].cget('bg') == '#4869E8'
+            assert app.edit_button.cget('style') == 'KingoPrimary.TButton'
+            assert app.native_login_button.cget('style') == 'KingoPrimary.TButton'
+            assert app.start_button.cget('style') == 'KingoPrimary.TButton'
             for widget in (
                 app.portal_panel, app.portal_appointment_button,
                 app.session_check_button, app.tools_operations,

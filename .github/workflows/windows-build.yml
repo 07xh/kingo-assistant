@@ -81,6 +81,25 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Native EXE verification failed" }
           Get-Content dist/build-verification.json
 
+      - name: Capture actual Tk UI preview (optional)
+        continue-on-error: true
+        shell: pwsh
+        working-directory: clients/windows/source
+        run: |
+          python tests/export_visual_preview.py "dist/KingoAssistant-UI-preview.png"
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "Screenshot unavailable on this runner; executable verification remains authoritative."
+            exit 0
+          }
+
+      - name: Upload UI screenshot (optional)
+        uses: actions/upload-artifact@v4
+        with:
+          name: KingoAssistant-UI-Preview
+          path: clients/windows/source/dist/KingoAssistant-UI-preview.png
+          if-no-files-found: ignore
+          retention-days: 14
+
       - name: Upload portable Windows artifact
         uses: actions/upload-artifact@v4
         with:

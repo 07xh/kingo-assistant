@@ -35,6 +35,7 @@ def build_home_page(app) -> None:
     app.edit_button = ttk.Button(setup, text="填写 / 修改目标课程",
                                   command=app.edit_settings)
     app.edit_button.pack(side="left", padx=(0, 8))
+    app.edit_button.configure(style="KingoPrimary.TButton")
     app.plans_button = ttk.Button(setup, text="管理课程方案",
                                    command=app.manage_plans)
     app.plans_button.pack(side="left", padx=(0, 10))
@@ -53,6 +54,7 @@ def build_home_page(app) -> None:
     app.native_login_button = ttk.Button(
         auth_actions, text="在 EXE 登录本人教务账号", command=app.start_native_login)
     app.native_login_button.pack(side="left", padx=(0, 8))
+    app.native_login_button.configure(style="KingoPrimary.TButton")
     app.native_prepare_button = ttk.Button(
         auth_actions, text="检查登录与课程数据（只读）",
         command=app.check_native_preparation)
@@ -103,6 +105,7 @@ def build_home_page(app) -> None:
     app.start_button = ttk.Button(
         app.action_panel, text="开始查询课程余量", command=app.start_monitor)
     app.start_button.pack(side="left", padx=(0, 8))
+    app.start_button.configure(style="KingoPrimary.TButton")
     app.stop_button = ttk.Button(
         app.action_panel, text="停止查询", command=app.stop_monitor,
         state="disabled")
