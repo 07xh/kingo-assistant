@@ -35,7 +35,7 @@ from windows_monitor_events import (
     apply_monitor_status, format_official_probe_results, scheduled_reason_text,
 )
 from windows_readonly_widgets import _open_readonly_popup, _create_readonly_tree
-from windows_page_sections import build_manual_page, build_tools_page
+from windows_page_sections import build_home_page, build_manual_page, build_tools_page
 from desktop_scheduled_worker import DesktopScheduledWorker, ScheduledWorkerEvent
 from core.inspector import inspect_html
 from core.har_audit import summarize_har, format_summary
@@ -283,7 +283,7 @@ class Application(tk.Tk):
                   style="KingoTitle.TLabel").pack(anchor="w")
         ttk.Label(
             header,
-            text="当前版本：EXE 原生登录已接入（待本人验证）；课程目录与自动提交尚未接通",
+            text="当前版本：原生登录和 S202 只读目录已实现（待本人验收）；自动提交尚未接通",
             foreground="#965b16",
         ).pack(anchor="w", pady=(4, 0))
 
@@ -304,157 +304,8 @@ class Application(tk.Tk):
         self.notebook.add(self.tab_tools, text="③ 工具与日志")
         self.notebook.pack(fill="both", expand=True, padx=10, pady=(0, 4))
 
-        # Home: explain the actual workflow instead of displaying all buttons
-        # as equal options in one toolbar.
-        intro = ttk.Frame(self.tab_home, padding=(10, 6))
-        intro.pack(fill="x")
-        ttk.Label(
-            intro, text="建议顺序：填写目标课程 → 软件内登录 → 检查本人课程",
-            font=("Microsoft YaHei UI", 10, "bold"),
-        ).pack(anchor="w")
-        ttk.Label(
-            intro,
-            text="第 1 步可离线使用；EXE 登录等待本人实测，课程目录和自动选课尚未接通。",
-            foreground="#965b16",
-        ).pack(anchor="w", pady=(2, 0))
-
-        setup = ttk.LabelFrame(
-            self.tab_home, text="第 1 步  ·  课程与志愿（本地可用）",
-            padding=(10, 6), style="KingoStep.TLabelframe",
-        )
-        setup.pack(fill="x", padx=10, pady=(2, 5))
-        self.edit_button = ttk.Button(setup, text="填写 / 修改目标课程",
-                                      command=self.edit_settings)
-        self.edit_button.pack(side="left", padx=(0, 8))
-        self.plans_button = ttk.Button(setup, text="管理课程方案",
-                                       command=self.manage_plans)
-        self.plans_button.pack(side="left", padx=(0, 10))
-        ttk.Label(
-            setup, text="只编辑本机计划，不会向学校提交选课。",
-            foreground="#666",
-        ).pack(side="left")
-
-        auth_panel = ttk.LabelFrame(
-            self.tab_home, text="第 2 步  ·  软件内登录（协议已接入 · 待实机验收）",
-            padding=(10, 6), style="KingoStep.TLabelframe",
-        )
-        auth_panel.pack(fill="x", padx=10, pady=(0, 5))
-        auth_actions = ttk.Frame(auth_panel)
-        auth_actions.pack(fill="x")
-        self.native_login_button = ttk.Button(
-            auth_actions, text="在 EXE 登录本人教务账号", command=self.start_native_login)
-        self.native_login_button.pack(side="left", padx=(0, 8))
-        self.native_prepare_button = ttk.Button(
-            auth_actions, text="检查登录与课程数据（只读）",
-            command=self.check_native_preparation)
-        self.native_prepare_button.pack(side="left", padx=(0, 8))
-        self.native_clear_button = ttk.Button(
-            auth_actions, text="清除登录状态", command=self.clear_native_session)
-        self.native_clear_button.pack(side="left")
-        ttk.Label(
-            auth_panel, textvariable=self.native_login_status,
-            foreground="#666", wraplength=920,
-        ).pack(anchor="w", pady=(6, 1))
-        ttk.Label(
-            auth_panel, textvariable=self.native_preparation_status,
-            foreground="#666", wraplength=920,
-        ).pack(anchor="w")
-        timetable_row = ttk.Frame(auth_panel)
-        timetable_row.pack(fill="x", pady=(5, 0))
-        self.timetable_read_button = ttk.Button(
-            timetable_row, text="读取本人课表（既有接口 · 只读）",
-            command=self.check_known_timetable)
-        self.timetable_read_button.pack(side="left", padx=(0, 8))
-        self.live_catalog_button = ttk.Button(
-            timetable_row, text="实时读取可选课程（S202 · 只读）",
-            command=self.check_live_catalog,
-        )
-        self.live_catalog_button.pack(side="left", padx=(0, 8))
-        self.live_poll_button = ttk.Button(
-            timetable_row, text="开始自动刷新（≥60秒）",
-            command=self.toggle_live_polling,
-        )
-        self.live_poll_button.pack(side="left")
-        ttk.Label(
-            auth_panel, textvariable=self.timetable_read_status,
-            foreground="#666", wraplength=920,
-        ).pack(anchor="w", pady=(4, 0))
-        ttk.Label(
-            auth_panel, textvariable=self.live_catalog_status,
-            foreground="#416075", wraplength=920,
-        ).pack(anchor="w", pady=(4, 0))
-
-        monitor_panel = ttk.LabelFrame(
-            self.tab_home, text="第 3 步  ·  课程余量监测（只读）",
-            padding=(10, 6), style="KingoStep.TLabelframe",
-        )
-        monitor_panel.pack(fill="x", padx=10, pady=(0, 5))
-        self.action_panel = ttk.Frame(monitor_panel)
-        self.action_panel.pack(fill="x")
-        self.start_button = ttk.Button(
-            self.action_panel, text="开始查询课程余量", command=self.start_monitor)
-        self.start_button.pack(side="left", padx=(0, 8))
-        self.stop_button = ttk.Button(
-            self.action_panel, text="停止查询", command=self.stop_monitor,
-            state="disabled")
-        self.stop_button.pack(side="left", padx=(0, 8))
-        ttk.Button(
-            self.action_panel, text="检查是否具备运行条件", command=self.preflight,
-        ).pack(side="left")
-        ttk.Label(
-            monitor_panel,
-            text="此功能只读学校数据，不会帮你提交选课；学校接口尚未核验时会拒绝启动。",
-            foreground="#666",
-        ).pack(anchor="w", pady=(6, 0))
-
-        enrollment = ttk.Frame(self.tab_home, padding=(12, 3))
-        enrollment.pack(fill="x")
-        self.enrollment_gate_status = tk.StringVar(value=self.enrollment_gate_label())
-        ttk.Label(
-            enrollment, textvariable=self.enrollment_gate_status,
-            foreground="#965b16",
-        ).pack(side="left")
-        self.scheduled_start_button = ttk.Button(
-            enrollment, text="自动提交（暂不可用）",
-            command=self.start_scheduled_enrollment, state="disabled",
-        )
-        self.scheduled_start_button.pack(side="right", padx=(8, 0))
-        self.scheduled_stop_button = ttk.Button(
-            enrollment, text="取消自动计划", command=self.stop_scheduled_enrollment,
-            state="disabled",
-        )
-        self.scheduled_stop_button.pack(side="right")
-
-        self.course_frame = ttk.LabelFrame(
-            self.tab_home, text="目标课程列表 · 本地配置 / 只读状态",
-            padding=8,
-        )
-        self.course_frame.pack(
-            fill="both", expand=True, padx=10, pady=(3, 8))
-        self.table = ttk.Treeview(
-            self.course_frame,
-            columns=("key", "course", "class_id", "teacher", "status"),
-            show="headings",
-        )
-        for col, label, width in (
-            ("key", "志愿", 70), ("course", "课程 / 代码", 225),
-            ("class_id", "教学班", 110), ("teacher", "任课教师", 120),
-            ("status", "查询结果", 240),
-        ):
-            self.table.heading(col, text=label)
-            self.table.column(col, width=width, stretch=True)
-        scroll = ttk.Scrollbar(
-            self.course_frame, orient="vertical", command=self.table.yview)
-        self.table.configure(yscrollcommand=scroll.set)
-        scroll.pack(side="right", fill="y")
-        self.table.pack(fill="both", expand=True)
-        self.table.bind(
-            "<Double-1>", lambda _event: self.copy_selected_field("course_id"))
-        ttk.Label(
-            self.course_frame,
-            text="双击课程复制代码。示例课程不是学校实时数据。",
-            foreground="#666",
-        ).pack(anchor="w", pady=(5, 0))
+        # Home controls are one cohesive view; no controller state is moved.
+        build_home_page(self)
 
         # Page layouts remain independent; Application owns all state and callbacks.
         build_manual_page(self)
