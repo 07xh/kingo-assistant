@@ -144,7 +144,7 @@ class MonitorEvent:
     value: object = None
 
 
-# Four independently named native read actions share this worker lifecycle.
+# Native S202 and legacy page/term/timetable read actions share the worker lifecycle.
 # This helper does not inspect credentials or alter any source-specific
 # result/event schema, so existing headless tests can still invoke methods
 # with a minimal SimpleNamespace instead of a real Tk root.
