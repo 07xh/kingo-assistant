@@ -76,8 +76,12 @@ class PageLayoutExtractionTests(TestCase):
             self.app.log_frame, height=7, state="disabled", wrap="word")
         self.assertIs(self.app.log_box, text.return_value)
         self.assertIs(self.app.config_entry, entry.return_value)
-        entry.assert_called_once_with(
+        self.assertEqual(entry.call_count, 2)
+        entry.assert_any_call(
             self.app.advanced_panel, textvariable=self.app.path)
+        entry.assert_any_call(
+            frame.return_value,
+            textvariable=self.app.lesson_detail_semester, width=16)
 
         calls = {
             call.kwargs["text"]: call.kwargs["command"]
@@ -89,6 +93,7 @@ class PageLayoutExtractionTests(TestCase):
             "核验已选课程结果网页（只读）": "check_known_school_results",
             "读取华水 S202 已选结果（只读）": "check_s202_selected_results",
             "读取本学期开课计划（只读快照）": "check_course_plan",
+            "读取本人教务课表 AJAX（只读）": "check_lesson_detail",
             "核对当前 S202 轮次（只读）": "check_s202_round",
             "核对本人已选门数（只读）": "check_personal_s202_score",
             "核验初始化／资格预检 HAR（离线）": "inspect_ncwu_contracts",
@@ -105,6 +110,7 @@ class PageLayoutExtractionTests(TestCase):
         self.assertEqual(len(calls), len(button.call_args_list))
         self.assertIs(self.app.s202_result_button, button.return_value)
         self.assertIs(self.app.course_plan_button, button.return_value)
+        self.assertIs(self.app.lesson_detail_button, button.return_value)
         self.assertIs(self.app.term_probe_button, button.return_value)
         self.assertIs(self.app.scheduled_preflight_button, button.return_value)
         self.assertTrue(any(
