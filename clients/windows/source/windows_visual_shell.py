@@ -187,3 +187,131 @@ def connect_sidebar(owner) -> None:
     owner.notebook.bind(
         "<<NotebookTabChanged>>", lambda event: sync_sidebar(owner), add="+")
     sync_sidebar(owner)
+
+
+def make_scrollable_content(parent):
+    """Return a full-width scrollable content frame for dense Home/Tools pages.
+
+    The Notebook page remains the real navigation target, with a canvas
+    hosting only the view widgets. No school state or callbacks are moved.
+    """
+    p = PALETTE
+    viewport = ttk.Frame(parent)
+    viewport.pack(fill="both", expand=True)
+    scrollbar = ttk.Scrollbar(viewport, orient="vertical")
+    canvas = tk.Canvas(
+        viewport, bg=p["surface"], borderwidth=0,
+        highlightthickness=0, relief="flat",
+        yscrollcommand=scrollbar.set,
+    )
+    scrollbar.configure(command=canvas.yview)
+    scrollbar.pack(side="right", fill="y")
+    canvas.pack(side="left", fill="both", expand=True)
+    content = ttk.Frame(canvas)
+    window_id = canvas.create_window((0, 0), window=content, anchor="nw")
+
+    def update_scrollregion(_event=None):
+        canvas.configure(scrollregion=canvas.bbox("all"))
+        available = canvas.winfo_height()
+        need_scroll = content.winfo_reqheight() > available + 2
+        if need_scroll and not scrollbar.winfo_manager():
+            scrollbar.pack(side="right", fill="y")
+        elif not need_scroll and scrollbar.winfo_manager():
+            scrollbar.pack_forget()
+
+    def match_viewport(event):
+        canvas.itemconfigure(window_id, width=max(1, event.width))
+        update_scrollregion()
+
+    content.bind("<Configure>", update_scrollregion, add="+")
+    canvas.bind("<Configure>", match_viewport, add="+")
+    return content, canvas, scrollbar
+
+
+def bind_page_wheel(canvas, content) -> None:
+    """Scroll the outer page on passive controls; preserve Treeview/Text wheels."""
+    def on_wheel(event):
+        if getattr(event, "num", None) == 4:
+            canvas.yview_scroll(-3, "units")
+        elif getattr(event, "num", None) == 5:
+            canvas.yview_scroll(3, "units")
+        elif getattr(event, "delta", 0):
+            delta = event.delta
+            steps = max(1, int(abs(delta) / 120))
+            canvas.yview_scroll(-steps if delta > 0 else steps, "units")
+
+    def attach(widget):
+        # Widgets with their own scrolling must keep that behavior.
+        if widget.winfo_class() not in (
+            "Treeview", "Text", "TScrollbar", "Scrollbar",
+            "TEntry", "Entry", "Spinbox", "TSpinbox",
+            "Listbox", "Canvas",
+        ):
+            for event_name in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+                widget.bind(event_name, on_wheel, add="+")
+        for child in widget.winfo_children():
+            attach(child)
+
+    attach(content)
+
+
+def update_responsive_shell(owner, _event=None) -> None:
+    """Adapt the visible chrome to narrower Windows without affecting state."""
+    if _event is not None and _event.widget is not owner:
+        return
+    width = owner.winfo_width()
+    height = owner.winfo_height()
+    compact = width < 1120
+    sidebar_width = 80 if compact else 98
+    owner.sidebar.configure(width=sidebar_width)
+
+    desired = "compact" if compact else "regular"
+    if getattr(owner, "_shell_size_mode", None) != desired:
+        owner._shell_size_mode = desired
+        owner.shell_subtitle.configure(
+            text=(
+                "S202 只读已接入 · 待账号验收  |  自动提交不可用"
+                if compact else
+                "原生登录与 S202 只读查询已实现 · 待本人账号验收  |  自动提交未接通"
+            ),
+        )
+
+    # Keep the compact status footer inside the remaining content width.
+    usable = max(360, width - sidebar_width - 100)
+    owner.status_bar.configure(wraplength=usable)
+
+    # A low-height desktop should spend its space on actions, not boilerplate.
+    short = height < 660
+    if short and owner.shell_subtitle.winfo_manager():
+        owner.shell_subtitle.pack_forget()
+    elif not short and not owner.shell_subtitle.winfo_manager():
+        owner.shell_subtitle.pack(anchor="w", pady=(6, 0))
+
+    # The original ttk Labels used a fixed 920/670px wraplength; at small
+    # widths this could clip current status messages instead of wrapping.
+    for root in (owner.tab_home, owner.tab_manual, owner.tab_tools):
+        pending = [root]
+        while pending:
+            widget = pending.pop()
+            if isinstance(widget, ttk.Label):
+                try:
+                    wrap = int(widget.cget("wraplength"))
+                except (ValueError, tk.TclError):
+                    wrap = 0
+                if wrap >= 600 and wrap > usable:
+                    widget.configure(wraplength=usable)
+                elif wrap >= 300 and wrap < usable and not compact:
+                    # Do not force a wider size than the prior page contract.
+                    original = getattr(widget, "_kingo_wrap", None)
+                    if original:
+                        widget.configure(wraplength=min(original, usable))
+                if wrap >= 600 and not hasattr(widget, "_kingo_wrap"):
+                    widget._kingo_wrap = wrap
+            pending.extend(widget.winfo_children())
+
+
+def bind_responsive_shell(owner) -> None:
+    owner.bind(
+        "<Configure>", lambda event: update_responsive_shell(owner, event),
+        add="+")
+    update_responsive_shell(owner)
