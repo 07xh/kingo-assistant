@@ -36,7 +36,10 @@ from windows_monitor_events import (
 )
 from windows_readonly_widgets import _open_readonly_popup, _create_readonly_tree
 from windows_page_sections import build_home_page, build_manual_page, build_tools_page
-from windows_visual_shell import apply_light_theme, make_visual_shell, connect_sidebar
+from windows_visual_shell import (
+    apply_light_theme, make_visual_shell, connect_sidebar,
+    make_scrollable_content, bind_page_wheel, bind_responsive_shell,
+)
 from desktop_scheduled_worker import DesktopScheduledWorker
 from core.inspector import inspect_html
 from core.har_audit import summarize_har, format_summary
@@ -222,8 +225,8 @@ class Application(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title(APP_TITLE)
-        self.geometry("1210x820")
-        self.minsize(1020, 680)
+        self.geometry("1100x740")
+        self.minsize(880, 560)
         self.events: queue.Queue[MonitorEvent] = queue.Queue()
         self._tray = TrayController(lambda kind: self.events.put(MonitorEvent(kind)))
         self.worker: MonitorWorker | None = None
@@ -316,11 +319,12 @@ class Application(tk.Tk):
             header, text="KingoAssistant",
             style="KingoTitle.TLabel",
         ).pack(anchor="w", pady=(3, 0))
-        ttk.Label(
+        self.shell_subtitle = ttk.Label(
             header,
             text="原生登录与 S202 只读查询已实现 · 待本人账号验收  |  自动提交未接通",
             style="KingoSubtitle.TLabel",
-        ).pack(anchor="w", pady=(6, 0))
+        )
+        self.shell_subtitle.pack(anchor="w", pady=(6, 0))
 
         # Stable footer is allocated before the expanding content; status
         # remains the original Application StringVar, never copied to the shell.
@@ -342,10 +346,19 @@ class Application(tk.Tk):
         self.notebook.pack(
             fill="both", expand=True, padx=(11, 12), pady=(0, 4),
         )
+        # Each long page scrolls independently. The Notebook pages remain
+        # original navigation targets for sidebar, menus and all callbacks.
+        self._home_content, self.home_scroll_canvas, self.home_scrollbar = (
+            make_scrollable_content(self.tab_home))
+        self._tools_content, self.tools_scroll_canvas, self.tools_scrollbar = (
+            make_scrollable_content(self.tab_tools))
         build_home_page(self)
         build_manual_page(self)
         build_tools_page(self)
+        bind_page_wheel(self.home_scroll_canvas, self._home_content)
+        bind_page_wheel(self.tools_scroll_canvas, self._tools_content)
         connect_sidebar(self)
+        bind_responsive_shell(self)
 
     def toggle_advanced_panel(self) -> None:
         self.notebook.select(self.tab_tools)
