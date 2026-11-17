@@ -1044,27 +1044,16 @@ class Application(tk.Tk):
             return
         # Snapshot the session on the Tk UI thread, never read mutable UI
         # state from the async network thread.
-        cookie = scoped_native_cookie(self, config)
-        self._timetable_read_in_progress = True
-        self.timetable_read_button.configure(state="disabled")
-        self.timetable_read_status.set("正在核对既有课表接口与本人 EXE 会话")
-
-        def execute() -> None:
-            try:
-                result = asyncio.run(read_known_timetable(config, session_cookie=cookie))
-            except Exception:
-                result = TimetableReadResult("unavailable")
-            self.events.put(MonitorEvent("known_timetable", result))
-
-        try:
-            threading.Thread(
-                target=execute, name="KingoKnownTimetableRead",
-                daemon=True,
-            ).start()
-        except RuntimeError:
-            self._timetable_read_in_progress = False
-            self.timetable_read_button.configure(state="normal")
-            self.timetable_read_status.set("课表读取线程启动失败；没有联网")
+        _start_ncwu_read_worker(
+            self, config=config, cookie=scoped_native_cookie(self, config),
+            read_call=read_known_timetable,
+            fallback_factory=TimetableReadResult,
+            flag="_timetable_read_in_progress", button=self.timetable_read_button,
+            status_var=self.timetable_read_status,
+            running_message="正在核对既有课表接口与本人 EXE 会话",
+            failure_message="课表读取线程启动失败；没有联网",
+            event_kind="known_timetable", thread_name="KingoKnownTimetableRead",
+        )
 
     def check_known_year_term(self) -> None:
         """One no-body POST to an observed school term API; never enrollment."""
@@ -1087,27 +1076,16 @@ class Application(tk.Tk):
             self.term_probe_status.set(result.message)
             self.status.set(result.message)
             return
-        cookie = scoped_native_cookie(self, config)
-        self._term_probe_in_progress = True
-        self.term_probe_button.configure(state="disabled")
-        self.term_probe_status.set("正在通过 EXE 的独立会话核验学年学期接口")
-
-        def execute() -> None:
-            try:
-                result = asyncio.run(probe_known_year_term(
-                    config, session_cookie=cookie))
-            except Exception:
-                result = TermProbeResult("unavailable")
-            self.events.put(MonitorEvent("known_year_term", result))
-
-        try:
-            threading.Thread(
-                target=execute, name="KingoKnownYearTerm", daemon=True,
-            ).start()
-        except RuntimeError:
-            self._term_probe_in_progress = False
-            self.term_probe_button.configure(state="normal")
-            self.term_probe_status.set("线程启动失败；未访问学校")
+        _start_ncwu_read_worker(
+            self, config=config, cookie=scoped_native_cookie(self, config),
+            read_call=probe_known_year_term,
+            fallback_factory=TermProbeResult,
+            flag="_term_probe_in_progress", button=self.term_probe_button,
+            status_var=self.term_probe_status,
+            running_message="正在通过 EXE 的独立会话核验学年学期接口",
+            failure_message="线程启动失败；未访问学校",
+            event_kind="known_year_term", thread_name="KingoKnownYearTerm",
+        )
 
     def check_known_school_results(self) -> None:
         """Check the HAR-observed selected-course HTML page, never submit."""
@@ -1131,28 +1109,17 @@ class Application(tk.Tk):
             self.school_page_status.set(result.message)
             self.status.set(result.message)
             return
-        cookie = scoped_native_cookie(self, config)
-        self._school_page_read_in_progress = True
-        self.school_page_button.configure(state="disabled")
-        self.school_page_status.set("正在核验本人已选课程结果网页（只读）")
-
-        def execute() -> None:
-            try:
-                result = asyncio.run(read_known_school_page(
-                    config, "selected_results", session_cookie=cookie))
-            except Exception:
-                result = KnownSchoolPageResult("unavailable", "selected_results")
-            self.events.put(MonitorEvent("known_school_results", result))
-
-        try:
-            threading.Thread(
-                target=execute, name="KingoKnownSchoolResults",
-                daemon=True,
-            ).start()
-        except RuntimeError:
-            self._school_page_read_in_progress = False
-            self.school_page_button.configure(state="normal")
-            self.school_page_status.set("读取线程启动失败；没有访问学校")
+        _start_ncwu_read_worker(
+            self, config=config, cookie=scoped_native_cookie(self, config),
+            read_call=lambda cfg, *, session_cookie: read_known_school_page(
+                cfg, "selected_results", session_cookie=session_cookie),
+            fallback_factory=lambda code: KnownSchoolPageResult(code, "selected_results"),
+            flag="_school_page_read_in_progress", button=self.school_page_button,
+            status_var=self.school_page_status,
+            running_message="正在核验本人已选课程结果网页（只读）",
+            failure_message="读取线程启动失败；没有访问学校",
+            event_kind="known_school_results", thread_name="KingoKnownSchoolResults",
+        )
 
     def check_course_plan(self) -> None:
         """One snapshot of historical NCWU 5327042 course-plan rows."""
