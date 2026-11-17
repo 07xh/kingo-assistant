@@ -2002,8 +2002,13 @@ def run_packaged_gui_smoke() -> None:
                     raise AssertionError("Observed school results readback must be mounted under tools")
                 if app.term_probe_button.winfo_manager() != "pack":
                     raise AssertionError("Observed no-body YearTerm EXE probe missing")
-                if app.school_page_button.winfo_ismapped():
-                    raise AssertionError("Advanced readback action must stay off the home tab")
+                # Canvas child windows remain 'mapped' even when their
+                # Notebook tab is hidden. Validate true view ancestry instead
+                # of winfo_ismapped(), which does not inspect parent visibility.
+                if not str(app.school_page_button).startswith(str(app.tab_tools) + "."):
+                    raise AssertionError("Readback action must belong to Tools page only")
+                if app.notebook.select() != str(app.tab_home):
+                    raise AssertionError("Home must remain active after sidebar regression")
                 with patch("core.known_school_pages.httpx.AsyncClient",
                            side_effect=AssertionError("unverified result-page query attempted network")):
                     app.check_known_school_results()
