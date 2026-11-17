@@ -126,7 +126,17 @@ _NCWU_READ_FLAGS = (
     "_s202_result_in_progress",
     "_s202_score_in_progress",
     "_course_plan_in_progress",
+    # Legacy read-only adapters use a different Cookie path and retain their
+    # own HTTP contract. They still share the *session lifecycle* gate.
+    "_timetable_read_in_progress",
+    "_school_page_read_in_progress",
+    "_term_probe_in_progress",
 )
+
+
+def _native_read_in_progress(app) -> bool:
+    """One conservative guard for all same-account in-flight reads."""
+    return any(app.__dict__.get(flag, False) for flag in _NCWU_READ_FLAGS)
 
 
 def _ncwu_read_busy(app, *, include_polling: bool = False) -> bool:
@@ -135,9 +145,26 @@ def _ncwu_read_busy(app, *, include_polling: bool = False) -> bool:
         or app._closing or app._native_login_in_progress
         or app._native_preparation_in_progress
         or app._session_check_in_progress
-        or any(app.__dict__.get(flag, False) for flag in _NCWU_READ_FLAGS)
+        or _native_read_in_progress(app)
         or (include_polling and app.__dict__.get("_live_polling", False))
     )
+
+
+def _invalidate_native_session(app, message: str) -> None:
+    """Clear volatile identity after a server-expired response, in Tk thread.
+
+    Every read adapter reports only a typed status. An expired read must also
+    stop any opted-in S202 refresh and invalidate the previous preparation
+    message, not just clear the Cookie for its individual screen.
+    """
+    app._native_session_cookie = None
+    app._native_session_origin = None
+    app.native_login_status.set(message)
+    preparation_status = app.__dict__.get("native_preparation_status")
+    if preparation_status is not None:
+        preparation_status.set("会话已失效，请重新登录并核验本人课程")
+    if app.__dict__.get("_live_polling", False):
+        app.stop_live_polling()
 
 
 def _start_ncwu_read_worker(
@@ -184,11 +211,7 @@ def _finish_ncwu_read_event(
     app.status.set(result.message)
     app.log(log_message)
     if result.code == "expired":
-        app._native_session_cookie = None
-        app._native_session_origin = None
-        app.native_login_status.set(expired_message)
-        if app.__dict__.get("_live_polling", False):
-            app.stop_live_polling()
+        _invalidate_native_session(app, expired_message)
 
 
 class Application(tk.Tk):
@@ -492,17 +515,9 @@ class Application(tk.Tk):
 
     def start_native_login(self) -> None:
         """One credential form submission in the EXE, never browser automation."""
-        if (self.worker or self.__dict__.get("scheduled_worker") or self._closing
-                or self._native_login_in_progress or self._native_preparation_in_progress
-                or self.__dict__.get("_live_catalog_in_progress", False)
-                or self.__dict__.get("_s202_result_in_progress", False)
-                or self.__dict__.get("_s202_round_probe_in_progress", False)
-                or self.__dict__.get("_s202_score_in_progress", False)
-                or self.__dict__.get("_course_plan_in_progress", False)
-                or self._session_check_in_progress
-                or self.__dict__.get("_timetable_read_in_progress", False)
-                or self.__dict__.get("_school_page_read_in_progress", False)
-                or self.__dict__.get("_term_probe_in_progress", False)):
+        # Do not replace a live authenticated session while any read (even
+        # an opt-in refresh timer between requests) may use it.
+        if _ncwu_read_busy(self, include_polling=True):
             return
         try:
             config = read_config(Path(self.path.get()), offline=True)
@@ -544,16 +559,13 @@ class Application(tk.Tk):
 
     def clear_native_session(self) -> None:
         """Clear in-process credentials; this is not a verified server logout."""
+        # Stop future refreshes immediately, but do not invalidate the Cookie
+        # while an already-started request might still be checking its result.
         if self.__dict__.get("_live_polling", False):
             self.stop_live_polling()
-        if (self.worker or self.__dict__.get("scheduled_worker")
-                or self._native_login_in_progress
-                or self._native_preparation_in_progress or self._session_check_in_progress
-                or self.__dict__.get("_timetable_read_in_progress", False)
-                or self.__dict__.get("_school_page_read_in_progress", False)
-                or self.__dict__.get("_term_probe_in_progress", False)
-                or self.__dict__.get("_s202_score_in_progress", False)
-                or self.__dict__.get("_course_plan_in_progress", False)):
+        if _ncwu_read_busy(self):
+            self.native_login_status.set(
+                "仍有读取或后台任务正在执行；请结束后再次点击清除登录状态")
             return
         self._native_session_cookie = None
         self._native_session_origin = None
@@ -1490,9 +1502,11 @@ class Application(tk.Tk):
             self.log("无法解析本机样本，请核对脱敏页面和表头列号。")
 
     def start_monitor(self) -> None:
-        if (self.worker or self.__dict__.get("scheduled_worker")
-                or self._benchmark_in_progress
-                or self.__dict__.get("_timetable_read_in_progress", False)):
+        # A monitoring run must not overlap a login, current-session read or
+        # opted-in refresh. It can only restart after 'finished' releases the
+        # previous worker and restores the UI controls.
+        if (_ncwu_read_busy(self, include_polling=True)
+                or self._benchmark_in_progress):
             return
         try:
             # First run offline checks so placeholders and missing authorization
@@ -1527,9 +1541,18 @@ class Application(tk.Tk):
         if warnings:
             self.log(f"本地预检有 {len(warnings)} 项非阻断提示；可在运行准备度中查看。")
         session_cookie = scoped_native_cookie(self, config)
-        self.worker = (MonitorWorker(config, self.events, session_cookie=session_cookie)
-                       if session_cookie is not None else MonitorWorker(config, self.events))
-        self.worker.start()
+        worker = (MonitorWorker(config, self.events, session_cookie=session_cookie)
+                  if session_cookie is not None else MonitorWorker(config, self.events))
+        try:
+            worker.start()
+        except (RuntimeError, OSError):
+            # Never strand a never-started worker in self.worker. Leaving a
+            # stale value here used to block every subsequent Start attempt.
+            self.worker = None
+            self.status.set("监测线程启动失败｜未连接学校；可以重新启动")
+            self.log("监测线程未能创建；原配置及登录会话保持不变。")
+            return
+        self.worker = worker
         self.start_button.configure(state="disabled")
         self.edit_button.configure(state="disabled")
         self.plans_button.configure(state="disabled")
@@ -1625,9 +1648,8 @@ class Application(tk.Tk):
                     self.status.set(result.message)
                     self.log(result.message)
                     if result.code == "expired":
-                        self._native_session_cookie = None
-                        self._native_session_origin = None
-                        self.native_login_status.set("课表接口提示登录失效，请重新授权")
+                        _invalidate_native_session(
+                            self, "课表接口提示登录失效，请重新授权")
                 elif event.kind == "known_year_term":
                     self._term_probe_in_progress = False
                     self.term_probe_button.configure(state="normal")
@@ -1636,9 +1658,8 @@ class Application(tk.Tk):
                     self.status.set(result.message)
                     self.log(result.message)
                     if result.code == "expired":
-                        self._native_session_cookie = None
-                        self._native_session_origin = None
-                        self.native_login_status.set("学期接口提示会话过期，请重新授权")
+                        _invalidate_native_session(
+                            self, "学期接口提示会话过期，请重新授权")
                 elif event.kind == "ncwu_course_plan":
                     result = event.value
                     _finish_ncwu_read_event(
@@ -1700,18 +1721,16 @@ class Application(tk.Tk):
                     self.status.set(result.message)
                     self.log(result.message)
                     if result.code == "expired":
-                        self._native_session_cookie = None
-                        self._native_session_origin = None
-                        self.native_login_status.set("学校页面提示登录失效，请重新授权")
+                        _invalidate_native_session(
+                            self, "学校页面提示登录失效，请重新授权")
                 elif event.kind == "native_preparation":
                     self._native_preparation_in_progress = False
                     self.native_prepare_button.configure(state="normal")
                     result = event.value
                     self.native_preparation_status.set(result.message)
                     if result.code == "expired":
-                        self._native_session_cookie = None
-                        self._native_session_origin = None
-                        self.native_login_status.set("应用登录会话已过期，请重新登录")
+                        _invalidate_native_session(
+                            self, "应用登录会话已过期，请重新登录")
                     self.status.set(result.message)
                     self.log(result.message)
                 elif event.kind == "benchmark_done":
