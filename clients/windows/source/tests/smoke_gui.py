@@ -41,6 +41,23 @@ def main():
             assert app.notebook.select() == str(app.tab_manual)
             app.notebook.select(app.tab_home)
             assert app.scheduled_start_button.instate(['disabled'])
+            assert app.scheduled_stop_button.instate(['disabled'])
+            assert app.stop_button.instate(['disabled'])
+            assert tuple(app.table['columns']) == (
+                'key', 'course', 'class_id', 'teacher', 'status')
+            assert '未接入提交适配器' in app.enrollment_gate_status.get()
+            for widget in (
+                app.edit_button, app.plans_button,
+                app.native_login_button, app.native_prepare_button,
+                app.native_clear_button, app.timetable_read_button,
+                app.live_catalog_button, app.live_poll_button,
+                app.action_panel, app.start_button, app.stop_button,
+                app.scheduled_start_button, app.scheduled_stop_button,
+                app.course_frame, app.table,
+            ):
+                assert widget.winfo_exists(), f'missing home widget: {widget}'
+            assert 'S202' in app.live_catalog_button.cget('text')
+            assert '≥60秒' in app.live_poll_button.cget('text')
             assert len(app.table.get_children()) == 2
             with patch('core.client.httpx.AsyncClient', side_effect=AssertionError('demo attempted network')):
                 app.demo_next()
