@@ -36,7 +36,10 @@ from windows_monitor_events import (
 )
 from windows_readonly_widgets import _open_readonly_popup, _create_readonly_tree
 from windows_page_sections import build_home_page, build_manual_page, build_tools_page
-from windows_visual_shell import apply_light_theme, make_visual_shell, connect_sidebar
+from windows_visual_shell import (
+    apply_light_theme, make_visual_shell, connect_sidebar,
+    make_scrollable_content, bind_page_wheel, bind_responsive_shell,
+)
 from desktop_scheduled_worker import DesktopScheduledWorker
 from core.inspector import inspect_html
 from core.har_audit import summarize_har, format_summary
@@ -222,8 +225,8 @@ class Application(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title(APP_TITLE)
-        self.geometry("1210x820")
-        self.minsize(1020, 680)
+        self.geometry("1100x740")
+        self.minsize(880, 560)
         self.events: queue.Queue[MonitorEvent] = queue.Queue()
         self._tray = TrayController(lambda kind: self.events.put(MonitorEvent(kind)))
         self.worker: MonitorWorker | None = None
@@ -316,11 +319,12 @@ class Application(tk.Tk):
             header, text="KingoAssistant",
             style="KingoTitle.TLabel",
         ).pack(anchor="w", pady=(3, 0))
-        ttk.Label(
+        self.shell_subtitle = ttk.Label(
             header,
             text="原生登录与 S202 只读查询已实现 · 待本人账号验收  |  自动提交未接通",
             style="KingoSubtitle.TLabel",
-        ).pack(anchor="w", pady=(6, 0))
+        )
+        self.shell_subtitle.pack(anchor="w", pady=(6, 0))
 
         # Stable footer is allocated before the expanding content; status
         # remains the original Application StringVar, never copied to the shell.
@@ -342,10 +346,19 @@ class Application(tk.Tk):
         self.notebook.pack(
             fill="both", expand=True, padx=(11, 12), pady=(0, 4),
         )
+        # Each long page scrolls independently. The Notebook pages remain
+        # original navigation targets for sidebar, menus and all callbacks.
+        self._home_content, self.home_scroll_canvas, self.home_scrollbar = (
+            make_scrollable_content(self.tab_home))
+        self._tools_content, self.tools_scroll_canvas, self.tools_scrollbar = (
+            make_scrollable_content(self.tab_tools))
         build_home_page(self)
         build_manual_page(self)
         build_tools_page(self)
+        bind_page_wheel(self.home_scroll_canvas, self._home_content)
+        bind_page_wheel(self.tools_scroll_canvas, self._tools_content)
         connect_sidebar(self)
+        bind_responsive_shell(self)
 
     def toggle_advanced_panel(self) -> None:
         self.notebook.select(self.tab_tools)
@@ -1934,6 +1947,18 @@ def run_packaged_gui_smoke() -> None:
                     raise AssertionError("Expected two placeholder courses in packaged template")
                 if not app.sidebar.winfo_exists():
                     raise AssertionError("Compact visual sidebar missing")
+                if app.minsize() != (880, 560):
+                    raise AssertionError("Compact window minimum size regressed")
+                for canvas, content in (
+                    (app.home_scroll_canvas, app._home_content),
+                    (app.tools_scroll_canvas, app._tools_content),
+                ):
+                    if not canvas.winfo_exists() or not content.winfo_exists():
+                        raise AssertionError("Scrollable page missing in frozen Tk GUI")
+                    if not str(canvas.cget("yscrollcommand")):
+                        raise AssertionError("Scrollable page has no linked scrollbar")
+                if not app.table.winfo_exists() or not app.log_box.winfo_exists():
+                    raise AssertionError("Scrollable pages lost their original controls")
                 if set(app.sidebar_buttons) != {"home", "manual", "tools"}:
                     raise AssertionError("Three native sidebar destinations required")
                 if app.notebook.cget("style") != "Kingo.Content.TNotebook":
@@ -1977,8 +2002,13 @@ def run_packaged_gui_smoke() -> None:
                     raise AssertionError("Observed school results readback must be mounted under tools")
                 if app.term_probe_button.winfo_manager() != "pack":
                     raise AssertionError("Observed no-body YearTerm EXE probe missing")
-                if app.school_page_button.winfo_ismapped():
-                    raise AssertionError("Advanced readback action must stay off the home tab")
+                # Canvas child windows remain 'mapped' even when their
+                # Notebook tab is hidden. Validate true view ancestry instead
+                # of winfo_ismapped(), which does not inspect parent visibility.
+                if not str(app.school_page_button).startswith(str(app.tab_tools) + "."):
+                    raise AssertionError("Readback action must belong to Tools page only")
+                if app.notebook.select() != str(app.tab_home):
+                    raise AssertionError("Home must remain active after sidebar regression")
                 with patch("core.known_school_pages.httpx.AsyncClient",
                            side_effect=AssertionError("unverified result-page query attempted network")):
                     app.check_known_school_results()
@@ -2002,10 +2032,13 @@ def run_packaged_gui_smoke() -> None:
                     raise AssertionError("The first tab must be the selection homepage")
                 if app.portal_panel.winfo_manager() != "pack":
                     raise AssertionError("Manual backup must exist in its own tab")
-                if app.portal_panel.winfo_ismapped():
-                    raise AssertionError("Manual backup must not be visible on home")
-                if app.log_box.winfo_ismapped():
-                    raise AssertionError("Developer logs must not crowd the homepage")
+                # Canvas-embedded widgets may remain Tk-mapped inside a
+                # hidden Notebook tab. Their widget ancestry and the current
+                # Notebook selection are the actual isolation contract.
+                if not str(app.portal_panel).startswith(str(app.tab_manual) + "."):
+                    raise AssertionError("Manual backup must belong only to manual tab")
+                if not str(app.log_box).startswith(str(app.tab_tools) + "."):
+                    raise AssertionError("Developer log must belong only to Tools tab")
                 if app.status_bar.winfo_manager() != "pack":
                     raise AssertionError("The live status footer must remain visible")
                 app.toggle_portal_panel()

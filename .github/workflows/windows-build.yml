@@ -96,7 +96,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: KingoAssistant-UI-Preview
-          path: clients/windows/source/dist/KingoAssistant-UI-preview.png
+          path: clients/windows/source/dist/KingoAssistant-*-preview.png
           if-no-files-found: ignore
           retention-days: 14
 
