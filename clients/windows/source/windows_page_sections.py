@@ -282,6 +282,22 @@ def build_tools_page(app) -> None:
         plan_row, textvariable=app.course_plan_status,
         foreground="#666", wraplength=670,
     ).pack(side="left", fill="x", expand=True)
+    lesson_row = ttk.Frame(app.tools_operations)
+    lesson_row.pack(fill="x", pady=(4, 1))
+    ttk.Label(lesson_row, text="官网学期：").pack(side="left")
+    ttk.Entry(
+        lesson_row, textvariable=app.lesson_detail_semester,
+        width=16,
+    ).pack(side="left", padx=(0, 8))
+    app.lesson_detail_button = ttk.Button(
+        lesson_row, text="读取本人教务课表 AJAX（只读）",
+        command=app.check_lesson_detail,
+    )
+    app.lesson_detail_button.pack(side="left", padx=(0, 8))
+    ttk.Label(
+        lesson_row, textvariable=app.lesson_detail_status,
+        foreground="#666", wraplength=480,
+    ).pack(side="left", fill="x", expand=True)
     round_row = ttk.Frame(app.tools_operations)
     round_row.pack(fill="x", pady=(4, 1))
     app.s202_round_button = ttk.Button(
