@@ -57,7 +57,7 @@ class ThemeConfigurationTests(TestCase):
             control = owner.sidebar_buttons[key]
             self.assertEqual(
                 next(kwargs["text"] for button, kwargs in buttons
-                     if button is control).split("\\n")[-1], name)
+                     if button is control).split("\n")[-1], name)
             kwargs = next(kwargs for button, kwargs in buttons
                           if button is control)
             kwargs["command"]()
