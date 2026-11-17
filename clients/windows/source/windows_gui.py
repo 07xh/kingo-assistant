@@ -7,11 +7,9 @@ No CAPTCHA processing, rate-limit evasion or concurrent write bursts.
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
 import os
 from pathlib import Path
 import queue
-import shutil
 import sys
 import threading
 import time
@@ -23,19 +21,25 @@ from tkinter import filedialog, messagebox, simpledialog, ttk
 from loguru import logger
 
 
-from core.client import KingoClient, parse_courses
-from core.desktop_settings import load_config, quick_copy_value, resolve_state_file, status_changes
+from core.client import parse_courses
+from core.desktop_settings import quick_copy_value, resolve_state_file, status_changes
 from core.demo import DemoReport, run_demo
 from desktop_editor import SettingsEditor
 from desktop_plans import PlanManager
 from desktop_tray import TrayController
+from windows_config_runtime import (
+    app_dir, bundled_config, bundled_demo, ensure_user_config, load_validated_config,
+)
+from windows_monitor_runtime import MonitorEvent, MonitorWorker
+from windows_monitor_events import (
+    apply_monitor_status, format_official_probe_results, scheduled_reason_text,
+)
 from windows_readonly_widgets import _open_readonly_popup, _create_readonly_tree
 from desktop_scheduled_worker import DesktopScheduledWorker, ScheduledWorkerEvent
 from core.inspector import inspect_html
 from core.har_audit import summarize_har, format_summary
 from core.auth_route_audit import summarize_auth_route_har
 from tools.catalog_evidence import inspect_local_file
-from core.scheduler import Scheduler
 from core.preflight import inspect_readiness, split_checks, format_checks
 from core.offline_selftest import run_selftest
 from core.offline_benchmark import format_benchmark, run_offline_benchmark
@@ -59,9 +63,8 @@ from core.ncwu_contract_capture import inspect_two_endpoint_contracts
 from core.official_entries import OFFICIAL_ENTRIES, probe_official_login_surfaces
 from core.scheduled_ui_bridge import prepare_scheduled_plan
 from core.attestation import AttestationError, AttestationRegistry, resolve_registry
-from core.latency import DEFAULT_LATENCY_FILE, LatencyRecorder, summarize_file
+from core.latency import DEFAULT_LATENCY_FILE, summarize_file
 from core.enrollment_schedule import ScheduledRunReport
-from core.time_sync import TimeSync
 from main import _read_local_html, validate
 
 APP_TITLE = "KingoAssistant · Windows（只读监测｜自动提交尚未接入）"
@@ -98,50 +101,18 @@ def current_attestations() -> AttestationRegistry:
         return AttestationRegistry(entries={}, root=app_dir())
 
 
-def app_dir() -> Path:
-    """Never write user data inside the PyInstaller bundle/temp folder."""
-    if os.name == "nt":
-        root = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA")
-        if root:
-            return Path(root) / "KingoAssistantReadOnly"
-    return Path.home() / ".kingo-assistant-readonly"
-
-
-def bundled_config() -> Path:
-    root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
-    return root / "config.example.yaml"
-
-
-def bundled_demo() -> Path:
-    """Read-only fictional fixtures embedded in both source and one-file EXE."""
-    root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
-    return root / "demo"
-
-
 def ensure_config() -> Path:
-    dest_dir = app_dir()
-    dest_dir.mkdir(parents=True, exist_ok=True)
-    dest = dest_dir / "config.yaml"
-    if not dest.exists():
-        source = bundled_config()
-        if not source.is_file():
-            raise FileNotFoundError("安装资源中缺少 config.example.yaml 模板")
-        shutil.copyfile(source, dest)
-    return dest
+    """Idempotent first-run template setup; existing config is never replaced."""
+    return ensure_user_config(app_dir(), bundled_config())
 
 
 def read_config(path: Path, *, offline: bool = False) -> dict:
-    config = load_config(path)
-    if not offline:
-        config = resolve_state_file(config, app_dir())
-    validate(config, check_only=offline)
-    return config
-
-
-@dataclass
-class MonitorEvent:
-    kind: str
-    value: object = None
+    """Keep original call signature and validation behavior for all UI actions."""
+    return load_validated_config(
+        path, offline=offline,
+        user_directory=app_dir() if not offline else None,
+        validator=validate,
+    )
 
 
 # Native S202 and legacy page/term/timetable read actions share the worker lifecycle.
@@ -217,123 +188,6 @@ def _finish_ncwu_read_event(
         app.native_login_status.set(expired_message)
         if app.__dict__.get("_live_polling", False):
             app.stop_live_polling()
-
-
-class MonitorWorker:
-    """Async network loop runs on a background thread. Tk lives on the main thread."""
-
-    def __init__(self, config: dict, updates: queue.Queue[MonitorEvent],
-                 *, session_cookie: str | None = None):
-        self.config = config
-        self.updates = updates
-        self.session_cookie = session_cookie
-        self.thread: threading.Thread | None = None
-        self.loop: asyncio.AbstractEventLoop | None = None
-        self.client: KingoClient | None = None
-        self.latency: LatencyRecorder | None = None
-        self.task: asyncio.Task | None = None
-        self._stop_requested = threading.Event()
-        self._had_scheduler_error = False
-
-    def start(self) -> None:
-        if self.thread and self.thread.is_alive():
-            raise RuntimeError("已有一个监测任务在运行")
-        self.thread = threading.Thread(target=self._thread_main, daemon=True)
-        self.thread.start()
-
-    def stop(self) -> None:
-        self._stop_requested.set()
-        loop = self.loop
-        client = self.client
-        if loop and loop.is_running():
-            def stop_in_loop() -> None:
-                if client:
-                    client.stop.set()
-                if self.task and not self.task.done():
-                    self.task.cancel()
-            loop.call_soon_threadsafe(stop_in_loop)
-
-    def _thread_main(self) -> None:
-        outcome = "completed"
-        try:
-            asyncio.run(self._run())
-        except Exception as exc:
-            outcome = "failed"
-            # Deliberately do not serialize server responses, URL, credentials or
-            # arbitrary exception details to the GUI or log.
-            self.updates.put(MonitorEvent("error", type(exc).__name__))
-        finally:
-            if outcome == "completed":
-                if self._stop_requested.is_set():
-                    outcome = "stopped"
-                elif self._had_scheduler_error:
-                    outcome = "failed"
-            self.loop = None
-            self.client = None
-            self.task = None
-            self.updates.put(MonitorEvent("finished", outcome))
-
-    async def _run(self) -> None:
-        self.loop = asyncio.get_running_loop()
-        if self._stop_requested.is_set():
-            return
-        # Phase timings land in the app data folder; see core/latency.py.
-        recorder = LatencyRecorder(app_dir() / DEFAULT_LATENCY_FILE)
-        client = (KingoClient(self.config, session_cookie=self.session_cookie,
-                              latency=recorder)
-                  if self.session_cookie is not None
-                  else KingoClient(self.config, latency=recorder))
-        self.client = client
-        self.latency = recorder
-        clock = TimeSync()
-        try:
-            if self._stop_requested.is_set():
-                return
-            await client.identity()
-            self.updates.put(MonitorEvent("message", "本人会话验证通过；只读模式。"))
-            if self._stop_requested.is_set():
-                return
-            try:
-                await clock.sync(client.http,
-                                 client.url(self.config["protocol"]["identity_path"]),
-                                 client.url(self.config["protocol"]["identity_referer"]),
-                                 budgeted_get=lambda url, ref: client.read("GET", url, ref))
-            except Exception:
-                self.updates.put(MonitorEvent("message", "校时不可用，使用本机时间。"))
-            client.prepare_query(self.config["xnxq"])
-            scheduler = Scheduler(client, clock, self.config)
-            running = asyncio.create_task(scheduler.run())
-            self.task = running
-            last_snapshot = None
-            try:
-                while not running.done():
-                    if self._stop_requested.is_set():
-                        client.stop.set()
-                    # A long scheduled wait should not enqueue identical Tk
-                    # updates twice a second for hours. Emit only on change.
-                    snapshot = (scheduler.cycles, tuple(sorted(scheduler.states.items())),
-                                client.last_ms, client.parse_ms)
-                    if snapshot != last_snapshot:
-                        self.updates.put(MonitorEvent(
-                            "status", (scheduler.cycles, dict(scheduler.states),
-                                       client.last_ms, client.parse_ms)))
-                        last_snapshot = snapshot
-                    await asyncio.sleep(0.5)
-                await running
-                self.updates.put(MonitorEvent("status", (scheduler.cycles, dict(scheduler.states),
-                                                                  client.last_ms, client.parse_ms)))
-                if scheduler.last_error:
-                    self._had_scheduler_error = True
-                    self.updates.put(MonitorEvent("stop_reason", scheduler.last_error))
-            except asyncio.CancelledError:
-                self.updates.put(MonitorEvent("message", "已终止本次监测或定时检查。"))
-            finally:
-                client.stop.set()
-                if not running.done():
-                    running.cancel()
-                await asyncio.gather(running, return_exceptions=True)
-        finally:
-            await client.aclose()
 
 
 class Application(tk.Tk):
@@ -2028,36 +1882,16 @@ class Application(tk.Tk):
                     self.restore_window()
                     self.log("系统托盘不可用，主窗口已恢复；任务未被静默终止。")
                 elif event.kind == "status":
-                    cycles, states, request_ms, parse_ms = event.value
-                    self.status.set(f"只读监测｜查询 {cycles} 次｜最近请求 {request_ms:.0f} ms｜解析 {parse_ms:.1f} ms｜请以官网为准")
-                    newly_available = status_changes(self._previous_states, states)
-                    if newly_available:
-                        self.bell()
-                        self.log(f"检测到 {len(newly_available)} 个目标课程有余量，请前往官网确认；不代表选课成功。")
-                    self._previous_states = dict(states)
-                    for key, state in states.items():
-                        if self.table.exists(key):
-                            self.table.set(key, "status", str(state))
+                    apply_monitor_status(
+                        self, event.value, change_detector=status_changes)
                 elif event.kind == "official_probe_done":
                     self._entry_probe_in_progress = False
-                    results = event.value
-                    names = {entry.identifier: entry.name for entry in OFFICIAL_ENTRIES}
-                    lines = []
-                    for item in results:
-                        if item.elapsed_ms is None:
-                            elapsed = "—"
-                        else:
-                            elapsed = f"{item.elapsed_ms:.0f} ms"
-                        lines.append(
-                            f"{names.get(item.entry_id, '未知入口')}："
-                            f"{item.state.value} / HTTP {item.http_status or '—'} / {elapsed}"
-                        )
                     self.status.set("官网登录页检测完毕｜未验证课程查询接口")
                     self.log("本次官网登录页检测结束；不代表本人已登录或课程余量可读取。")
                     messagebox.showinfo(
                         "官方登录页可达性（非选课接口）",
-                        "\n".join(lines) +
-                        "\n\n登录页响应速度不能用于证明选课后端速度或名额。"
+                        format_official_probe_results(
+                            event.value, entries=OFFICIAL_ENTRIES),
                     )
                 elif event.kind == "official_probe_error":
                     self._entry_probe_in_progress = False
@@ -2227,16 +2061,7 @@ class Application(tk.Tk):
                 elif event.kind == "scheduled_result":
                     outcome = event.value
                     if isinstance(outcome, ScheduledRunReport):
-                        descriptions = {
-                            "engine_completed": "自动执行结束｜按官方已选记录核验结果",
-                            "engine_halted": "选课引擎保护性停止｜请核对官方已选记录",
-                            "window_timeout": "等待官方选课窗口超时｜未提交选课",
-                            "window_unknown": "无法确认官方开放状态｜已停止",
-                            "cancelled_before_start": "预约尚未到点已取消",
-                            "cancelled_waiting_for_window": "等待窗口期间已取消",
-                            "invalid_poll_interval": "请求窗口本地策略无效｜已停止",
-                        }
-                        label = descriptions.get(outcome.reason, "自动选课任务已结束｜结果待确认")
+                        label = scheduled_reason_text(outcome.reason)
                         self.status.set(label)
                         self.log(label + "；请以真实教务记录为准。")
                     elif outcome == "cancelled_before_start":
