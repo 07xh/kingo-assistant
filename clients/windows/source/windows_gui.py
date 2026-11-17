@@ -36,7 +36,7 @@ from windows_monitor_events import (
 )
 from windows_readonly_widgets import _open_readonly_popup, _create_readonly_tree
 from windows_page_sections import build_home_page, build_manual_page, build_tools_page
-from desktop_scheduled_worker import DesktopScheduledWorker, ScheduledWorkerEvent
+from desktop_scheduled_worker import DesktopScheduledWorker
 from core.inspector import inspect_html
 from core.har_audit import summarize_har, format_summary
 from core.auth_route_audit import summarize_auth_route_har
@@ -50,7 +50,7 @@ from core.native_preparation import NativePreparationResult, prepare_native_api
 from core.native_timetable import TimetableReadResult, read_known_timetable
 from core.known_school_pages import KnownSchoolPageResult, read_known_school_page, validate_known_page_contract
 from core.ncwu_term_probe import TermProbeResult, probe_known_year_term, validate_term_contract
-from core.native_login import NativeLoginResult, login_with_verified_form, validate_login_contract
+from core.native_login import NativeLoginResult
 from core.ncwu_signed_login import login_ncwusigned, validate_ncwulogin_entry
 from core.ncwu_elective_table import inspect_elective_table
 from core.ncwu_live_elective import LiveElectiveSnapshot, live_s202_snapshot
