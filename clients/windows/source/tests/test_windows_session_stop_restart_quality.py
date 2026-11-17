@@ -57,6 +57,27 @@ class SessionLifecycleQualityTests(TestCase):
                 self.assertIn("再次点击", current.native_login_status.set.call_args.args[0])
                 current.native_preparation_status.set.assert_not_called()
 
+    def test_legacy_read_and_identity_probe_wait_for_active_s202_read(self):
+        current = app()
+        current._live_catalog_in_progress = True
+        with patch("windows_gui.read_config") as loader, \
+             patch("windows_gui.threading.Thread") as thread:
+            Application.check_known_timetable(current)
+            Application.check_known_year_term(current)
+            Application.check_known_school_results(current)
+            Application.check_script_session(current)
+        loader.assert_not_called()
+        thread.assert_not_called()
+
+    def test_native_login_waits_for_opted_in_refresh_before_asking_password(self):
+        current = app()
+        current._live_polling = True
+        with patch("windows_gui.read_config") as loader, \
+             patch("windows_gui.simpledialog.askstring") as prompt:
+            Application.start_native_login(current)
+        loader.assert_not_called()
+        prompt.assert_not_called()
+
     def test_clear_during_auto_refresh_stops_future_cycles_but_not_inflight_read(self):
         current = app()
         current._live_polling = True
