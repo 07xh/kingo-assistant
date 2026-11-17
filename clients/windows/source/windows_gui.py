@@ -1939,6 +1939,13 @@ def run_packaged_gui_smoke() -> None:
                     raise AssertionError("Previously captured native timetable action missing")
                 if "既有接口" not in str(app.timetable_read_button.cget("text")):
                     raise AssertionError("Known timetable API must be distinguished from elective catalog")
+                if app.lesson_detail_button.winfo_manager() != "pack":
+                    raise AssertionError("Owner-session AJAX timetable action must be mounted under tools")
+                with patch("core.ncwu_lesson_detail.httpx.AsyncClient",
+                           side_effect=AssertionError("missing session attempted network")):
+                    app.check_lesson_detail()
+                if "请先在 EXE 内登录" not in app.lesson_detail_status.get():
+                    raise AssertionError("Personal timetable must require a native session")
                 if app.school_page_button.winfo_manager() != "pack":
                     raise AssertionError("Observed school results readback must be mounted under tools")
                 if app.term_probe_button.winfo_manager() != "pack":
