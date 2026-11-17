@@ -12,10 +12,12 @@ from tkinter import ttk
 
 
 def build_home_page(app) -> None:
-    """Construct the complete Home workflow; the owner holds every state field."""
+    """Construct the Home workflow; the owner holds all state and callbacks."""
+    # Unit-tested direct builder calls still work without a scrolling shell.
+    home_root = app.__dict__.get("_home_content", app.tab_home)
     # Home: explain the actual workflow instead of displaying all buttons
     # as equal options in one toolbar.
-    intro = ttk.Frame(app.tab_home, padding=(10, 6))
+    intro = ttk.Frame(home_root, padding=(10, 6))
     intro.pack(fill="x")
     ttk.Label(
         intro, text="建议顺序：填写目标课程 → 软件内登录 → 检查本人课程",
@@ -28,7 +30,7 @@ def build_home_page(app) -> None:
     ).pack(anchor="w", pady=(2, 0))
 
     setup = ttk.LabelFrame(
-        app.tab_home, text="第 1 步  ·  课程与志愿（本地可用）",
+        home_root, text="第 1 步  ·  课程与志愿（本地可用）",
         padding=(10, 6), style="KingoStep.TLabelframe",
     )
     setup.pack(fill="x", padx=10, pady=(2, 5))
@@ -45,7 +47,7 @@ def build_home_page(app) -> None:
     ).pack(side="left")
 
     auth_panel = ttk.LabelFrame(
-        app.tab_home, text="第 2 步  ·  软件内登录（协议已接入 · 待实机验收）",
+        home_root, text="第 2 步  ·  软件内登录（协议已接入 · 待实机验收）",
         padding=(10, 6), style="KingoStep.TLabelframe",
     )
     auth_panel.pack(fill="x", padx=10, pady=(0, 5))
@@ -96,7 +98,7 @@ def build_home_page(app) -> None:
     ).pack(anchor="w", pady=(4, 0))
 
     monitor_panel = ttk.LabelFrame(
-        app.tab_home, text="第 3 步  ·  课程余量监测（只读）",
+        home_root, text="第 3 步  ·  课程余量监测（只读）",
         padding=(10, 6), style="KingoStep.TLabelframe",
     )
     monitor_panel.pack(fill="x", padx=10, pady=(0, 5))
@@ -119,7 +121,7 @@ def build_home_page(app) -> None:
         foreground="#666",
     ).pack(anchor="w", pady=(6, 0))
 
-    enrollment = ttk.Frame(app.tab_home, padding=(12, 3))
+    enrollment = ttk.Frame(home_root, padding=(12, 3))
     enrollment.pack(fill="x")
     app.enrollment_gate_status = tk.StringVar(value=app.enrollment_gate_label())
     ttk.Label(
@@ -138,7 +140,7 @@ def build_home_page(app) -> None:
     app.scheduled_stop_button.pack(side="right")
 
     app.course_frame = ttk.LabelFrame(
-        app.tab_home, text="目标课程列表 · 本地配置 / 只读状态",
+        home_root, text="目标课程列表 · 本地配置 / 只读状态",
         padding=8,
     )
     app.course_frame.pack(
@@ -218,9 +220,10 @@ def build_manual_page(app) -> None:
 
 def build_tools_page(app) -> None:
     """Developer/read-only tools; no network calls at widget creation time."""
+    tools_root = app.__dict__.get("_tools_content", app.tab_tools)
     # Diagnostics, examples, protocol editing and logs are only in this
     # tertiary tab; no simulation button on the everyday main screen.
-    tools_heading = ttk.Frame(app.tab_tools, padding=(12, 8))
+    tools_heading = ttk.Frame(tools_root, padding=(12, 8))
     tools_heading.pack(fill="x")
     ttk.Label(
         tools_heading,
@@ -228,7 +231,7 @@ def build_tools_page(app) -> None:
         foreground="#666",
     ).pack(anchor="w")
     app.tools_operations = ttk.LabelFrame(
-        app.tab_tools, text="本机诊断（不发起选课提交）", padding=10)
+        tools_root, text="本机诊断（不发起选课提交）", padding=10)
     app.tools_operations.pack(fill="x", padx=10, pady=(2, 6))
     groups = (
         (("检查本机配置", app.check_config),
@@ -343,7 +346,7 @@ def build_tools_page(app) -> None:
               foreground="#666", wraplength=670).pack(side="left", fill="x", expand=True)
 
     app.advanced_panel = ttk.LabelFrame(
-        app.tab_tools, text="高级协议配置 · 仅适合调试",
+        tools_root, text="高级协议配置 · 仅适合调试",
         padding=8,
     )
     ttk.Label(app.advanced_panel, text="配置文件").pack(side="left")
@@ -358,7 +361,7 @@ def build_tools_page(app) -> None:
     app.open_button.pack(side="left", padx=5)
 
     app.log_frame = ttk.LabelFrame(
-        app.tab_tools, text="本地运行日志（不显示账号或凭证）", padding=8)
+        tools_root, text="本地运行日志（不显示账号或凭证）", padding=8)
     app.log_frame.pack(
         fill="both", expand=True, padx=10, pady=(0, 8))
     app.log_box = tk.Text(
