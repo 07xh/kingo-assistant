@@ -23,6 +23,10 @@ from bs4 import BeautifulSoup
 from core.client import encode_gbk_form, html_encoding
 from core.ncwu_elective_table import EXPECTED_HEADINGS
 from core.request_budget import build_verified_budget
+from core.ncwu_read_support import (
+    classify_read_response, default_read_client, get_optional_verified_budget,
+    set_scoped_cookie,
+)
 
 HOST = "jwmis.ncwu.edu.cn"
 ORIGIN = "https://" + HOST
@@ -343,24 +347,15 @@ async def live_s202_snapshot(
             if time.monotonic() < _NEXT_MANUAL_AT:
                 return LiveElectiveSnapshot("cooldown")
             _NEXT_MANUAL_AT = time.monotonic() + 60.0
-        policy = config.get("server_policy", {})
-        budget = None
-        if isinstance(policy, Mapping) and policy.get("verified") is True:
-            try:
-                budget = budget_factory(dict(config), ("https", HOST))
-            except Exception:
-                return LiveElectiveSnapshot("policy_unverified")
+        try:
+            budget = get_optional_verified_budget(config, budget_factory)
+        except Exception:
+            return LiveElectiveSnapshot("policy_unverified")
         if http_factory is None:
-            http_factory = lambda: httpx.AsyncClient(
-                follow_redirects=False, trust_env=False,
-                timeout=httpx.Timeout(connect=5, read=10, write=10, pool=5),
-                limits=httpx.Limits(max_connections=1, max_keepalive_connections=1),
-            )
+            http_factory = default_read_client
         stage = "page"
         async with http_factory() as client:
-            for item in session_cookie.split(";"):
-                name, value = item.strip().split("=", 1)
-                client.cookies.set(name, value, domain=HOST, path="/hsjw")
+            set_scoped_cookie(client, session_cookie)
             async def request(method: str, path: str, *, form=None):
                 async with _budget_slot(budget):
                     headers = {
@@ -380,16 +375,11 @@ async def live_s202_snapshot(
                         method, ORIGIN + path, headers=headers,
                         follow_redirects=False, **request_opts,
                     )
-                if response.status_code in (401, 302, 303, 307, 308):
-                    raise PermissionError("expired")
-                if response.status_code in (403, 429):
-                    if response.status_code == 429 and budget is not None:
-                        from core.client import KingoClient
-                        seconds = KingoClient._retry_after_seconds(
-                            response.headers.get("Retry-After"))
-                        await budget.impose_retry_after(seconds or 60.0)
-                    raise PermissionError("restricted")
-                if response.status_code != 200 or len(response.content) > MAX_BODY:
+                error = await classify_read_response(
+                    response, budget, max_bytes=MAX_BODY)
+                if error in ("expired", "restricted"):
+                    raise PermissionError(error)
+                if error:
                     raise ValueError("unexpected response")
                 return response
             page_resp = await request("GET", S202_PAGE)

@@ -218,6 +218,36 @@ def _finish_ncwu_read_event(
             app.stop_live_polling()
 
 
+def _open_readonly_popup(
+    owner, *, title: str, size: str, message: str, wraplength: int,
+):
+    """Shared static results window; no school requests or mutable state."""
+    popup = tk.Toplevel(owner)
+    popup.title(title)
+    popup.geometry(size)
+    popup.transient(owner)
+    ttk.Label(popup, text=message, wraplength=wraplength).pack(
+        anchor="w", padx=12, pady=(12, 8))
+    return popup
+
+
+def _create_readonly_tree(
+    parent, *, columns: tuple[str, ...], titles: tuple[str, ...],
+    widths: tuple[int, ...], minwidth: int, height: int | None = None,
+):
+    """Configure headings and dimensions consistently without changing rows."""
+    if not (len(columns) == len(titles) == len(widths)):
+        raise ValueError("readonly table column specification mismatch")
+    options = {"columns": columns, "show": "headings"}
+    if height is not None:
+        options["height"] = height
+    table = ttk.Treeview(parent, **options)
+    for name, title, width in zip(columns, titles, widths):
+        table.heading(name, text=title)
+        table.column(name, width=width, minwidth=minwidth)
+    return table
+
+
 class MonitorWorker:
     """Async network loop runs on a background thread. Tk lives on the main thread."""
 
@@ -1178,12 +1208,10 @@ class Application(tk.Tk):
 
     def show_course_plan_rows(self, result: PlanSnapshot) -> None:
         """One in-memory, explicitly historical plan snapshot popup."""
-        popup = tk.Toplevel(self)
-        popup.title("华水开课计划快照 · 非正选实时可用名额")
-        popup.geometry("1110x520")
-        popup.transient(self)
-        ttk.Label(popup, text=result.message, wraplength=1080).pack(
-            anchor="w", padx=12, pady=(12, 8))
+        popup = _open_readonly_popup(
+            self, title="华水开课计划快照 · 非正选实时可用名额",
+            size="1110x520", message=result.message, wraplength=1080,
+        )
         # Compare the fresh plan to local course preferences without saving
         # anything or turning historical availability into a live seat claim.
         try:
@@ -1211,10 +1239,10 @@ class Application(tk.Tk):
         titles = ("课程", "课程代码", "教学班标识", "教师", "限选", "已选",
                   "计划可选", "上课时间", "上课地点")
         widths = (165, 120, 150, 115, 65, 65, 75, 150, 135)
-        tree = ttk.Treeview(popup, columns=columns, show="headings", height=17)
-        for col, title, width in zip(columns, titles, widths):
-            tree.heading(col, text=title)
-            tree.column(col, width=width, minwidth=55)
+        tree = _create_readonly_tree(
+            popup, columns=columns, titles=titles, widths=widths,
+            minwidth=55, height=17,
+        )
         for row in result.rows:
             tree.insert("", "end", values=(
                 row.name, row.code, row.class_id or "未知",
@@ -1348,18 +1376,16 @@ class Application(tk.Tk):
         """Memory-only candidates; a table cannot certify enrollment success."""
         if not result.candidates:
             return
-        popup = tk.Toplevel(self)
-        popup.title("S202 已选结果候选记录 · 待官网核对")
-        popup.geometry("760x400")
-        popup.transient(self)
-        ttk.Label(popup, text=result.message, wraplength=720).pack(
-            anchor="w", padx=12, pady=(12, 8))
+        popup = _open_readonly_popup(
+            self, title="S202 已选结果候选记录 · 待官网核对",
+            size="760x400", message=result.message, wraplength=720,
+        )
         columns = ("name", "code", "class_number", "teacher")
         titles = ("课程名", "课程代码", "教学班号", "教师")
-        table = ttk.Treeview(popup, columns=columns, show="headings")
-        for column, title in zip(columns, titles):
-            table.heading(column, text=title)
-            table.column(column, minwidth=110, width=180)
+        table = _create_readonly_tree(
+            popup, columns=columns, titles=titles,
+            widths=(180,) * len(columns), minwidth=110,
+        )
         for item in result.candidates:
             table.insert("", "end", values=(
                 item.course_name, item.course_code,
@@ -1368,15 +1394,9 @@ class Application(tk.Tk):
 
     def check_live_catalog(self) -> None:
         """Read the current S202 form/window/catalog via the EXE's own session."""
-        if (self.worker or self.__dict__.get("scheduled_worker") or self._closing
-                or self._native_login_in_progress
-                or self._native_preparation_in_progress
-                or self._session_check_in_progress
-                or self.__dict__.get("_live_catalog_in_progress", False)
-                or self.__dict__.get("_s202_result_in_progress", False)
-                or self.__dict__.get("_s202_round_probe_in_progress", False)
-                or self.__dict__.get("_s202_score_in_progress", False)
-                or self.__dict__.get("_course_plan_in_progress", False)):
+        # Unlike the course-plan snapshot, manual catalog refresh is also
+        # used by the existing opt-in >=60s polling workflow.
+        if _ncwu_read_busy(self):
             return
         if not self._native_session_cookie or self._native_session_origin != "jwmis.ncwu.edu.cn":
             self.live_catalog_status.set("请先点击「在 EXE 登录本人教务账号」")
@@ -1386,28 +1406,15 @@ class Application(tk.Tk):
         except (ValueError, TypeError, KeyError, OSError):
             self.live_catalog_status.set("配置读取失败；未查询学校")
             return
-        self._live_catalog_in_progress = True
-        self.live_catalog_button.configure(state="disabled")
-        self.live_catalog_status.set("正在从官网读取当前正选表单、时间窗及课程列表（只读）")
-        cookie = scoped_native_cookie(self, config)
-
-        def execute() -> None:
-            try:
-                result = asyncio.run(live_s202_snapshot(
-                    config, session_cookie=cookie,
-                ))
-            except Exception:
-                result = LiveElectiveSnapshot("unavailable")
-            self.events.put(MonitorEvent("ncwu_live_catalog", result))
-
-        try:
-            threading.Thread(
-                target=execute, name="KingoLiveS202Query", daemon=True,
-            ).start()
-        except RuntimeError:
-            self._live_catalog_in_progress = False
-            self.live_catalog_button.configure(state="normal")
-            self.live_catalog_status.set("查询线程无法启动；未访问学校")
+        _start_ncwu_read_worker(
+            self, config=config, cookie=scoped_native_cookie(self, config),
+            read_call=live_s202_snapshot, fallback_factory=LiveElectiveSnapshot,
+            flag="_live_catalog_in_progress", button=self.live_catalog_button,
+            status_var=self.live_catalog_status,
+            running_message="正在从官网读取当前正选表单、时间窗及课程列表（只读）",
+            failure_message="查询线程无法启动；未访问学校",
+            event_kind="ncwu_live_catalog", thread_name="KingoLiveS202Query",
+        )
 
     def stop_live_polling(self) -> None:
         self._live_polling = False
@@ -1472,10 +1479,10 @@ class Application(tk.Tk):
             columns = ("name", "code", "class_number", "teacher", "selection_status", "points", "target")
             titles = ("课程名称", "课程代码", "显示班号", "教师", "选课状态", "选课币字段", "本地志愿（仅候选）")
             widths = (210, 145, 135, 115, 145, 110, 160)
-            table = ttk.Treeview(popup, columns=columns, show="headings", height=15)
-            for column, title, width in zip(columns, titles, widths):
-                table.heading(column, text=title)
-                table.column(column, width=width, minwidth=80)
+            table = _create_readonly_tree(
+                popup, columns=columns, titles=titles, widths=widths,
+                minwidth=80, height=15,
+            )
             scrollbar = ttk.Scrollbar(popup, orient="vertical", command=table.yview)
             table.configure(yscrollcommand=scrollbar.set)
             scrollbar.pack(side="right", fill="y", padx=(0, 10), pady=(0, 14))
@@ -2138,19 +2145,18 @@ class Application(tk.Tk):
                     self.status.set(result.message)
                     self.log(result.message)
                 elif event.kind == "ncwu_live_catalog":
-                    self._live_catalog_in_progress = False
-                    self.live_catalog_button.configure(state="normal")
                     result = event.value
-                    self.live_catalog_status.set(result.message)
-                    self.status.set(result.message)
-                    self.log(
-                        f"S202 实时查询：{result.code}，窗口={result.window}，"
-                        f"记录={len(result.courses)}，阶段={result.stage}；未提交选课。")
-                    if result.code == "expired":
-                        self._native_session_cookie = None
-                        self._native_session_origin = None
-                        self.native_login_status.set("官网表示会话失效，请重新登录")
-                    elif result.code == "catalog_read":
+                    _finish_ncwu_read_event(
+                        self, result, flag="_live_catalog_in_progress",
+                        button=self.live_catalog_button,
+                        status_var=self.live_catalog_status,
+                        log_message=(
+                            f"S202 实时查询：{result.code}，窗口={result.window}，"
+                            f"记录={len(result.courses)}，阶段={result.stage}；未提交选课。"
+                        ),
+                        expired_message="官网表示会话失效，请重新登录",
+                    )
+                    if result.code == "catalog_read":
                         self.show_live_catalog_rows(result)
                     if self._live_polling:
                         if result.code == "catalog_read" and not self._closing:
