@@ -1394,15 +1394,9 @@ class Application(tk.Tk):
 
     def check_live_catalog(self) -> None:
         """Read the current S202 form/window/catalog via the EXE's own session."""
-        if (self.worker or self.__dict__.get("scheduled_worker") or self._closing
-                or self._native_login_in_progress
-                or self._native_preparation_in_progress
-                or self._session_check_in_progress
-                or self.__dict__.get("_live_catalog_in_progress", False)
-                or self.__dict__.get("_s202_result_in_progress", False)
-                or self.__dict__.get("_s202_round_probe_in_progress", False)
-                or self.__dict__.get("_s202_score_in_progress", False)
-                or self.__dict__.get("_course_plan_in_progress", False)):
+        # Unlike the course-plan snapshot, manual catalog refresh is also
+        # used by the existing opt-in >=60s polling workflow.
+        if _ncwu_read_busy(self):
             return
         if not self._native_session_cookie or self._native_session_origin != "jwmis.ncwu.edu.cn":
             self.live_catalog_status.set("请先点击「在 EXE 登录本人教务账号」")
@@ -1412,28 +1406,15 @@ class Application(tk.Tk):
         except (ValueError, TypeError, KeyError, OSError):
             self.live_catalog_status.set("配置读取失败；未查询学校")
             return
-        self._live_catalog_in_progress = True
-        self.live_catalog_button.configure(state="disabled")
-        self.live_catalog_status.set("正在从官网读取当前正选表单、时间窗及课程列表（只读）")
-        cookie = scoped_native_cookie(self, config)
-
-        def execute() -> None:
-            try:
-                result = asyncio.run(live_s202_snapshot(
-                    config, session_cookie=cookie,
-                ))
-            except Exception:
-                result = LiveElectiveSnapshot("unavailable")
-            self.events.put(MonitorEvent("ncwu_live_catalog", result))
-
-        try:
-            threading.Thread(
-                target=execute, name="KingoLiveS202Query", daemon=True,
-            ).start()
-        except RuntimeError:
-            self._live_catalog_in_progress = False
-            self.live_catalog_button.configure(state="normal")
-            self.live_catalog_status.set("查询线程无法启动；未访问学校")
+        _start_ncwu_read_worker(
+            self, config=config, cookie=scoped_native_cookie(self, config),
+            read_call=live_s202_snapshot, fallback_factory=LiveElectiveSnapshot,
+            flag="_live_catalog_in_progress", button=self.live_catalog_button,
+            status_var=self.live_catalog_status,
+            running_message="正在从官网读取当前正选表单、时间窗及课程列表（只读）",
+            failure_message="查询线程无法启动；未访问学校",
+            event_kind="ncwu_live_catalog", thread_name="KingoLiveS202Query",
+        )
 
     def stop_live_polling(self) -> None:
         self._live_polling = False
@@ -2164,19 +2145,18 @@ class Application(tk.Tk):
                     self.status.set(result.message)
                     self.log(result.message)
                 elif event.kind == "ncwu_live_catalog":
-                    self._live_catalog_in_progress = False
-                    self.live_catalog_button.configure(state="normal")
                     result = event.value
-                    self.live_catalog_status.set(result.message)
-                    self.status.set(result.message)
-                    self.log(
-                        f"S202 实时查询：{result.code}，窗口={result.window}，"
-                        f"记录={len(result.courses)}，阶段={result.stage}；未提交选课。")
-                    if result.code == "expired":
-                        self._native_session_cookie = None
-                        self._native_session_origin = None
-                        self.native_login_status.set("官网表示会话失效，请重新登录")
-                    elif result.code == "catalog_read":
+                    _finish_ncwu_read_event(
+                        self, result, flag="_live_catalog_in_progress",
+                        button=self.live_catalog_button,
+                        status_var=self.live_catalog_status,
+                        log_message=(
+                            f"S202 实时查询：{result.code}，窗口={result.window}，"
+                            f"记录={len(result.courses)}，阶段={result.stage}；未提交选课。"
+                        ),
+                        expired_message="官网表示会话失效，请重新登录",
+                    )
+                    if result.code == "catalog_read":
                         self.show_live_catalog_rows(result)
                     if self._live_polling:
                         if result.code == "catalog_read" and not self._closing:
