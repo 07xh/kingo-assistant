@@ -16,6 +16,31 @@ def main():
             app = Application()
             app.withdraw()
             app.update()
+            # Assert independently extracted Manual and Tools layouts are still
+            # attached to the same Tk Application and live StringVars.
+            assert tuple(app.notebook.tab(tab, 'text') for tab in app.notebook.tabs()) == (
+                '① 选课首页', '② 手动官网备用', '③ 工具与日志')
+            for widget in (
+                app.portal_panel, app.portal_appointment_button,
+                app.session_check_button, app.tools_operations,
+                app.scheduled_preflight_button, app.school_page_button,
+                app.s202_result_button, app.course_plan_button,
+                app.s202_round_button, app.s202_score_button,
+                app.term_probe_button, app.config_entry, app.pick_button,
+                app.open_button, app.log_frame, app.log_box,
+            ):
+                assert widget.winfo_exists(), f'missing page widget: {widget}'
+            assert app.log_box.cget('state') == 'disabled'
+            assert app.advanced_panel.winfo_manager() == ''
+            app.toggle_advanced_panel()
+            assert app.notebook.select() == str(app.tab_tools)
+            assert app.advanced_panel.winfo_manager() == 'pack'
+            app.toggle_advanced_panel()
+            assert app.advanced_panel.winfo_manager() == ''
+            app.toggle_portal_panel()
+            assert app.notebook.select() == str(app.tab_manual)
+            app.notebook.select(app.tab_home)
+            assert app.scheduled_start_button.instate(['disabled'])
             assert len(app.table.get_children()) == 2
             with patch('core.client.httpx.AsyncClient', side_effect=AssertionError('demo attempted network')):
                 app.demo_next()
