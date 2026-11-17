@@ -2032,10 +2032,13 @@ def run_packaged_gui_smoke() -> None:
                     raise AssertionError("The first tab must be the selection homepage")
                 if app.portal_panel.winfo_manager() != "pack":
                     raise AssertionError("Manual backup must exist in its own tab")
-                if app.portal_panel.winfo_ismapped():
-                    raise AssertionError("Manual backup must not be visible on home")
-                if app.log_box.winfo_ismapped():
-                    raise AssertionError("Developer logs must not crowd the homepage")
+                # Canvas-embedded widgets may remain Tk-mapped inside a
+                # hidden Notebook tab. Their widget ancestry and the current
+                # Notebook selection are the actual isolation contract.
+                if not str(app.portal_panel).startswith(str(app.tab_manual) + "."):
+                    raise AssertionError("Manual backup must belong only to manual tab")
+                if not str(app.log_box).startswith(str(app.tab_tools) + "."):
+                    raise AssertionError("Developer log must belong only to Tools tab")
                 if app.status_bar.winfo_manager() != "pack":
                     raise AssertionError("The live status footer must remain visible")
                 app.toggle_portal_panel()
