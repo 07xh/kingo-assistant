@@ -47,7 +47,7 @@ class PageLayoutExtractionTests(TestCase):
         self.app.open_official_portal.assert_not_called()
         self.app.check_script_session.assert_not_called()
         self.assertTrue(any(
-            "不会自动提交" in str(call)
+            "登录、选课和提交都由你自己完成" in str(call)
             for call in label.call_args_list
         ))
 
