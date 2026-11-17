@@ -483,11 +483,14 @@ class Application(tk.Tk):
         The UI never imports browser cookies or sends school enrollment requests.
         Any permitted session check runs off the Tk main thread.
         """
+        # Identity probes must not race a fresh login or another read using
+        # the same in-memory account. The session-probe route stays distinct.
         if (self.worker or self.__dict__.get("scheduled_worker")
                 or self._session_check_in_progress or self._closing
-                or self.__dict__.get("_timetable_read_in_progress", False)
-                or self.__dict__.get("_school_page_read_in_progress", False)
-                or self.__dict__.get("_term_probe_in_progress", False)):
+                or self.__dict__.get("_native_login_in_progress", False)
+                or self.__dict__.get("_native_preparation_in_progress", False)
+                or _native_read_in_progress(self)
+                or self.__dict__.get("_live_polling", False)):
             return
         try:
             config = read_config(Path(self.path.get()), offline=True)
@@ -574,13 +577,7 @@ class Application(tk.Tk):
 
     def check_known_timetable(self) -> None:
         """Read the previously observed school timetable route, not electives."""
-        if (self.worker or self.__dict__.get("scheduled_worker")
-                or self._closing or self._native_login_in_progress
-                or self._native_preparation_in_progress
-                or self._session_check_in_progress
-                or self._timetable_read_in_progress
-                or self.__dict__.get("_school_page_read_in_progress", False)
-                or self.__dict__.get("_term_probe_in_progress", False)):
+        if _ncwu_read_busy(self, include_polling=True):
             return
         try:
             config = read_config(Path(self.path.get()), offline=True)
@@ -602,13 +599,7 @@ class Application(tk.Tk):
 
     def check_known_year_term(self) -> None:
         """One no-body POST to an observed school term API; never enrollment."""
-        if (self.worker or self.__dict__.get("scheduled_worker")
-                or self._closing or self._native_login_in_progress
-                or self._native_preparation_in_progress
-                or self._session_check_in_progress
-                or self._timetable_read_in_progress
-                or self._school_page_read_in_progress
-                or self._term_probe_in_progress):
+        if _ncwu_read_busy(self, include_polling=True):
             return
         try:
             config = read_config(Path(self.path.get()), offline=True)
@@ -634,13 +625,7 @@ class Application(tk.Tk):
 
     def check_known_school_results(self) -> None:
         """Check the HAR-observed selected-course HTML page, never submit."""
-        if (self.worker or self.__dict__.get("scheduled_worker")
-                or self._closing or self._native_login_in_progress
-                or self._native_preparation_in_progress
-                or self._session_check_in_progress
-                or self._timetable_read_in_progress
-                or self._school_page_read_in_progress
-                or self.__dict__.get("_term_probe_in_progress", False)):
+        if _ncwu_read_busy(self, include_polling=True):
             return
         try:
             config = read_config(Path(self.path.get()), offline=True)
