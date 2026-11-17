@@ -48,6 +48,7 @@ from core.official_portal_schedule import OfficialPortalAppointment, prepare_app
 from core.session_probe import SessionProbeResult, probe_own_session
 from core.native_preparation import NativePreparationResult, prepare_native_api
 from core.native_timetable import TimetableReadResult, read_known_timetable
+from core.ncwu_lesson_detail import LessonDetailResult, read_lesson_detail
 from core.known_school_pages import KnownSchoolPageResult, read_known_school_page, validate_known_page_contract
 from core.ncwu_term_probe import TermProbeResult, probe_known_year_term, validate_term_contract
 from core.native_login import NativeLoginResult
@@ -129,6 +130,7 @@ _NCWU_READ_FLAGS = (
     # Legacy read-only adapters use a different Cookie path and retain their
     # own HTTP contract. They still share the *session lifecycle* gate.
     "_timetable_read_in_progress",
+    "_lesson_detail_in_progress",
     "_school_page_read_in_progress",
     "_term_probe_in_progress",
 )
@@ -243,6 +245,7 @@ class Application(tk.Tk):
         self._session_check_in_progress = False
         self._native_preparation_in_progress = False
         self._timetable_read_in_progress = False
+        self._lesson_detail_in_progress = False
         self._school_page_read_in_progress = False
         self._term_probe_in_progress = False
         self._native_login_in_progress = False
@@ -269,6 +272,8 @@ class Application(tk.Tk):
         self.s202_score_status = tk.StringVar(value="S202 已选门数尚未核对；汇总数量不代表目标教学班已选中")
         self.course_plan_status = tk.StringVar(value="开课计划尚未读取；与正式正选列表和实时余量是不同数据源")
         self.timetable_read_status = tk.StringVar(value="此前 HAR 已确认课表 JSON 路径；请求参数和 EXE 会话待核验")
+        self.lesson_detail_semester = tk.StringVar(value="")
+        self.lesson_detail_status = tk.StringVar(value="新课表 AJAX 已定位；请输入官网学期，例如 2026-2027-1")
         self.school_page_status = tk.StringVar(value="旧 HAR 已确认网页地址；已选结果的动态查询参数仍待核验")
         self.term_probe_status = tk.StringVar(value="11月3日及14日 HAR 均观察到无需表单参数的学年学期接口")
         self.portal_appointment_status = tk.StringVar(value="官网预约未启动（与自动提交无关）")
@@ -597,6 +602,54 @@ class Application(tk.Tk):
             failure_message="课表读取线程启动失败；没有联网",
             event_kind="known_timetable", thread_name="KingoKnownTimetableRead",
         )
+
+    def check_lesson_detail(self) -> None:
+        """A one-shot schedule preview, independent of old WAP/selection APIs."""
+        if _ncwu_read_busy(self, include_polling=True):
+            return
+        if (not self._native_session_cookie
+                or self._native_session_origin != "jwmis.ncwu.edu.cn"):
+            self.lesson_detail_status.set("请先在 EXE 内登录本人教务账号")
+            return
+        semester = self.lesson_detail_semester.get().strip()
+        if not semester:
+            self.lesson_detail_status.set("请填写官网显示的学年学期（如 2026-2027-1）")
+            return
+        try:
+            config = read_config(Path(self.path.get()), offline=True)
+        except (OSError, ValueError, TypeError, KeyError):
+            self.lesson_detail_status.set("本机配置无效；未访问学校")
+            return
+        _start_ncwu_read_worker(
+            self, config=config, cookie=scoped_native_cookie(self, config),
+            read_call=lambda cfg, session_cookie: read_lesson_detail(
+                cfg, session_cookie=session_cookie, semester=semester),
+            fallback_factory=LessonDetailResult,
+            flag="_lesson_detail_in_progress", button=self.lesson_detail_button,
+            status_var=self.lesson_detail_status,
+            running_message="正在读取官网个人课表 AJAX；不查询可选课程或余量",
+            failure_message="课表读取线程启动失败；未访问学校",
+            event_kind="ncwu_lesson_detail", thread_name="KingoLessonDetailRead",
+        )
+
+    def show_lesson_detail_rows(self, result: LessonDetailResult) -> None:
+        """Display only in-memory school cells; never log/store their contents."""
+        popup = _open_readonly_popup(
+            self, title="华水个人课表 AJAX · 未独立核验",
+            size="1050x560", message=result.message, wraplength=990)
+        columns = ("weekday", "section", "content")
+        grid = _create_readonly_tree(
+            popup, columns=columns,
+            titles=("星期", "节次", "学校课表原始单元格"),
+            widths=(80, 80, 840), minwidth=65, height=19)
+        for cell in result.cells:
+            grid.insert("", "end", values=(
+                "一二三四五六日"[cell.weekday - 1], cell.section, cell.raw_text))
+        scroll = ttk.Scrollbar(popup, orient="vertical", command=grid.yview)
+        grid.configure(yscrollcommand=scroll.set)
+        scroll.pack(side="right", fill="y", padx=(0, 10), pady=(0, 10))
+        grid.pack(side="left", fill="both", expand=True, padx=(12, 0),
+                  pady=(0, 10))
 
     def check_known_year_term(self) -> None:
         """One no-body POST to an observed school term API; never enrollment."""
@@ -1636,6 +1689,19 @@ class Application(tk.Tk):
                     if result.code == "expired":
                         _invalidate_native_session(
                             self, "课表接口提示登录失效，请重新授权")
+                elif event.kind == "ncwu_lesson_detail":
+                    result = event.value
+                    _finish_ncwu_read_event(
+                        self, result, flag="_lesson_detail_in_progress",
+                        button=self.lesson_detail_button,
+                        status_var=self.lesson_detail_status,
+                        log_message=(f"官方课表 AJAX：{result.code}，"
+                                     f"节次={len(result.section_times)}，"
+                                     f"非空格={len(result.cells)}；未提交选课。"),
+                        expired_message="个人课表接口提示会话失效，请重新登录",
+                    )
+                    if result.code == "read":
+                        self.show_lesson_detail_rows(result)
                 elif event.kind == "known_year_term":
                     self._term_probe_in_progress = False
                     self.term_probe_button.configure(state="normal")
