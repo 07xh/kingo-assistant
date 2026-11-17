@@ -1866,6 +1866,26 @@ def run_packaged_gui_smoke() -> None:
                         raise AssertionError("Official entry inventory missing mobile app")
                 if len(app.table.get_children()) != 2:
                     raise AssertionError("Expected two placeholder courses in packaged template")
+                if not app.sidebar.winfo_exists():
+                    raise AssertionError("Compact visual sidebar missing")
+                if set(app.sidebar_buttons) != {"home", "manual", "tools"}:
+                    raise AssertionError("Three native sidebar destinations required")
+                if app.notebook.cget("style") != "Kingo.Content.TNotebook":
+                    raise AssertionError("Old top-tab layout still active")
+                if app.sidebar_buttons["home"].cget("bg") != "#4869E8":
+                    raise AssertionError("Home navigation should start selected")
+                app.sidebar_buttons["tools"].invoke()
+                app.update()
+                if app.notebook.select() != str(app.tab_tools):
+                    raise AssertionError("Tools sidebar failed to navigate")
+                if app.sidebar_buttons["tools"].cget("bg") != "#4869E8":
+                    raise AssertionError("Tools active navigation highlight missing")
+                app.notebook.select(app.tab_home)
+                app.update()
+                if app.sidebar_buttons["home"].cget("bg") != "#4869E8":
+                    raise AssertionError("Sidebar must sync with existing Notebook changes")
+                if app.scheduled_start_button.cget("style") == "KingoPrimary.TButton":
+                    raise AssertionError("Unverified submit must not appear as primary action")
                 # Regression for PR #19/#20 GUI composition: main previously
                 # referenced a deleted 'portal_row' frame and could not open.
                 if app.scheduled_preflight_button.winfo_manager() != "pack":
