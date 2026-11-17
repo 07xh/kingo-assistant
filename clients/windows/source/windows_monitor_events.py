@@ -6,7 +6,7 @@ destroy ordering remain in windows_gui.Application.poll.
 """
 from __future__ import annotations
 
-from typing import Callable, Mapping, Sequence
+from typing import Callable
 
 
 def apply_monitor_status(
