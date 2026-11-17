@@ -142,9 +142,10 @@ def _native_read_in_progress(app) -> bool:
 def _ncwu_read_busy(app, *, include_polling: bool = False) -> bool:
     return bool(
         app.worker or app.__dict__.get("scheduled_worker")
-        or app._closing or app._native_login_in_progress
-        or app._native_preparation_in_progress
-        or app._session_check_in_progress
+        or app.__dict__.get("_closing", False)
+        or app.__dict__.get("_native_login_in_progress", False)
+        or app.__dict__.get("_native_preparation_in_progress", False)
+        or app.__dict__.get("_session_check_in_progress", False)
         or _native_read_in_progress(app)
         or (include_polling and app.__dict__.get("_live_polling", False))
     )
