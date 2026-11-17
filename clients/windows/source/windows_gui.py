@@ -1947,6 +1947,18 @@ def run_packaged_gui_smoke() -> None:
                     raise AssertionError("Expected two placeholder courses in packaged template")
                 if not app.sidebar.winfo_exists():
                     raise AssertionError("Compact visual sidebar missing")
+                if app.minsize() != (880, 560):
+                    raise AssertionError("Compact window minimum size regressed")
+                for canvas, content in (
+                    (app.home_scroll_canvas, app._home_content),
+                    (app.tools_scroll_canvas, app._tools_content),
+                ):
+                    if not canvas.winfo_exists() or not content.winfo_exists():
+                        raise AssertionError("Scrollable page missing in frozen Tk GUI")
+                    if not str(canvas.cget("yscrollcommand")):
+                        raise AssertionError("Scrollable page has no linked scrollbar")
+                if not app.table.winfo_exists() or not app.log_box.winfo_exists():
+                    raise AssertionError("Scrollable pages lost their original controls")
                 if set(app.sidebar_buttons) != {"home", "manual", "tools"}:
                     raise AssertionError("Three native sidebar destinations required")
                 if app.notebook.cget("style") != "Kingo.Content.TNotebook":
