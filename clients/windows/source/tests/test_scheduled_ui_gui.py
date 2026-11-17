@@ -25,7 +25,7 @@ class ScheduledUiAdmissionTests(unittest.TestCase):
     def test_local_preflight_never_starts_school_client(self):
         with patch("windows_gui.read_config", return_value={"local": True}) as read, \
              patch("windows_gui.prepare_scheduled_plan", return_value=self.plan) as prepare, \
-             patch("windows_gui.KingoClient", side_effect=AssertionError("network")), \
+             patch("windows_monitor_runtime.KingoClient", side_effect=AssertionError("network")), \
              patch("windows_gui.messagebox.showinfo") as dialog:
             Application.inspect_scheduled_runner(self.app)
         read.assert_called_once()
