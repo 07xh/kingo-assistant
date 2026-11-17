@@ -295,18 +295,17 @@ def update_responsive_shell(owner, _event=None) -> None:
             widget = pending.pop()
             if isinstance(widget, ttk.Label):
                 try:
-                    wrap = int(widget.cget("wraplength"))
+                    current = int(widget.cget("wraplength"))
                 except (ValueError, tk.TclError):
-                    wrap = 0
-                if wrap >= 600 and wrap > usable:
-                    widget.configure(wraplength=usable)
-                elif wrap >= 300 and wrap < usable and not compact:
-                    # Do not force a wider size than the prior page contract.
-                    original = getattr(widget, "_kingo_wrap", None)
-                    if original:
-                        widget.configure(wraplength=min(original, usable))
-                if wrap >= 600 and not hasattr(widget, "_kingo_wrap"):
-                    widget._kingo_wrap = wrap
+                    current = 0
+                original = getattr(widget, "_kingo_original_wrap", None)
+                if original is None:
+                    original = current
+                    widget._kingo_original_wrap = original
+                if original >= 600:
+                    desired_wrap = min(original, usable)
+                    if current != desired_wrap:
+                        widget.configure(wraplength=desired_wrap)
             pending.extend(widget.winfo_children())
 
 
