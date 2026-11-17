@@ -22,6 +22,34 @@ def main():
                 '① 选课首页', '② 手动官网备用', '③ 工具与日志')
             assert app.sidebar.winfo_exists()
             assert app.visual_content.winfo_exists()
+            assert app.minsize() == (880, 560)
+            for viewport, body, bar in (
+                (app.home_scroll_canvas, app._home_content, app.home_scrollbar),
+                (app.tools_scroll_canvas, app._tools_content, app.tools_scrollbar),
+            ):
+                assert viewport.winfo_exists()
+                assert body.winfo_exists()
+                assert bar.winfo_exists()
+                assert viewport.cget('yscrollcommand')
+                assert len(viewport.find_all()) == 1
+            app.notebook.select(app.tab_home)
+            app.update_idletasks()
+            assert app.home_scroll_canvas.bbox('all') is not None
+            app.home_scroll_canvas.yview_moveto(1)
+            app.update_idletasks()
+            assert app.home_scroll_canvas.yview()[0] > 0, 'Home course table must be scroll-reachable'
+            assert app.table.winfo_exists()
+            app.home_scroll_canvas.yview_moveto(0)
+            app.notebook.select(app.tab_tools)
+            app.update_idletasks()
+            assert app.tools_scroll_canvas.bbox('all') is not None
+            app.tools_scroll_canvas.yview_moveto(1)
+            app.update_idletasks()
+            assert app.tools_scroll_canvas.yview()[0] > 0, 'Tool/log bottom must be scroll-reachable'
+            assert app.log_box.winfo_exists()
+            app.tools_scroll_canvas.yview_moveto(0)
+            app.notebook.select(app.tab_home)
+            app.update_idletasks()
             assert set(app.sidebar_buttons) == {'home', 'manual', 'tools'}
             assert app.notebook.cget('style') == 'Kingo.Content.TNotebook'
             assert app.sidebar.winfo_width() <= 110
