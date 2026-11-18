@@ -39,7 +39,9 @@ from windows_page_sections import build_home_page, build_manual_page, build_tool
 from windows_visual_shell import (
     apply_light_theme, make_visual_shell, connect_sidebar,
     make_scrollable_content, bind_page_wheel, bind_responsive_shell,
+    make_pill,
 )
+from windows_netops_panel import build_netops_panel
 from desktop_scheduled_worker import DesktopScheduledWorker
 from core.inspector import inspect_html
 from core.har_audit import summarize_har, format_summary
@@ -289,6 +291,7 @@ class Application(tk.Tk):
         manual_menu.add_command(label="切换到手动官网备用", command=self.toggle_portal_panel)
         menu.add_cascade(label="手动备用", menu=manual_menu)
         menu.add_command(label="工具与日志", command=lambda: self.notebook.select(self.tab_tools))
+        menu.add_command(label="网络与时间", command=self.show_netops)
         app_menu = tk.Menu(menu, tearoff=False)
         app_menu.add_command(label="显示/隐藏高级配置", command=self.toggle_advanced_panel)
         app_menu.add_command(label="最小化到系统托盘", command=self.close)
@@ -305,20 +308,24 @@ class Application(tk.Tk):
         apply_light_theme(self)
         main = make_visual_shell(self)
 
-        header = ttk.Frame(main, padding=(18, 16, 18, 12))
+        header = ttk.Frame(main, style="KingoHero.TFrame",
+                           padding=(20, 18, 20, 10))
         header.pack(fill="x")
+        actions = ttk.Frame(header, style="KingoHero.TFrame")
+        actions.pack(side="right", anchor="n")
         ttk.Button(
-            header, text="使用说明", command=self.show_function_guide,
+            actions, text="使用说明", command=self.show_function_guide,
             style="KingoQuiet.TButton",
-        ).pack(side="right", padx=(10, 0), pady=(5, 0))
+        ).pack(side="right", padx=(8, 0), pady=(6, 0))
+        self.header_state_text = tk.StringVar(value="只读模式")
+        self.header_state_pill = make_pill(actions, self.header_state_text, "ok")
+        self.header_state_pill.pack(side="right", pady=(7, 0))
         ttk.Label(
-            header, text="工作台  /  课程管理",
-            style="KingoSubtitle.TLabel",
+            header, text="工作台  /  课程管理", style="KingoMeta.TLabel",
         ).pack(anchor="w")
         ttk.Label(
-            header, text="KingoAssistant",
-            style="KingoTitle.TLabel",
-        ).pack(anchor="w", pady=(3, 0))
+            header, text="KingoAssistant", style="KingoHero.TLabel",
+        ).pack(anchor="w", pady=(2, 0))
         self.shell_subtitle = ttk.Label(
             header,
             text="原生登录与 S202 只读查询已实现 · 待本人账号验收  |  自动提交未接通",
@@ -355,6 +362,11 @@ class Application(tk.Tk):
         build_home_page(self)
         build_manual_page(self)
         build_tools_page(self)
+        # Tools-only measurement card. Built here, not inside the page module,
+        # so the page builders stay widget-for-widget unchanged.
+        self.netops = build_netops_panel(
+            self, self._tools_content, default_url=OFFICIAL_PORTAL)
+        self.netops.card.pack_configure(before=self.log_frame)
         bind_page_wheel(self.home_scroll_canvas, self._home_content)
         bind_page_wheel(self.tools_scroll_canvas, self._tools_content)
         connect_sidebar(self)
@@ -371,6 +383,18 @@ class Application(tk.Tk):
     def toggle_portal_panel(self) -> None:
         """Navigate to manual backup instead of hiding the controls."""
         self.notebook.select(self.tab_manual)
+
+    def show_netops(self) -> None:
+        """Scroll the Tools page to the network/time card; starts nothing."""
+        self.notebook.select(self.tab_tools)
+        panel = self.__dict__.get("netops")
+        card = getattr(panel, "card", None)
+        if card is None:
+            return
+        self.update_idletasks()
+        total = max(1, self._tools_content.winfo_height())
+        offset = min(1.0, max(0.0, card.winfo_y() / total))
+        self.tools_scroll_canvas.yview_moveto(offset)
 
     def show_function_guide(self) -> None:
         """Plain-language capability legend. No network or hidden actions."""
@@ -1910,6 +1934,9 @@ class Application(tk.Tk):
         self._official_portal_appointment = None
         self._portal_prelogin_opened = False
         self._tray.stop()
+        netops = self.__dict__.get("netops")
+        if netops is not None:
+            netops.close()
         if self.worker:
             self.worker.stop()
         scheduled = self.__dict__.get("scheduled_worker")
