@@ -53,6 +53,8 @@ class SubmissionTransportTests(unittest.IsolatedAsyncioTestCase):
             academic_year="2026",
             academic_term="0",
             round_id="ROUND-1",
+            target_course_code="COURSE-LOCAL",
+            target_teaching_class_id="INTERNAL-CLASS-ID",
             selected_item="SERVER-GENERATED-SINGLE-ITEM",
             item_binding_sha256=sha256(self.evidence).hexdigest(),
         )
@@ -75,6 +77,8 @@ class SubmissionTransportTests(unittest.IsolatedAsyncioTestCase):
             "config": {"base_url": "https://jwmis.ncwu.edu.cn"},
             "session_cookie": "JSESSIONID=synthetic-session",
             "prepared": self.prepared,
+            "expected_course_code": "COURSE-LOCAL",
+            "expected_internal_class_id": "INTERNAL-CLASS-ID",
             "current_internal_student_id": "OWN-LOCAL-ID",
             "current_academic_year": "2026",
             "current_academic_term": "0",
@@ -114,6 +118,8 @@ class SubmissionTransportTests(unittest.IsolatedAsyncioTestCase):
             {"current_round_id": "STALE-ROUND"},
             {"current_internal_student_id": "OTHER-ID"},
             {"current_academic_term": "1"},
+            {"expected_course_code": "OTHER-COURSE"},
+            {"expected_internal_class_id": "VISIBLE-SKBH-NOT-ID"},
             {"session_cookie": "JSESSIONID="},
             {"config": {"base_url": "http://jwmis.ncwu.edu.cn"}},
             {"config": {"base_url": "https://evil.example.invalid"}},
@@ -137,6 +143,7 @@ class SubmissionTransportTests(unittest.IsolatedAsyncioTestCase):
             with self.subTest(form=form), self.assertRaises(ValueError):
                 PreparedNCWUSubmission(
                     form, "OWN-LOCAL-ID", "2026", "0", "ROUND-1",
+                    "COURSE-LOCAL", "INTERNAL-CLASS-ID",
                     "SERVER-GENERATED-SINGLE-ITEM",
                     sha256(self.evidence).hexdigest(),
                 )
