@@ -41,6 +41,8 @@ class PreparedNCWUSubmission:
     academic_year: str
     academic_term: str
     round_id: str
+    target_course_code: str
+    target_teaching_class_id: str
     selected_item: str
     item_binding_sha256: str
 
@@ -74,6 +76,13 @@ class PreparedNCWUSubmission:
         ):
             if not isinstance(known, str) or not known or values[field] != known:
                 raise ValueError("字段与已核验的本人会话或选课项不一致")
+        # The selected item must be attached to exactly one verified *internal*
+        # teaching-class ID. The user-facing skbh is not interchangeable.
+        if (any(
+            not isinstance(value, str) or not value.strip() or len(value) > 100
+            for value in (self.target_course_code, self.target_teaching_class_id)
+        )):
+            raise ValueError("缺少明确课程代码或官网内部教学班 ID")
         # A multi-course or partially constructed "items" packet is not a
         # one-target attempt. The observed multi-item delimiter is '|'.
         if "|" in self.selected_item or len(self.selected_item) > 512:
@@ -88,6 +97,8 @@ async def submit_prepared_s202_once(
     config: Mapping, *,
     session_cookie: str | None,
     prepared: PreparedNCWUSubmission,
+    expected_course_code: str,
+    expected_internal_class_id: str,
     current_internal_student_id: str,
     current_academic_year: str,
     current_academic_term: str,
@@ -108,6 +119,9 @@ async def submit_prepared_s202_once(
     """
     if not isinstance(prepared, PreparedNCWUSubmission):
         raise EnrollmentNotReady("尚无经官网证实的单教学班提交表单")
+    if (expected_course_code != prepared.target_course_code
+            or expected_internal_class_id != prepared.target_teaching_class_id):
+        raise EnrollmentNotReady("当前志愿与原站已核验内部教学班 ID 不一致")
     if user_opted_in is not True or institution_permits_write is not True:
         raise EnrollmentNotReady("用户授权或学校自动写入许可未核实")
     if attestations is None:
