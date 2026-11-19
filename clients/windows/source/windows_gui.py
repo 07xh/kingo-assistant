@@ -1950,14 +1950,17 @@ def run_packaged_gui_smoke() -> None:
                     raise AssertionError("Compact visual sidebar missing")
                 if app.minsize() != (880, 560):
                     raise AssertionError("Compact window minimum size regressed")
-                for canvas, content in (
-                    (app.home_scroll_canvas, app._home_content),
-                    (app.tools_scroll_canvas, app._tools_content),
-                ):
-                    if not canvas.winfo_exists() or not content.winfo_exists():
-                        raise AssertionError("Scrollable page missing in frozen Tk GUI")
-                    if not str(canvas.cget("yscrollcommand")):
-                        raise AssertionError("Scrollable page has no linked scrollbar")
+                # The home workbench is deliberately fixed-height and uses
+                # the course table's own scrollbar; only diagnostics scroll.
+                if app._home_content is not app.tab_home:
+                    raise AssertionError("Home workbench must use the direct Notebook viewport")
+                if app.home_scroll_canvas is not None or app.home_scrollbar is not None:
+                    raise AssertionError("Home must not nest a page scrollbar around its course table")
+                canvas, content = app.tools_scroll_canvas, app._tools_content
+                if not canvas.winfo_exists() or not content.winfo_exists():
+                    raise AssertionError("Scrollable diagnostics page missing in frozen Tk GUI")
+                if not str(canvas.cget("yscrollcommand")):
+                    raise AssertionError("Diagnostics page has no linked scrollbar")
                 if not app.table.winfo_exists() or not app.log_box.winfo_exists():
                     raise AssertionError("Scrollable pages lost their original controls")
                 if set(app.sidebar_buttons) != {"home", "manual", "tools"}:
