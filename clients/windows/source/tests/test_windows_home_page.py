@@ -1,8 +1,7 @@
-"""The complete Home widget tree keeps its state on Application.
+"""The compact Bypass-inspired workbench keeps state on Application.
 
-This is a layout-only refactor. Neither the view builder nor calling it
-may read the university API, enable unverified enrollment, or create an
-independent controller/store.
+The view is layout-only: it may bind existing callbacks, but it must never
+read the university API, enable unverified enrollment, or create a new store.
 """
 from unittest import TestCase
 from unittest.mock import Mock, patch
@@ -43,19 +42,24 @@ class HomePageViewTests(TestCase):
             build_home_page(self.app)
             return frame, label, tree, scrollbar, variable
 
-    def test_three_home_steps_are_preserved_in_one_owner(self):
+    def test_workbench_groups_share_one_toolbar_and_keep_course_table_central(self):
         _, _, tree, scrollbar, variable = self._render()
         self.assertEqual(
             [group[2]["text"] for group in self.groups],
             [
-                "第 1 步  ·  课程与志愿（本地可用）",
-                "第 2 步  ·  软件内登录（协议已接入 · 待实机验收）",
-                "第 3 步  ·  课程余量监测（只读）",
+                "课程方案",
+                "账号与数据",
+                "监测控制",
                 "目标课程列表 · 本地配置 / 只读状态",
             ],
         )
+        for index, (group, _parent, _kwargs) in enumerate(self.groups[:3]):
+            group.grid.assert_called_once()
+            self.assertEqual(group.grid.call_args.kwargs["row"], 0)
+            self.assertEqual(group.grid.call_args.kwargs["column"], index)
+            self.assertEqual(group.grid.call_args.kwargs["sticky"], "nsew")
+
         self.assertIs(self.app.course_frame, self.groups[3][0])
-        self.assertIs(self.app.action_panel, self.app.action_panel)
         self.assertIs(self.app.table, tree.return_value)
         self.assertIs(self.app.enrollment_gate_status, variable.return_value)
         variable.assert_called_once_with(
@@ -64,12 +68,13 @@ class HomePageViewTests(TestCase):
         self.assertEqual(tree.call_args.kwargs, {
             "columns": ("key", "course", "class_id", "teacher", "status"),
             "show": "headings",
+            "height": 12,
         })
         self.assertIs(tree.call_args.args[0], self.app.course_frame)
         scrollbar.assert_called_once()
         self.assertEqual(
             [call.kwargs["text"] for call in tree.return_value.heading.call_args_list],
-            ["志愿", "课程 / 代码", "教学班", "任课教师", "查询结果"],
+            ["志愿", "课程 / 代码", "教学班", "任课教师", "监测状态"],
         )
         self.assertEqual(
             [call.kwargs["width"] for call in tree.return_value.column.call_args_list],
@@ -80,22 +85,22 @@ class HomePageViewTests(TestCase):
             for call in tree.return_value.column.call_args_list
         ))
 
-    def test_every_home_button_uses_owner_callback_without_invoking_it(self):
+    def test_every_workbench_button_uses_original_owner_callback(self):
         self._render()
         bindings = {
-            "填写 / 修改目标课程": "edit_settings",
-            "管理课程方案": "manage_plans",
-            "在 EXE 登录本人教务账号": "start_native_login",
-            "检查登录与课程数据（只读）": "check_native_preparation",
-            "清除登录状态": "clear_native_session",
-            "读取本人课表（既有接口 · 只读）": "check_known_timetable",
-            "实时读取可选课程（S202 · 只读）": "check_live_catalog",
-            "开始自动刷新（≥60秒）": "toggle_live_polling",
-            "开始查询课程余量": "start_monitor",
-            "停止查询": "stop_monitor",
-            "检查是否具备运行条件": "preflight",
-            "自动提交（暂不可用）": "start_scheduled_enrollment",
-            "取消自动计划": "stop_scheduled_enrollment",
+            "编辑目标课程": "edit_settings",
+            "课程方案": "manage_plans",
+            "登录教务账号": "start_native_login",
+            "核验登录与数据": "check_native_preparation",
+            "清除登录": "clear_native_session",
+            "读取本人课表": "check_known_timetable",
+            "读取 S202 目录": "check_live_catalog",
+            "自动刷新": "toggle_live_polling",
+            "开始只读监测": "start_monitor",
+            "停止监测": "stop_monitor",
+            "离线预检": "preflight",
+            "自动提交（未接入）": "start_scheduled_enrollment",
+            "取消计划": "stop_scheduled_enrollment",
         }
         self.assertEqual(set(self.buttons), set(bindings))
         for text, name in bindings.items():
@@ -104,16 +109,23 @@ class HomePageViewTests(TestCase):
                 self.assertIs(kwargs["command"], getattr(self.app, name))
                 getattr(self.app, name).assert_not_called()
                 widget.pack.assert_called()
-        for name in ("自动提交（暂不可用）", "取消自动计划", "停止查询"):
+        for name in ("自动提交（未接入）", "取消计划", "停止监测"):
             self.assertEqual(self.buttons[name][1]["state"], "disabled")
-        self.assertIs(self.app.native_login_button, self.buttons["在 EXE 登录本人教务账号"][0])
-        self.assertIs(self.app.live_catalog_button, self.buttons["实时读取可选课程（S202 · 只读）"][0])
-        self.assertIs(self.app.live_poll_button, self.buttons["开始自动刷新（≥60秒）"][0])
-        self.assertIs(self.app.start_button, self.buttons["开始查询课程余量"][0])
-        self.assertIs(self.app.scheduled_start_button, self.buttons["自动提交（暂不可用）"][0])
-        self.assertIs(self.app.scheduled_stop_button, self.buttons["取消自动计划"][0])
 
-    def test_home_statuses_still_use_existing_tk_variables_and_copy_shortcut(self):
+        self.assertIs(self.app.edit_button, self.buttons["编辑目标课程"][0])
+        self.assertIs(self.app.plans_button, self.buttons["课程方案"][0])
+        self.assertIs(self.app.native_login_button, self.buttons["登录教务账号"][0])
+        self.assertIs(self.app.native_prepare_button, self.buttons["核验登录与数据"][0])
+        self.assertIs(self.app.native_clear_button, self.buttons["清除登录"][0])
+        self.assertIs(self.app.timetable_read_button, self.buttons["读取本人课表"][0])
+        self.assertIs(self.app.live_catalog_button, self.buttons["读取 S202 目录"][0])
+        self.assertIs(self.app.live_poll_button, self.buttons["自动刷新"][0])
+        self.assertIs(self.app.start_button, self.buttons["开始只读监测"][0])
+        self.assertIs(self.app.stop_button, self.buttons["停止监测"][0])
+        self.assertIs(self.app.scheduled_start_button, self.buttons["自动提交（未接入）"][0])
+        self.assertIs(self.app.scheduled_stop_button, self.buttons["取消计划"][0])
+
+    def test_statuses_and_copy_shortcuts_keep_existing_variables_and_behavior(self):
         _, label, tree, _, _ = self._render()
         used_vars = [call.kwargs.get("textvariable") for call in label.call_args_list]
         for name in (
@@ -123,13 +135,14 @@ class HomePageViewTests(TestCase):
         ):
             with self.subTest(name=name):
                 self.assertIn(getattr(self.app, name), used_vars)
-        tree.return_value.bind.assert_called_once()
-        bind = tree.return_value.bind.call_args
-        self.assertEqual(bind.args[0], "<Double-1>")
-        bind.args[1](object())
+
+        bindings = tree.return_value.bind.call_args_list
+        self.assertEqual([call.args[0] for call in bindings],
+                         ["<Double-1>", "<Control-c>"])
+        bindings[0].args[1](object())
         self.app.copy_selected_field.assert_called_once_with("course_id")
 
-    def test_view_does_not_call_school_or_start_workers(self):
+    def test_rendering_does_not_call_school_or_start_workers(self):
         _, labels, _, _, _ = self._render()
         for name in (
             "start_native_login", "check_native_preparation",
@@ -138,8 +151,8 @@ class HomePageViewTests(TestCase):
         ):
             getattr(self.app, name).assert_not_called()
         self.assertTrue(any(
-            "待本人账号验收" in str(c)
-            for c in labels.call_args_list))
+            "自动提交尚未接入" in str(call)
+            for call in labels.call_args_list))
         self.assertTrue(callable(Application._build))
 
 
