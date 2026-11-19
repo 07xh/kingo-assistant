@@ -11,6 +11,7 @@ from core.ncwu_live_elective import (
     _extract_query_form, live_s202_snapshot,
 )
 from core.ncwu_elective_table import EXPECTED_HEADINGS
+from core.latency import LatencyRecorder
 
 
 COOKIE = "JSESSIONID=SYNTHETIC_SESSION_12345"
@@ -59,7 +60,7 @@ def catalog(*, row=True):
     ).encode("gbk")
 
 
-def run(handler, config=None, cookie=COOKIE):
+def run(handler, config=None, cookie=COOKIE, recorder=None):
     seen = []
     def handle(request):
         seen.append(request)
@@ -71,6 +72,7 @@ def run(handler, config=None, cookie=COOKIE):
             follow_redirects=False,
         ),
         enforce_manual_cooldown=False,
+        latency_recorder=recorder,
     ))
     return result, seen
 
@@ -99,6 +101,43 @@ class LiveS202Tests(TestCase):
             return httpx.Response(200, content=catalog(),
                 headers={"content-type": "text/html; charset=GBK"})
         self.fail("Unexpected request " + request.url.path)
+
+    def test_three_s202_reads_record_anonymous_transport_phases(self):
+        recorder = LatencyRecorder(None)
+        result, requests = run(self.handler, recorder=recorder)
+        self.assertEqual(result.code, "catalog_read")
+        self.assertEqual(len(requests), 3)
+        self.assertEqual([s.kind for s in recorder.samples],
+                         ["s202_page", "s202_window", "s202_catalog"])
+        self.assertEqual([s.status for s in recorder.samples], [200, 200, 200])
+        for sample in recorder.samples:
+            fields = sample.to_mapping()
+            self.assertGreaterEqual(fields["total_ms"], fields["request_ms"])
+            self.assertEqual(fields["note"], "http_transport_only")
+            self.assertEqual(fields["decode_ms"], 0)
+            self.assertEqual(fields["parse_ms"], 0)
+            self.assertNotIn("SYNTHETIC_SESSION", str(fields))
+            self.assertNotIn("SESSION_SCOPED_VALUE", str(fields))
+            self.assertNotIn("SYNTHETIC_COURSE", str(fields))
+
+    def test_missing_session_records_no_transport_sample(self):
+        recorder = LatencyRecorder(None)
+        result, requests = run(
+            lambda req: self.fail("network not expected"),
+            cookie="", recorder=recorder)
+        self.assertEqual(result.code, "missing_session")
+        self.assertEqual(requests, [])
+        self.assertEqual(recorder.samples, [])
+
+    def test_transport_rejection_is_recorded_without_retry(self):
+        recorder = LatencyRecorder(None)
+        result, requests = run(
+            lambda req: httpx.Response(429, headers={"Retry-After": "75"}),
+            recorder=recorder)
+        self.assertEqual(result.code, "restricted")
+        self.assertEqual(len(requests), 1)
+        self.assertEqual([s.status for s in recorder.samples], [429])
+        self.assertEqual([s.kind for s in recorder.samples], ["s202_page"])
 
     def test_real_read_flow_with_closed_window_still_fetches_catalog(self):
         result, requests = run(self.handler)

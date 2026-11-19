@@ -5,6 +5,7 @@ from unittest import TestCase
 from unittest.mock import AsyncMock, Mock, patch
 
 from core.ncwu_live_elective import LiveElectiveSnapshot
+from core.latency import LatencyRecorder
 from windows_gui import Application, MonitorEvent
 
 
@@ -41,8 +42,12 @@ class LiveCatalogGuiRefactorTests(TestCase):
             self.assertEqual(
                 thread.call_args.kwargs["name"], "KingoLiveS202Query")
             thread.call_args.kwargs["target"]()
-        read.assert_awaited_once_with(
-            cfg, session_cookie="JSESSIONID=LOCAL_SYNTHETIC")
+        read.assert_awaited_once()
+        self.assertEqual(read.await_args.args, (cfg,))
+        self.assertEqual(read.await_args.kwargs["session_cookie"],
+                         "JSESSIONID=LOCAL_SYNTHETIC")
+        self.assertIsInstance(read.await_args.kwargs["latency_recorder"],
+                              LatencyRecorder)
         event = app.events.get_nowait()
         self.assertEqual(event.kind, "ncwu_live_catalog")
         self.assertIs(event.value, async_result)
