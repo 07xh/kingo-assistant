@@ -59,14 +59,20 @@ async def run_enrollment(engine, targets: Sequence[Target], *,
         for fsm in fsms.values():
             fsm.move(EngineState.PREFLIGHT, "start")
         try:
-            window = await engine._window()
-            if window is not WindowState.OPEN:
-                label = ("学校选课窗口未开放" if window is WindowState.CLOSED
-                         else "无法确认学校选课窗口")
-                for target in targets:
-                    states[target.key] = label
-                    fsms[target.key].move(EngineState.PROTECTED, "window_unavailable")
-                return report(True)
+            # ScheduledEnrollmentRunner has just observed an explicit OPEN
+            # from the same trusted gateway. Direct callers still check the
+            # official window here. Every write *always* makes its own fresh
+            # window check below; this flag cannot bypass that final gate.
+            if scheduler_window_open is not True:
+                window = await engine._window()
+                if window is not WindowState.OPEN:
+                    label = ("学校选课窗口未开放" if window is WindowState.CLOSED
+                             else "无法确认学校选课窗口")
+                    for target in targets:
+                        states[target.key] = label
+                        fsms[target.key].move(
+                            EngineState.PROTECTED, "window_unavailable")
+                    return report(True)
 
             # Enrolled records must be explicitly scoped to this semester.
             if getattr(engine.gateway, "enrollment_semester", None) != engine.journal.semester:
