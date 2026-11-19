@@ -32,6 +32,10 @@ _CODE_HEADERS = frozenset(("课程代码", "课程编号", "课程号"))
 _CLASS_HEADERS = frozenset(("教学班号", "上课班号", "上课班级编号"))
 _NAME_HEADERS = frozenset(("课程名称", "课程名"))
 _TEACHER_HEADERS = frozenset(("任课教师", "教师", "授课教师"))
+# The November 14 firsthand HAR shows display-only S202 results with
+# <thead><td> headers. These are structural hints, never exact identity.
+_DISPLAY_COURSE = "课程"
+_DISPLAY_CLASS = frozenset(("上课班级", "上课班级名称"))
 
 
 @dataclass(frozen=True)
@@ -48,6 +52,7 @@ class S202ReadbackResult:
     table_count: int = 0
     recognized_tables: int = 0
     candidates: tuple[CandidateSelectedCourse, ...] = ()
+    display_only_tables: int = 0
 
     @property
     def message(self) -> str:
@@ -56,6 +61,9 @@ class S202ReadbackResult:
                 f"已读取官网 S202 已选结果页面；发现 {self.table_count} 张表，"
                 f"{self.recognized_tables} 张含明确课程/班级字段，"
                 f"提取 {len(self.candidates)} 条候选记录。"
+                f"另发现 {self.display_only_tables} 张仅含展示列的课程表；"
+                "这种表有课程名称、显示班级等信息，但不含可核实的课程代码"
+                "与内部教学班 ID。未识别出候选不等于未选课，"
                 "字段未经现场逐行验收，不能据此认定最终选课成功。"
             )
         return {
@@ -97,7 +105,21 @@ def parse_s202_readback(html: str) -> S202ReadbackResult:
         return S202ReadbackResult("unrecognized")
     records: list[CandidateSelectedCourse] = []
     recognized = 0
+    display_only = 0
     for table in tables:
+        # Do not recursively inspect outer navigation tables containing nested
+        # results tables; only a directly owned THEAD can describe this table.
+        theads = table.find_all("thead", recursive=False)
+        if len(theads) == 1:
+            headings = [
+                cell.get_text(" ", strip=True).replace(" ", "")
+                for tr in theads[0].find_all("tr")
+                for cell in tr.find_all(("td", "th"), recursive=False)
+            ]
+            if (_DISPLAY_COURSE in headings
+                    and any(label in headings for label in _DISPLAY_CLASS)
+                    and _find_header_index(headings, _CODE_HEADERS) is None):
+                display_only += 1
         headers = table.find_all("th")
         if not headers or len(headers) > 40:
             continue
@@ -129,7 +151,8 @@ def parse_s202_readback(html: str) -> S202ReadbackResult:
         if len(records) >= 200:
             break
     return S202ReadbackResult(
-        "page_observed", len(tables), recognized, tuple(records))
+        "page_observed", len(tables), recognized, tuple(records),
+        display_only_tables=display_only)
 
 
 async def read_s202_selected_results(

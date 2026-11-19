@@ -21,3 +21,19 @@ and invalid config, plus Tk callback/widget data flow.
 
 Production authoritative readback still requires a verified personal
 account+semester+internal-class record contract and separate acceptance.
+
+## Historical 2026-11-14 HAR, structural-only acceptance
+
+The owner's earlier NCWU HAR was inspected locally, without uploading it to
+the public repository or retaining request/response values in this patch.
+The observed S202 result-page HTML contains a direct `thead` with `td`
+display headers such as `课程` and `上课班级`, not the strict
+`课程代码` and independently confirmed internal class ID required for
+authoritative readback.
+
+The parser now reports a separate count of such **display-only tables**.
+Nested navigation tables are excluded from double counting. When there are
+no trustworthy candidate rows, the Windows UI explains the schema gap instead
+of implying there are no selected courses. No display-only table is converted
+into `EnrollmentEngine.read_enrollments()` records, and no private HAR data
+is committed. Synthetic HTML fixtures reproduce the table structure only.

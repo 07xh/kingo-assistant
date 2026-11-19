@@ -952,6 +952,13 @@ class Application(tk.Tk):
     def show_s202_candidate_results(self, result: S202ReadbackResult) -> None:
         """Compare candidate display rows to local preferences, never mark success."""
         if not result.candidates:
+            if result.display_only_tables:
+                messagebox.showinfo(
+                    "S202 结果页发现展示表，但没有可靠班级身份",
+                    result.message + "\n\n请核对官方选课结果。"
+                    "此页面展示的上课班级不是已验收的内部教学班 ID，"
+                    "不能据此更新本机成功状态。",
+                )
             return
         popup = _open_readonly_popup(
             self, title="S202 已选结果候选记录 · 待官网核对",

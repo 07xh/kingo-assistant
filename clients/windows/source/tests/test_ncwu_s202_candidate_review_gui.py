@@ -53,3 +53,14 @@ class CandidateReviewGuiTests(TestCase):
         self.assertIn("未建立候选关联",
                       tree.return_value.insert.call_args.kwargs["values"])
         button.assert_not_called()
+
+    def test_display_only_rows_explain_missing_identity_not_empty_results(self):
+        result = S202ReadbackResult("page_observed", 2, 0, (),
+                                    display_only_tables=1)
+        with patch("windows_gui.messagebox.showinfo") as notice, \
+             patch("windows_gui._open_readonly_popup") as popup:
+            Application.show_s202_candidate_results(self.app, result)
+        notice.assert_called_once()
+        popup.assert_not_called()
+        self.assertIn("未识别出候选不等于未选课",
+                      str(notice.call_args))
