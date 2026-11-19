@@ -17,6 +17,9 @@ import httpx
 
 from core.client import KingoClient
 from core.native_timetable import _own_cookie
+from core.ncwu_known_result_candidates import (
+    HistoricalClassCandidate, inspect_known_result_candidates,
+)
 from core.request_budget import build_verified_budget
 
 HOST = "jwmis.ncwu.edu.cn"
@@ -34,6 +37,8 @@ class KnownSchoolPageResult:
     page_kind: str
     table_count: int = 0
     row_count: int = 0
+    candidates: tuple[HistoricalClassCandidate, ...] = ()
+    recognized_identity_tables: int = 0
 
     @property
     def message(self) -> str:
@@ -41,7 +46,9 @@ class KnownSchoolPageResult:
             kind = "本人课表入口" if self.page_kind == "timetable_entry" else "已选课程结果"
             return (
                 f"EXE 已读取华水{kind}页面：识别到 {self.table_count} 个表格、"
-                f"{self.row_count} 条表格行（仅结构计数）。"
+                f"{self.row_count} 条表格行。"
+                f"其中 {self.recognized_identity_tables} 张表有内部教学班字段，"
+                f"可查看 {len(self.candidates)} 条 kcdm/skbjdm 候选记录。"
                 "不能据此认定身份已独立验证、选课成功或仍有名额。"
             )
         return {
@@ -203,9 +210,22 @@ async def read_known_school_page(
                 return KnownSchoolPageResult("invalid_response", page_kind)
             parser = _TableShape()
             parser.feed(decoded)
-            if not parser.matches(page_kind, decoded):
+            inspected = (inspect_known_result_candidates(decoded)
+                         if page_kind == "selected_results" else None)
+            # The Nov 3 firsthand response uses TD-only table headings, while
+            # _TableShape originally counted only TH headings. A strict
+            # recognized paired-ID table is an alternate shape, NOT proof of
+            # enrollment or permission to ignore the request contract.
+            matched = parser.matches(page_kind, decoded)
+            if inspected is not None and inspected.recognized_tables:
+                matched = True
+            if not matched:
                 return KnownSchoolPageResult("invalid_response", page_kind)
             return KnownSchoolPageResult(
-                "shape_observed", page_kind, parser.tables, parser.rows)
+                "shape_observed", page_kind, parser.tables, parser.rows,
+                candidates=inspected.candidate_rows if inspected is not None else (),
+                recognized_identity_tables=(
+                    inspected.recognized_tables if inspected is not None else 0),
+            )
     except Exception:
         return KnownSchoolPageResult("unavailable", page_kind)

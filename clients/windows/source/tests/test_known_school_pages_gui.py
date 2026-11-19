@@ -57,6 +57,24 @@ class SchoolResultsGuiTests(TestCase):
         self.assertEqual(event.value.table_count, 1)
         self.assertTrue(current._school_page_read_in_progress)
 
+    def test_known_exact_field_candidates_are_display_only(self):
+        from core.ncwu_known_result_candidates import HistoricalClassCandidate
+        current = app()
+        result = KnownSchoolPageResult(
+            "shape_observed", "selected_results", 1, 2,
+            candidates=(HistoricalClassCandidate(
+                "C101", "INTERNAL-SKBJDM", "未核验"),),
+            recognized_identity_tables=1,
+        )
+        with patch("windows_gui._open_readonly_popup") as popup, \
+             patch("windows_gui._create_readonly_tree") as tree:
+            Application.show_known_result_candidates(current, result)
+        popup.assert_called_once()
+        self.assertEqual(tree.return_value.insert.call_count, 1)
+        self.assertIn("INTERNAL-SKBJDM",
+                      tree.return_value.insert.call_args.kwargs["values"])
+        self.assertNotIn("成功", result.message)
+
     def test_blocked_when_timetable_active(self):
         current = app()
         current._timetable_read_in_progress = True

@@ -738,6 +738,25 @@ class Application(tk.Tk):
             event_kind="known_school_results", thread_name="KingoKnownSchoolResults",
         )
 
+    def show_known_result_candidates(self, result: KnownSchoolPageResult) -> None:
+        """Display historical kcdm/skbjdm candidates; never certify success."""
+        if not result.candidates:
+            return
+        popup = _open_readonly_popup(
+            self, title="青果本人选课结果 · 内部教学班候选（尚未独立验收）",
+            size="880x480", message=result.message, wraplength=830,
+        )
+        table = _create_readonly_tree(
+            popup, columns=("code", "internal", "state"),
+            titles=("课程代码 kcdm", "内部教学班 skbjdm（候选）", "官网展示状态"),
+            widths=(240, 300, 240), minwidth=105, height=15,
+        )
+        for item in result.candidates:
+            table.insert("", "end", values=(
+                item.course_code, item.internal_class_id, item.displayed_status,
+            ))
+        table.pack(fill="both", expand=True, padx=12, pady=(0, 14))
+
     def check_course_plan(self) -> None:
         """One snapshot of historical NCWU 5327042 course-plan rows."""
         if _ncwu_read_busy(self, include_polling=True):
@@ -1879,6 +1898,8 @@ class Application(tk.Tk):
                     if result.code == "expired":
                         _invalidate_native_session(
                             self, "学校页面提示登录失效，请重新授权")
+                    if result.code == "shape_observed" and result.candidates:
+                        self.show_known_result_candidates(result)
                 elif event.kind == "native_preparation":
                     self._native_preparation_in_progress = False
                     self.native_prepare_button.configure(state="normal")
