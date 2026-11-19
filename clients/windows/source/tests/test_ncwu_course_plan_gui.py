@@ -39,14 +39,12 @@ class CoursePlanButtonTests(TestCase):
              patch("windows_gui.threading.Thread") as thread, \
              patch("windows_gui.read_current_course_plan",
                    new_callable=AsyncMock,
-                   return_value=PlanSnapshot("read", (), 0, "table")) as read, \
-             patch("windows_gui.webbrowser.open") as browser:
+                   return_value=PlanSnapshot("read", (), 0, "table")) as read:
             Application.check_course_plan(self.app)
             thread.assert_called_once()
             self.assertEqual(thread.call_args.kwargs["name"],
                              "KingoCoursePlanRead")
             thread.call_args.kwargs["target"]()
-            browser.assert_not_called()
         read.assert_awaited_once_with(
             cfg, session_cookie="JSESSIONID=LOCAL_ONLY")
         event = self.app.events.get_nowait()

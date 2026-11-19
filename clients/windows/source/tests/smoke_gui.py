@@ -16,10 +16,9 @@ def main():
             app = Application()
             app.withdraw()
             app.update()
-            # Assert independently extracted Manual and Tools layouts are still
-            # attached to the same Tk Application and live StringVars.
+            # Assert only Home and Tools layouts are attached to the Tk Application.
             assert tuple(app.notebook.tab(tab, 'text') for tab in app.notebook.tabs()) == (
-                '① 选课首页', '② 手动官网备用', '③ 工具与日志')
+                '① 选课首页', '② 工具与日志')
             assert app.sidebar.winfo_exists()
             assert app.visual_content.winfo_exists()
             assert app.minsize() == (880, 560)
@@ -50,14 +49,10 @@ def main():
             app.tools_scroll_canvas.yview_moveto(0)
             app.notebook.select(app.tab_home)
             app.update_idletasks()
-            assert set(app.sidebar_buttons) == {'home', 'manual', 'tools'}
+            assert set(app.sidebar_buttons) == {'home', 'tools'}
             assert app.notebook.cget('style') == 'Kingo.Content.TNotebook'
             assert app.sidebar.winfo_width() <= 110
             assert app.sidebar_buttons['home'].cget('bg') == '#4869E8'
-            app.sidebar_buttons['manual'].invoke()
-            app.update()
-            assert app.notebook.select() == str(app.tab_manual)
-            assert app.sidebar_buttons['manual'].cget('bg') == '#4869E8'
             app.sidebar_buttons['tools'].invoke()
             app.update()
             assert app.notebook.select() == str(app.tab_tools)
@@ -69,7 +64,6 @@ def main():
             assert app.native_login_button.cget('style') == 'KingoPrimary.TButton'
             assert app.start_button.cget('style') == 'KingoPrimary.TButton'
             for widget in (
-                app.portal_panel, app.portal_appointment_button,
                 app.session_check_button, app.tools_operations,
                 app.scheduled_preflight_button, app.school_page_button,
                 app.s202_result_button, app.course_plan_button,
@@ -85,9 +79,6 @@ def main():
             assert app.advanced_panel.winfo_manager() == 'pack'
             app.toggle_advanced_panel()
             assert app.advanced_panel.winfo_manager() == ''
-            app.toggle_portal_panel()
-            assert app.notebook.select() == str(app.tab_manual)
-            app.notebook.select(app.tab_home)
             assert app.scheduled_start_button.instate(['disabled'])
             assert app.scheduled_stop_button.instate(['disabled'])
             assert app.stop_button.instate(['disabled'])
@@ -137,9 +128,6 @@ def main():
             with patch('windows_gui.messagebox.showwarning') as showwarning:
                 assert app.copy_selected_field('course_id') is False
                 showwarning.assert_called_once()
-            with patch('windows_gui.webbrowser.open', return_value=True) as web_open:
-                app.open_official_portal()
-                web_open.assert_called_once_with('https://jwmis.ncwu.edu.cn')
             editor = SettingsEditor(app, Path(app.path.get()), app.check_config)
             editor.withdraw()
             editor.update()
@@ -169,12 +157,9 @@ def main():
             app.table.selection_set('A')
             assert app.copy_selected_field('course_id') is True
             assert app.clipboard_get() == 'LOCAL_TEST_101'
-            with patch('windows_gui.webbrowser.open', return_value=True) as browser:
-                app.prepare_selected_course()
-                browser.assert_called_once_with('https://jwmis.ncwu.edu.cn')
             assert app.clipboard_get() == 'LOCAL_TEST_101'
             app.close()
-            print('PASS: Tk init + 3-step offline fictional demo + user config restore + school browser link + editor + atomic save + close')
+            print('PASS: Tk init + API-only navigation + offline demo + user config restore + editor + atomic save + close')
 
 
 if __name__ == '__main__':

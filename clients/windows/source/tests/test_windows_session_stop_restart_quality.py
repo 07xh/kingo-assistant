@@ -33,7 +33,7 @@ def app():
         status=Mock(), log=Mock(), populate=Mock(),
         path=SimpleNamespace(get=lambda: "config.yaml"),
         events=queue.Queue(), poll=Mock(), after=Mock(), after_cancel=Mock(),
-        _tick_portal_appointment=Mock(), check_live_catalog=Mock(),
+        check_live_catalog=Mock(),
         stop_live_polling=Mock(),
         show_live_catalog_rows=Mock(),
     )

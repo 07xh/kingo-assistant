@@ -16,7 +16,6 @@ class ResponsiveShellTests(TestCase):
         owner.winfo_height.return_value = height
         owner.shell_subtitle.winfo_manager.return_value = "pack"
         owner.tab_home.winfo_children.return_value = []
-        owner.tab_manual.winfo_children.return_value = []
         owner.tab_tools.winfo_children.return_value = []
         return owner
 

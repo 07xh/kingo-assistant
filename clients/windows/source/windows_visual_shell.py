@@ -1,7 +1,7 @@
 """Compact LightC-style visual shell for the existing Tk application.
 
 No network, configuration, background work, or course state lives here.
-The original ttk.Notebook and its three tabs remain the navigation source of
+The original ttk.Notebook and its two API-only tabs remain the navigation source of
 truth; sidebar highlights only mirror the currently selected tab.
 """
 from __future__ import annotations
@@ -26,7 +26,6 @@ PALETTE = {
 
 NAV_SECTIONS = (
     ("home", "⌂", "首页", "tab_home"),
-    ("manual", "↗", "官网", "tab_manual"),
     ("tools", "☷", "工具", "tab_tools"),
 )
 
@@ -289,7 +288,7 @@ def update_responsive_shell(owner, _event=None) -> None:
 
     # The original ttk Labels used a fixed 920/670px wraplength; at small
     # widths this could clip current status messages instead of wrapping.
-    for root in (owner.tab_home, owner.tab_manual, owner.tab_tools):
+    for root in (owner.tab_home, owner.tab_tools):
         pending = [root]
         while pending:
             widget = pending.pop()
