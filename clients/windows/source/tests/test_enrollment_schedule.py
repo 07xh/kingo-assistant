@@ -114,6 +114,7 @@ class ScheduledEnrollmentTest(unittest.TestCase):
         self.assertEqual(report.reason, "engine_completed")
         self.assertGreaterEqual(self.clock.current, 1001)
         self.assertEqual(report.window_checks, 1)
+        self.assertEqual(self.gateway.window_calls, 2)  # Scheduler + final pre-write check.
         self.assertEqual(len(self.gateway.writes), 1)
 
     def test_closed_window_rechecks_at_bounded_interval_then_starts(self):
@@ -123,6 +124,7 @@ class ScheduledEnrollmentTest(unittest.TestCase):
         self.assertEqual(report.reason, "engine_completed")
         self.assertEqual(report.window_checks, 2)
         self.assertEqual(self.clock.current, 1060)
+        self.assertEqual(gateway.window_calls, 3)  # Two probes + pre-write.
         self.assertEqual(gateway.catalog_calls, 1)
         self.assertEqual(len(gateway.writes), 1)
 
@@ -176,8 +178,8 @@ class ScheduledEnrollmentTest(unittest.TestCase):
         report = self.run_runner(runner)
         self.assertEqual(report.reason, "engine_halted")
         self.assertTrue(report.result.halted)
-        self.assertEqual(report.result.states["A"], "学校选课窗口未开放")
-        self.assertEqual(gateway.catalog_calls, 0)
+        self.assertEqual(report.result.states["A"], "学校选课窗口已关闭")
+        self.assertEqual(gateway.catalog_calls, 1)  # Final gate catches the closure.
         self.assertEqual(gateway.writes, [])
 
     def test_cancelled_before_start_does_not_probe_window(self):
