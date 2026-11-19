@@ -44,6 +44,7 @@ class PreflightAndDeferredTests(unittest.IsolatedAsyncioTestCase):
     async def test_preopen_snapshot_reuses_only_verified_timetable(self):
         gateway = self.gateway()
         gateway.preopen_schedule_permitted = True
+        gateway.preopen_budget_headroom_verified = True
         gateway.preflight_session_token = lambda: ("in-memory-session", TERM)
         original = gateway.read_schedule
         calls = []
@@ -65,9 +66,21 @@ class PreflightAndDeferredTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(gateway.reads, 2)  # Fresh pre-submit + result read.
         self.assertEqual(len(gateway.writes), 1)
 
+    async def test_prefetch_denied_when_quota_headroom_not_verified(self):
+        gateway = self.gateway()
+        gateway.preopen_schedule_permitted = True
+        gateway.preopen_budget_headroom_verified = False
+        gateway.preflight_session_token = lambda: ("session", TERM)
+        engine = self.make_engine(gateway)
+        prepared = await prepare_schedule(engine, [self.a])
+        self.assertIsNone(prepared)
+        self.assertEqual(gateway.catalog_calls, 0)
+        self.assertEqual(gateway.reads, 0)
+
     async def test_changed_session_forces_fresh_schedule(self):
         gateway = self.gateway()
         gateway.preopen_schedule_permitted = True
+        gateway.preopen_budget_headroom_verified = True
         session = ["first"]
         gateway.preflight_session_token = lambda: tuple(session)
         original = gateway.read_schedule
@@ -97,6 +110,7 @@ class PreflightAndDeferredTests(unittest.IsolatedAsyncioTestCase):
         from dataclasses import replace
         gateway = self.gateway()
         gateway.preopen_schedule_permitted = True
+        gateway.preopen_budget_headroom_verified = True
         gateway.preflight_session_token = lambda: ("session", TERM)
         original = gateway.read_schedule
         calls = []
