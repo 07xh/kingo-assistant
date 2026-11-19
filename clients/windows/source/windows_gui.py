@@ -1948,9 +1948,9 @@ class Application(tk.Tk):
                     self.school_page_status.set(result.message)
                     self.status.set(result.message)
                     self.log(result.message)
-                    if result.code == "expired":
+                    if result.code in ("expired", "identity_mismatch"):
                         _invalidate_native_session(
-                            self, "学校页面提示登录失效，请重新授权")
+                            self, "学校结果接口账号核验失败或会话过期，请重新授权")
                     if result.code == "shape_observed" and result.candidates:
                         self.show_known_result_candidates(result)
                 elif event.kind == "native_preparation":
