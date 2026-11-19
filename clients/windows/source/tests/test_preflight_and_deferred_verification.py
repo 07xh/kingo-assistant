@@ -93,6 +93,37 @@ class PreflightAndDeferredTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(gateway.catalog_calls, 0)
         self.assertEqual(gateway.reads, 0)
 
+    async def test_expired_snapshot_forces_live_schedule_read(self):
+        from dataclasses import replace
+        gateway = self.gateway()
+        gateway.preopen_schedule_permitted = True
+        gateway.preflight_session_token = lambda: ("session", TERM)
+        original = gateway.read_schedule
+        calls = []
+
+        async def counted():
+            calls.append("read")
+            return await original()
+
+        gateway.read_schedule = counted
+        engine = self.make_engine(gateway)
+        prepared = await prepare_schedule(engine, [self.a])
+        expired = replace(prepared, captured_at=prepared.captured_at - 35)
+        self.assertFalse(expired.usable(gateway, [self.a]))
+        report = await engine.run([self.a], prepared_schedule=expired)
+        self.assertFalse(report.halted)
+        self.assertEqual(len(calls), 2)
+
+    async def test_cannot_submit_again_during_background_readback(self):
+        from core.enrollment import EnrollmentNotReady
+        gateway = self.gateway()
+        engine = self.make_engine(gateway)
+        await engine.run([self.a], defer_readback=True)
+        with self.assertRaises(EnrollmentNotReady):
+            await engine.run([self.a])
+        await engine.finish_deferred_verification()
+        self.assertEqual(len(gateway.writes), 1)
+
     async def test_terminal_submit_returns_before_readback_but_resolves(self):
         gateway = self.gateway()
         engine = self.make_engine(gateway)
