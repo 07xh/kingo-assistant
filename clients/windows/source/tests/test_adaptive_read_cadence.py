@@ -11,7 +11,7 @@ from core.scheduler import Scheduler
 def strategy(**adaptive):
     return {
         "mode": "monitor", "interval_range": [60, 60],
-        "max_cycles": 2, "max_duration_minutes": 2,
+        "max_cycles": 2, "max_duration_minutes": 3,
         "adaptive_polling": {"enabled": True, **adaptive},
     }
 
