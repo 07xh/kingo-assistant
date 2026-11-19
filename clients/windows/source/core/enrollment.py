@@ -460,8 +460,12 @@ class EnrollmentEngine:
         from core.enrollment_recovery import reconcile_pending
         return await reconcile_pending(self.gateway, self.journal, targets)
 
-    async def run(self, targets: Sequence[Target]) -> RunReport:
+    async def run(self, targets: Sequence[Target], *, prepared_schedule=None,
+                  defer_readback: bool = False) -> RunReport:
         # Single engine entry point. Flow is split out for focused FSM testing;
         # it retains this module's V5.1 HMAC journal, lock and official gates.
         from core.enrollment_flow import run_enrollment
-        return await run_enrollment(self, targets)
+        return await run_enrollment(
+            self, targets, prepared_schedule=prepared_schedule,
+            defer_readback=defer_readback,
+        )
