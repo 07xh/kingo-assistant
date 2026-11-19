@@ -8,73 +8,89 @@ from __future__ import annotations
 
 import asyncio
 import os
-from pathlib import Path
 import queue
 import sys
 import threading
 import time
 import tkinter as tk
 import webbrowser
-from urllib.parse import urlsplit
+from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
+from urllib.parse import urlsplit
 
 from loguru import logger
 
-
-from core.client import parse_courses
-from core.desktop_settings import quick_copy_value, resolve_state_file, status_changes
-from core.demo import DemoReport, run_demo
-from desktop_editor import SettingsEditor
-from desktop_plans import PlanManager
-from desktop_tray import TrayController
-from windows_config_runtime import (
-    app_dir, bundled_config, bundled_demo, ensure_user_config, load_validated_config,
-)
-from windows_monitor_runtime import MonitorEvent, MonitorWorker
-from windows_monitor_events import (
-    apply_monitor_status, format_official_probe_results, scheduled_reason_text,
-)
-from windows_readonly_widgets import _open_readonly_popup, _create_readonly_tree
-from windows_page_sections import build_home_page, build_manual_page, build_tools_page
-from windows_visual_shell import (
-    apply_light_theme, make_visual_shell, connect_sidebar,
-    make_scrollable_content, bind_page_wheel, bind_responsive_shell,
-)
-from desktop_scheduled_worker import DesktopScheduledWorker
-from core.inspector import inspect_html
-from core.har_audit import summarize_har, format_summary
+from core.attestation import AttestationError, AttestationRegistry, resolve_registry
 from core.auth_route_audit import summarize_auth_route_har
-from tools.catalog_evidence import inspect_local_file
-from core.preflight import inspect_readiness, split_checks, format_checks
-from core.offline_selftest import run_selftest
-from core.offline_benchmark import format_benchmark, run_offline_benchmark
-from core.official_portal_schedule import OfficialPortalAppointment, prepare_appointment, format_countdown
-from core.session_probe import SessionProbeResult, probe_own_session
+from core.client import parse_courses
+from core.demo import DemoReport, run_demo
+from core.desktop_settings import quick_copy_value, resolve_state_file, status_changes
+from core.enrollment_schedule import ScheduledRunReport
+from core.har_audit import format_summary, summarize_har
+from core.inspector import inspect_html
+from core.known_school_pages import (
+    KnownSchoolPageResult,
+    read_known_school_page,
+    validate_known_page_contract,
+)
+from core.latency import DEFAULT_LATENCY_FILE, summarize_file
+from core.native_login import NativeLoginResult
 from core.native_preparation import NativePreparationResult, prepare_native_api
 from core.native_timetable import TimetableReadResult, read_known_timetable
-from core.ncwu_lesson_detail import LessonDetailResult, read_lesson_detail
-from core.known_school_pages import KnownSchoolPageResult, read_known_school_page, validate_known_page_contract
-from core.ncwu_term_probe import TermProbeResult, probe_known_year_term, validate_term_contract
-from core.native_login import NativeLoginResult
-from core.ncwu_signed_login import login_ncwusigned, validate_ncwulogin_entry
+from core.ncwu_contract_capture import inspect_two_endpoint_contracts
+from core.ncwu_course_plan import PlanSnapshot, read_current_course_plan
 from core.ncwu_elective_table import inspect_elective_table
+from core.ncwu_lesson_detail import LessonDetailResult, read_lesson_detail
 from core.ncwu_live_elective import LiveElectiveSnapshot, live_s202_snapshot
 from core.ncwu_live_target_review import compare_live_targets
+from core.ncwu_plan_alignment import compare_plan_targets
 from core.ncwu_s202_readback import S202ReadbackResult, read_s202_selected_results
 from core.ncwu_s202_round import S202RoundStatus, probe_s202_round
 from core.ncwu_s202_score import PersonalScoreCount, read_personal_s202_score
-from core.ncwu_course_plan import PlanSnapshot, read_current_course_plan
-from core.ncwu_plan_alignment import compare_plan_targets
-from core.ncwu_contract_capture import inspect_two_endpoint_contracts
+from core.ncwu_signed_login import login_ncwusigned, validate_ncwulogin_entry
+from core.ncwu_term_probe import TermProbeResult, probe_known_year_term, validate_term_contract
 from core.official_entries import OFFICIAL_ENTRIES, probe_official_login_surfaces
+from core.official_portal_schedule import OfficialPortalAppointment, format_countdown, prepare_appointment
+from core.offline_benchmark import format_benchmark, run_offline_benchmark
+from core.offline_selftest import run_selftest
+from core.preflight import format_checks, inspect_readiness, split_checks
 from core.scheduled_ui_bridge import prepare_scheduled_plan
-from core.attestation import AttestationError, AttestationRegistry, resolve_registry
-from core.latency import DEFAULT_LATENCY_FILE, summarize_file
-from core.enrollment_schedule import ScheduledRunReport
-from main import _read_local_html, validate
+from core.session_probe import SessionProbeResult, probe_own_session
+from desktop_editor import SettingsEditor
+from desktop_plans import PlanManager
+from desktop_scheduled_worker import DesktopScheduledWorker
+from desktop_tray import TrayController
+from main import Scheduler, _read_local_html, validate
+from tools.catalog_evidence import inspect_local_file
+from windows_config_runtime import (
+    app_dir,
+    bundled_config,
+    bundled_demo,
+    ensure_user_config,
+    load_validated_config,
+)
+from windows_monitor_events import (
+    apply_monitor_status,
+    format_official_probe_results,
+    scheduled_reason_text,
+)
+from windows_monitor_runtime import MonitorEvent, MonitorWorker
+from windows_page_sections import build_home_page, build_manual_page, build_tools_page
+from windows_readonly_widgets import _create_readonly_tree, _open_readonly_popup
+from windows_visual_shell import (
+    apply_light_theme,
+    bind_page_wheel,
+    bind_responsive_shell,
+    connect_sidebar,
+    make_scrollable_content,
+    make_visual_shell,
+)
 
 APP_TITLE = "KingoAssistant · Windows（只读监测｜自动提交尚未接入）"
 OFFICIAL_PORTAL = "https://jwmis.ncwu.edu.cn"  # Confirmed by school notices; NOT an API endpoint.
+
+# Returned by a poll event handler when the pump must stop re-arming itself.
+_STOP_POLL = object()
 
 
 def scoped_native_cookie(app, config: dict) -> str | None:
@@ -1629,257 +1645,21 @@ class Application(tk.Tk):
             self.stop_button.configure(state="disabled")
 
     def poll(self) -> None:
+        """Drain one batch of worker events, then re-arm the Tk timer.
+
+        Every event kind maps to a module-level ``_on_<kind>(app, event)``
+        handler, so adding a worker message no longer means editing a 250-line
+        branch chain. The table is constant, so no per-tick allocation.
+        """
         self._tick_portal_appointment()
         try:
             while True:
                 event = self.events.get_nowait()
-                if event.kind == "tray_restore":
-                    self.restore_window()
-                elif event.kind == "tray_quit":
-                    self.quit_application()
-                    if not self.worker and not self.__dict__.get("scheduled_worker"):
-                        return
-                elif event.kind == "tray_error":
-                    self.restore_window()
-                    self.log("系统托盘不可用，主窗口已恢复；任务未被静默终止。")
-                elif event.kind == "status":
-                    apply_monitor_status(
-                        self, event.value, change_detector=status_changes)
-                elif event.kind == "official_probe_done":
-                    self._entry_probe_in_progress = False
-                    self.status.set("官网登录页检测完毕｜未验证课程查询接口")
-                    self.log("本次官网登录页检测结束；不代表本人已登录或课程余量可读取。")
-                    messagebox.showinfo(
-                        "官方登录页可达性（非选课接口）",
-                        format_official_probe_results(
-                            event.value, entries=OFFICIAL_ENTRIES),
-                    )
-                elif event.kind == "official_probe_error":
-                    self._entry_probe_in_progress = False
-                    self.status.set("官网登录页检测失败｜不影响正常监测配置")
-                    self.log("官方入口检测未完成；没有启动选课任务。")
-                elif event.kind == "session_probe":
-                    self._session_check_in_progress = False
-                    self.session_check_button.configure(state="normal")
-                    result = event.value
-                    self.status.set(result.message)
-                    self.log(result.message)
-                elif event.kind == "native_login":
-                    self._native_login_in_progress = False
-                    self.native_login_button.configure(state="normal")
-                    result = event.value
-                    self._native_session_cookie = result.session_cookie if result.verified else None
-                    self._native_session_origin = result.session_origin if result.verified else None
-                    self.native_login_status.set(result.message)
-                    self.native_preparation_status.set(
-                        "EXE 会话已通过账号核验；课程目录和余量需另行验证" if result.verified
-                        else "账号未核验通过；不会使用当前会话读取课程"
-                    )
-                    self.status.set(result.message)
-                    self.log(result.message)
-                elif event.kind == "ncwu_live_catalog":
-                    result = event.value
-                    _finish_ncwu_read_event(
-                        self, result, flag="_live_catalog_in_progress",
-                        button=self.live_catalog_button,
-                        status_var=self.live_catalog_status,
-                        log_message=(
-                            f"S202 实时查询：{result.code}，窗口={result.window}，"
-                            f"记录={len(result.courses)}，阶段={result.stage}；未提交选课。"
-                        ),
-                        expired_message="官网表示会话失效，请重新登录",
-                    )
-                    if result.code == "catalog_read":
-                        self.show_live_catalog_rows(result)
-                    if self._live_polling:
-                        if result.code == "catalog_read" and not self._closing:
-                            # >=60s local spacing; a stricter verified shared
-                            # request budget still governs every next HTTP call.
-                            self._live_poll_timer = self.after(
-                                60_000, self.check_live_catalog)
-                        else:
-                            self.stop_live_polling()
-                elif event.kind == "known_timetable":
-                    self._timetable_read_in_progress = False
-                    self.timetable_read_button.configure(state="normal")
-                    result = event.value
-                    self.timetable_read_status.set(result.message)
-                    self.status.set(result.message)
-                    self.log(result.message)
-                    if result.code == "expired":
-                        _invalidate_native_session(
-                            self, "课表接口提示登录失效，请重新授权")
-                elif event.kind == "ncwu_lesson_detail":
-                    result = event.value
-                    _finish_ncwu_read_event(
-                        self, result, flag="_lesson_detail_in_progress",
-                        button=self.lesson_detail_button,
-                        status_var=self.lesson_detail_status,
-                        log_message=(f"官方课表 AJAX：{result.code}，"
-                                     f"节次={len(result.section_times)}，"
-                                     f"非空格={len(result.cells)}；未提交选课。"),
-                        expired_message="个人课表接口提示会话失效，请重新登录",
-                    )
-                    if result.code == "read":
-                        self.show_lesson_detail_rows(result)
-                elif event.kind == "known_year_term":
-                    self._term_probe_in_progress = False
-                    self.term_probe_button.configure(state="normal")
-                    result = event.value
-                    self.term_probe_status.set(result.message)
-                    self.status.set(result.message)
-                    self.log(result.message)
-                    if result.code == "expired":
-                        _invalidate_native_session(
-                            self, "学期接口提示会话过期，请重新授权")
-                elif event.kind == "ncwu_course_plan":
-                    result = event.value
-                    _finish_ncwu_read_event(
-                        self, result, flag="_course_plan_in_progress",
-                        button=self.course_plan_button,
-                        status_var=self.course_plan_status,
-                        log_message=(
-                            f"开课计划快照：{result.code}，"
-                            f"教学班={len(result.rows)}，阶段={result.stage}；"
-                            "不是正选实时余量，未提交选课。"
-                        ),
-                        expired_message="开课计划接口提示会话失效，请重新登录",
-                    )
-                    if result.code == "read":
-                        self.show_course_plan_rows(result)
-                elif event.kind == "ncwu_s202_score":
-                    result = event.value
-                    _finish_ncwu_read_event(
-                        self, result, flag="_s202_score_in_progress",
-                        button=self.s202_score_button,
-                        status_var=self.s202_score_status,
-                        log_message=(
-                            f"S202 本人汇总查询：{result.code}，"
-                            f"确认已选门数={result.selected_count is not None}；未提交选课。"
-                        ),
-                        expired_message="汇总接口提示登录已失效，请重新登录",
-                    )
-                elif event.kind == "ncwu_s202_round":
-                    result = event.value
-                    _finish_ncwu_read_event(
-                        self, result, flag="_s202_round_probe_in_progress",
-                        button=self.s202_round_button,
-                        status_var=self.s202_round_status,
-                        log_message=(
-                            f"S202 轮次核验：{result.code}，窗口={result.window}，"
-                            f"轮次字段={result.field_count}/6；未提交选课。"
-                        ),
-                        expired_message="S202 轮次接口提示登录失效，请重新登录",
-                    )
-                elif event.kind == "ncwu_s202_results":
-                    result = event.value
-                    _finish_ncwu_read_event(
-                        self, result, flag="_s202_result_in_progress",
-                        button=self.s202_result_button,
-                        status_var=self.s202_result_status,
-                        log_message=(
-                            f"S202 已选结果只读检查：{result.code}，"
-                            f"候选={len(result.candidates)}；未认定选课成功。"
-                        ),
-                        expired_message="S202 页面表示登录已失效，请重新登录",
-                    )
-                    if result.code == "page_observed":
-                        self.show_s202_candidate_results(result)
-                elif event.kind == "known_school_results":
-                    self._school_page_read_in_progress = False
-                    self.school_page_button.configure(state="normal")
-                    result = event.value
-                    self.school_page_status.set(result.message)
-                    self.status.set(result.message)
-                    self.log(result.message)
-                    if result.code == "expired":
-                        _invalidate_native_session(
-                            self, "学校页面提示登录失效，请重新授权")
-                elif event.kind == "native_preparation":
-                    self._native_preparation_in_progress = False
-                    self.native_prepare_button.configure(state="normal")
-                    result = event.value
-                    self.native_preparation_status.set(result.message)
-                    if result.code == "expired":
-                        _invalidate_native_session(
-                            self, "应用登录会话已过期，请重新登录")
-                    self.status.set(result.message)
-                    self.log(result.message)
-                elif event.kind == "benchmark_done":
-                    self._benchmark_in_progress = False
-                    result = event.value
-                    self.status.set("离线对标完成｜未请求学校接口")
-                    self.log(f"本机离线测速完成：{result.started}/{result.finished} 模拟任务；"
-                             f"平均调度间隔 {result.mean_interval_ms:.1f} ms。")
-                    messagebox.showinfo("北化课表参数 · 离线调度测速",
-                                        format_benchmark(result))
-                elif event.kind == "benchmark_error":
-                    self._benchmark_in_progress = False
-                    self.status.set("离线对标失败｜未请求学校接口")
-                    self.log("离线调度测速发生内部错误；未连接学校。")
-                elif event.kind == "message":
-                    self.log(str(event.value))
-                elif event.kind == "stop_reason":
-                    self.status.set("已停止｜" + str(event.value))
-                    self.log("已停止｜" + str(event.value))
-                elif event.kind == "error":
-                    self.log("监测异常：" + str(event.value) + "；请重新核对会话、协议及访问权限。")
-                    self.status.set("监测异常终止")
-                elif event.kind == "scheduled_waiting":
-                    self.status.set("自动选课任务：已通过本地权限校验，后台预约等待中")
-                    self.log("已进入应用内定时执行流程；尚未代表学校选课成功。")
-                elif event.kind == "scheduled_result":
-                    outcome = event.value
-                    if isinstance(outcome, ScheduledRunReport):
-                        label = scheduled_reason_text(outcome.reason)
-                        self.status.set(label)
-                        self.log(label + "；请以真实教务记录为准。")
-                    elif outcome == "cancelled_before_start":
-                        self.status.set("自动计划已取消｜未请求学校接口")
-                    else:
-                        self.status.set("自动计划结果无法确认｜停止进一步操作")
-                elif event.kind == "scheduled_blocked":
-                    self.status.set("自动选课未启动｜接口或身份授权条件未通过")
-                    self.log("执行器校验失败；未进入预约等待。")
-                elif event.kind == "scheduled_cleanup_warning":
-                    self.log("教务适配器资源清理产生本地告警：" + str(event.value))
-                elif event.kind == "scheduled_error":
-                    self.status.set("自动选课任务异常终止")
-                    self.log("自动执行器发生本地异常：" + str(event.value))
-                elif event.kind == "scheduled_finished":
-                    self.scheduled_worker = None
-                    self.scheduled_stop_button.configure(state="disabled")
-                    self.scheduled_start_button.configure(
-                        state="normal" if self._engine_factory else "disabled"
-                    )
-                    self.start_button.configure(state="normal")
-                    self.edit_button.configure(state="normal")
-                    self.plans_button.configure(state="normal")
-                    if ("session_check_button" in self.__dict__
-                            and not self._session_check_in_progress):
-                        self.session_check_button.configure(state="normal")
-                    if self._closing and not self.worker:
-                        self.destroy()
-                        return
-                elif event.kind == "finished":
-                    self.worker = None
-                    self.start_button.configure(state="normal")
-                    self.edit_button.configure(state="normal")
-                    self.plans_button.configure(state="normal")
-                    self.config_entry.configure(state="normal")
-                    self.pick_button.configure(state="normal")
-                    self.open_button.configure(state="normal")
-                    self.stop_button.configure(state="disabled")
-                    if not self._closing:
-                        if event.value == "stopped":
-                            self.status.set("已停止｜后台只读监测已结束")
-                        elif event.value == "completed":
-                            self.status.set("已完成｜本次只读监测已结束")
-                        # A prior stop_reason/error remains visible when failed.
-                    self.log("监测任务已结束；未提交任何选课请求。")
-                    if self._closing and not self.__dict__.get("scheduled_worker"):
-                        self.destroy()
-                        return
+                handler = _POLL_HANDLERS.get(event.kind)
+                if handler is None:
+                    continue
+                if handler(self, event) is _STOP_POLL:
+                    return
         except queue.Empty:
             pass
         if not self._closing or self.worker or self.__dict__.get("scheduled_worker"):
@@ -1920,6 +1700,348 @@ class Application(tk.Tk):
             return
         self.destroy()
 
+
+
+def _on_tray_restore(app, event: MonitorEvent) -> object | None:
+    app.restore_window()
+
+
+def _on_tray_quit(app, event: MonitorEvent) -> object | None:
+    app.quit_application()
+    if not app.worker and not app.__dict__.get("scheduled_worker"):
+        return _STOP_POLL
+
+
+def _on_tray_error(app, event: MonitorEvent) -> object | None:
+    app.restore_window()
+    app.log("系统托盘不可用，主窗口已恢复；任务未被静默终止。")
+
+
+def _on_status(app, event: MonitorEvent) -> object | None:
+    apply_monitor_status(
+        app, event.value, change_detector=status_changes)
+
+
+def _on_official_probe_done(app, event: MonitorEvent) -> object | None:
+    app._entry_probe_in_progress = False
+    app.status.set("官网登录页检测完毕｜未验证课程查询接口")
+    app.log("本次官网登录页检测结束；不代表本人已登录或课程余量可读取。")
+    messagebox.showinfo(
+        "官方登录页可达性（非选课接口）",
+        format_official_probe_results(
+            event.value, entries=OFFICIAL_ENTRIES),
+    )
+
+
+def _on_official_probe_error(app, event: MonitorEvent) -> object | None:
+    app._entry_probe_in_progress = False
+    app.status.set("官网登录页检测失败｜不影响正常监测配置")
+    app.log("官方入口检测未完成；没有启动选课任务。")
+
+
+def _on_session_probe(app, event: MonitorEvent) -> object | None:
+    app._session_check_in_progress = False
+    app.session_check_button.configure(state="normal")
+    result = event.value
+    app.status.set(result.message)
+    app.log(result.message)
+
+
+def _on_native_login(app, event: MonitorEvent) -> object | None:
+    app._native_login_in_progress = False
+    app.native_login_button.configure(state="normal")
+    result = event.value
+    app._native_session_cookie = result.session_cookie if result.verified else None
+    app._native_session_origin = result.session_origin if result.verified else None
+    app.native_login_status.set(result.message)
+    app.native_preparation_status.set(
+        "EXE 会话已通过账号核验；课程目录和余量需另行验证" if result.verified
+        else "账号未核验通过；不会使用当前会话读取课程"
+    )
+    app.status.set(result.message)
+    app.log(result.message)
+
+
+def _on_ncwu_live_catalog(app, event: MonitorEvent) -> object | None:
+    result = event.value
+    _finish_ncwu_read_event(
+        app, result, flag="_live_catalog_in_progress",
+        button=app.live_catalog_button,
+        status_var=app.live_catalog_status,
+        log_message=(
+            f"S202 实时查询：{result.code}，窗口={result.window}，"
+            f"记录={len(result.courses)}，阶段={result.stage}；未提交选课。"
+        ),
+        expired_message="官网表示会话失效，请重新登录",
+    )
+    if result.code == "catalog_read":
+        app.show_live_catalog_rows(result)
+    if app._live_polling:
+        if result.code == "catalog_read" and not app._closing:
+            # >=60s local spacing; a stricter verified shared
+            # request budget still governs every next HTTP call.
+            app._live_poll_timer = app.after(
+                60_000, app.check_live_catalog)
+        else:
+            app.stop_live_polling()
+
+
+def _on_known_timetable(app, event: MonitorEvent) -> object | None:
+    app._timetable_read_in_progress = False
+    app.timetable_read_button.configure(state="normal")
+    result = event.value
+    app.timetable_read_status.set(result.message)
+    app.status.set(result.message)
+    app.log(result.message)
+    if result.code == "expired":
+        _invalidate_native_session(
+            app, "课表接口提示登录失效，请重新授权")
+
+
+def _on_ncwu_lesson_detail(app, event: MonitorEvent) -> object | None:
+    result = event.value
+    _finish_ncwu_read_event(
+        app, result, flag="_lesson_detail_in_progress",
+        button=app.lesson_detail_button,
+        status_var=app.lesson_detail_status,
+        log_message=(f"官方课表 AJAX：{result.code}，"
+                     f"节次={len(result.section_times)}，"
+                     f"非空格={len(result.cells)}；未提交选课。"),
+        expired_message="个人课表接口提示会话失效，请重新登录",
+    )
+    if result.code == "read":
+        app.show_lesson_detail_rows(result)
+
+
+def _on_known_year_term(app, event: MonitorEvent) -> object | None:
+    app._term_probe_in_progress = False
+    app.term_probe_button.configure(state="normal")
+    result = event.value
+    app.term_probe_status.set(result.message)
+    app.status.set(result.message)
+    app.log(result.message)
+    if result.code == "expired":
+        _invalidate_native_session(
+            app, "学期接口提示会话过期，请重新授权")
+
+
+def _on_ncwu_course_plan(app, event: MonitorEvent) -> object | None:
+    result = event.value
+    _finish_ncwu_read_event(
+        app, result, flag="_course_plan_in_progress",
+        button=app.course_plan_button,
+        status_var=app.course_plan_status,
+        log_message=(
+            f"开课计划快照：{result.code}，"
+            f"教学班={len(result.rows)}，阶段={result.stage}；"
+            "不是正选实时余量，未提交选课。"
+        ),
+        expired_message="开课计划接口提示会话失效，请重新登录",
+    )
+    if result.code == "read":
+        app.show_course_plan_rows(result)
+
+
+def _on_ncwu_s202_score(app, event: MonitorEvent) -> object | None:
+    result = event.value
+    _finish_ncwu_read_event(
+        app, result, flag="_s202_score_in_progress",
+        button=app.s202_score_button,
+        status_var=app.s202_score_status,
+        log_message=(
+            f"S202 本人汇总查询：{result.code}，"
+            f"确认已选门数={result.selected_count is not None}；未提交选课。"
+        ),
+        expired_message="汇总接口提示登录已失效，请重新登录",
+    )
+
+
+def _on_ncwu_s202_round(app, event: MonitorEvent) -> object | None:
+    result = event.value
+    _finish_ncwu_read_event(
+        app, result, flag="_s202_round_probe_in_progress",
+        button=app.s202_round_button,
+        status_var=app.s202_round_status,
+        log_message=(
+            f"S202 轮次核验：{result.code}，窗口={result.window}，"
+            f"轮次字段={result.field_count}/6；未提交选课。"
+        ),
+        expired_message="S202 轮次接口提示登录失效，请重新登录",
+    )
+
+
+def _on_ncwu_s202_results(app, event: MonitorEvent) -> object | None:
+    result = event.value
+    _finish_ncwu_read_event(
+        app, result, flag="_s202_result_in_progress",
+        button=app.s202_result_button,
+        status_var=app.s202_result_status,
+        log_message=(
+            f"S202 已选结果只读检查：{result.code}，"
+            f"候选={len(result.candidates)}；未认定选课成功。"
+        ),
+        expired_message="S202 页面表示登录已失效，请重新登录",
+    )
+    if result.code == "page_observed":
+        app.show_s202_candidate_results(result)
+
+
+def _on_known_school_results(app, event: MonitorEvent) -> object | None:
+    app._school_page_read_in_progress = False
+    app.school_page_button.configure(state="normal")
+    result = event.value
+    app.school_page_status.set(result.message)
+    app.status.set(result.message)
+    app.log(result.message)
+    if result.code == "expired":
+        _invalidate_native_session(
+            app, "学校页面提示登录失效，请重新授权")
+
+
+def _on_native_preparation(app, event: MonitorEvent) -> object | None:
+    app._native_preparation_in_progress = False
+    app.native_prepare_button.configure(state="normal")
+    result = event.value
+    app.native_preparation_status.set(result.message)
+    if result.code == "expired":
+        _invalidate_native_session(
+            app, "应用登录会话已过期，请重新登录")
+    app.status.set(result.message)
+    app.log(result.message)
+
+
+def _on_benchmark_done(app, event: MonitorEvent) -> object | None:
+    app._benchmark_in_progress = False
+    result = event.value
+    app.status.set("离线对标完成｜未请求学校接口")
+    app.log(f"本机离线测速完成：{result.started}/{result.finished} 模拟任务；"
+             f"平均调度间隔 {result.mean_interval_ms:.1f} ms。")
+    messagebox.showinfo("北化课表参数 · 离线调度测速",
+                        format_benchmark(result))
+
+
+def _on_benchmark_error(app, event: MonitorEvent) -> object | None:
+    app._benchmark_in_progress = False
+    app.status.set("离线对标失败｜未请求学校接口")
+    app.log("离线调度测速发生内部错误；未连接学校。")
+
+
+def _on_message(app, event: MonitorEvent) -> object | None:
+    app.log(str(event.value))
+
+
+def _on_stop_reason(app, event: MonitorEvent) -> object | None:
+    app.status.set("已停止｜" + str(event.value))
+    app.log("已停止｜" + str(event.value))
+
+
+def _on_error(app, event: MonitorEvent) -> object | None:
+    app.log("监测异常：" + str(event.value) + "；请重新核对会话、协议及访问权限。")
+    app.status.set("监测异常终止")
+
+
+def _on_scheduled_waiting(app, event: MonitorEvent) -> object | None:
+    app.status.set("自动选课任务：已通过本地权限校验，后台预约等待中")
+    app.log("已进入应用内定时执行流程；尚未代表学校选课成功。")
+
+
+def _on_scheduled_result(app, event: MonitorEvent) -> object | None:
+    outcome = event.value
+    if isinstance(outcome, ScheduledRunReport):
+        label = scheduled_reason_text(outcome.reason)
+        app.status.set(label)
+        app.log(label + "；请以真实教务记录为准。")
+    elif outcome == "cancelled_before_start":
+        app.status.set("自动计划已取消｜未请求学校接口")
+    else:
+        app.status.set("自动计划结果无法确认｜停止进一步操作")
+
+
+def _on_scheduled_blocked(app, event: MonitorEvent) -> object | None:
+    app.status.set("自动选课未启动｜接口或身份授权条件未通过")
+    app.log("执行器校验失败；未进入预约等待。")
+
+
+def _on_scheduled_cleanup_warning(app, event: MonitorEvent) -> object | None:
+    app.log("教务适配器资源清理产生本地告警：" + str(event.value))
+
+
+def _on_scheduled_error(app, event: MonitorEvent) -> object | None:
+    app.status.set("自动选课任务异常终止")
+    app.log("自动执行器发生本地异常：" + str(event.value))
+
+
+def _on_scheduled_finished(app, event: MonitorEvent) -> object | None:
+    app.scheduled_worker = None
+    app.scheduled_stop_button.configure(state="disabled")
+    app.scheduled_start_button.configure(
+        state="normal" if app._engine_factory else "disabled"
+    )
+    app.start_button.configure(state="normal")
+    app.edit_button.configure(state="normal")
+    app.plans_button.configure(state="normal")
+    if ("session_check_button" in app.__dict__
+            and not app._session_check_in_progress):
+        app.session_check_button.configure(state="normal")
+    if app._closing and not app.worker:
+        app.destroy()
+        return _STOP_POLL
+
+
+def _on_finished(app, event: MonitorEvent) -> object | None:
+    app.worker = None
+    app.start_button.configure(state="normal")
+    app.edit_button.configure(state="normal")
+    app.plans_button.configure(state="normal")
+    app.config_entry.configure(state="normal")
+    app.pick_button.configure(state="normal")
+    app.open_button.configure(state="normal")
+    app.stop_button.configure(state="disabled")
+    if not app._closing:
+        if event.value == "stopped":
+            app.status.set("已停止｜后台只读监测已结束")
+        elif event.value == "completed":
+            app.status.set("已完成｜本次只读监测已结束")
+        # A prior stop_reason/error remains visible when failed.
+    app.log("监测任务已结束；未提交任何选课请求。")
+    if app._closing and not app.__dict__.get("scheduled_worker"):
+        app.destroy()
+        return _STOP_POLL
+
+# kind -> module-level handler. Handlers take the app instance explicitly so
+# duck-typed test doubles keep working without a real Application instance.
+_POLL_HANDLERS = {
+    "tray_restore": _on_tray_restore,
+    "tray_quit": _on_tray_quit,
+    "tray_error": _on_tray_error,
+    "status": _on_status,
+    "official_probe_done": _on_official_probe_done,
+    "official_probe_error": _on_official_probe_error,
+    "session_probe": _on_session_probe,
+    "native_login": _on_native_login,
+    "ncwu_live_catalog": _on_ncwu_live_catalog,
+    "known_timetable": _on_known_timetable,
+    "ncwu_lesson_detail": _on_ncwu_lesson_detail,
+    "known_year_term": _on_known_year_term,
+    "ncwu_course_plan": _on_ncwu_course_plan,
+    "ncwu_s202_score": _on_ncwu_s202_score,
+    "ncwu_s202_round": _on_ncwu_s202_round,
+    "ncwu_s202_results": _on_ncwu_s202_results,
+    "known_school_results": _on_known_school_results,
+    "native_preparation": _on_native_preparation,
+    "benchmark_done": _on_benchmark_done,
+    "benchmark_error": _on_benchmark_error,
+    "message": _on_message,
+    "stop_reason": _on_stop_reason,
+    "error": _on_error,
+    "scheduled_waiting": _on_scheduled_waiting,
+    "scheduled_result": _on_scheduled_result,
+    "scheduled_blocked": _on_scheduled_blocked,
+    "scheduled_cleanup_warning": _on_scheduled_cleanup_warning,
+    "scheduled_error": _on_scheduled_error,
+    "scheduled_finished": _on_scheduled_finished,
+    "finished": _on_finished,
+}
 
 
 def run_packaged_gui_smoke() -> None:

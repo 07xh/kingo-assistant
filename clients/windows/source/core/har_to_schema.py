@@ -27,6 +27,7 @@ import argparse
 import base64
 import copy
 import json
+import logging
 import re
 import sys
 import tempfile
@@ -34,12 +35,14 @@ import urllib.parse
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
+
+_log = logging.getLogger(__name__)
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
-except Exception:
-    pass
+except Exception as error:  # Windows GUI builds have no real stdout.
+    _log.debug("stdout reconfigure skipped: %s", error)
 
 try:
     import yaml  # PyYAML is in requirements.txt; fall back to JSON if missing.
@@ -94,7 +97,7 @@ STATIC_EXT = (".js", ".css", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico",
               ".woff", ".woff2", ".ttf", ".map", ".webp", ".mp4", ".wasm")
 
 
-def decode_content(entry: dict) -> Tuple[str, str]:
+def decode_content(entry: dict) -> tuple[str, str]:
     resp = entry.get("response", {}) or {}
     content = resp.get("content", {}) or {}
     text = content.get("text", "") or ""
@@ -110,17 +113,17 @@ def decode_content(entry: dict) -> Tuple[str, str]:
     return text, mime
 
 
-def entry_url(entry: dict) -> Tuple[str, str, str, List[Tuple[str, str]]]:
+def entry_url(entry: dict) -> tuple[str, str, str, list[tuple[str, str]]]:
     url = str((entry.get("request", {}) or {}).get("url", "") or "")
     u = urllib.parse.urlsplit(url)
     q = urllib.parse.parse_qsl(u.query, keep_blank_values=True)
     return u.scheme, u.netloc, u.path or "/", q
 
 
-def post_params(entry: dict) -> Tuple[Dict[str, str], str]:
+def post_params(entry: dict) -> tuple[dict[str, str], str]:
     req = entry.get("request", {}) or {}
     pd = req.get("postData", {}) or {}
-    params: Dict[str, str] = {}
+    params: dict[str, str] = {}
     for p in pd.get("params", []) or []:
         if isinstance(p, dict) and "name" in p:
             params[str(p["name"])] = str(p.get("value", ""))
@@ -142,20 +145,20 @@ class Candidate:
     method: str
     host: str
     path: str
-    query: List[Tuple[str, str]]
+    query: list[tuple[str, str]]
     status: int
     mime: str
-    params: Dict[str, str]
+    params: dict[str, str]
     post_mime: str
     body: str
-    headers_req: Dict[str, str]
-    headers_resp: Dict[str, str]
-    scores: Dict[str, int] = field(default_factory=dict)
-    reasons: Dict[str, List[str]] = field(default_factory=dict)
+    headers_req: dict[str, str]
+    headers_resp: dict[str, str]
+    scores: dict[str, int] = field(default_factory=dict)
+    reasons: dict[str, list[str]] = field(default_factory=dict)
     list_path: str = ""
-    row_keys: List[str] = field(default_factory=list)
+    row_keys: list[str] = field(default_factory=list)
     row_count: int = 0
-    tags: List[str] = field(default_factory=list)
+    tags: list[str] = field(default_factory=list)
 
     def public(self, strict: bool = False) -> dict:
         return {
@@ -178,15 +181,15 @@ class Candidate:
             "row_keys": self.row_keys,
             "row_count": self.row_count,
             "tags": self.tags,
-            "body_preview": ("<BODY:len=%d>" % len(self.body)) if strict
+            "body_preview": (f"<BODY:len={len(self.body)}>") if strict
                             else scrub(self.body[:400]),
         }
 
 
-def load_entries(har_path: str, host_filter: str = "") -> List[Candidate]:
+def load_entries(har_path: str, host_filter: str = "") -> list[Candidate]:
     raw = json.loads(Path(har_path).read_text(encoding="utf-8-sig"))
     entries = (raw.get("log", {}) or {}).get("entries", []) or []
-    out: List[Candidate] = []
+    out: list[Candidate] = []
     for i, e in enumerate(entries):
         req = e.get("request", {}) or {}
         resp = e.get("response", {}) or {}
@@ -209,7 +212,7 @@ def load_entries(har_path: str, host_filter: str = "") -> List[Candidate]:
     return out
 
 
-def guess_host(cands: List[Candidate]) -> str:
+def guess_host(cands: list[Candidate]) -> str:
     counts = Counter(c.host for c in cands
                      if not c.path.lower().endswith(STATIC_EXT))
     if not counts:
@@ -224,7 +227,7 @@ def guess_host(cands: List[Candidate]) -> str:
 # Shape inference
 # ---------------------------------------------------------------------------
 
-def find_list_path(obj: Any, prefix: str = "", depth: int = 0) -> Tuple[str, List[str], int]:
+def find_list_path(obj: Any, prefix: str = "", depth: int = 0) -> tuple[str, list[str], int]:
     if depth > 6:
         return "", [], 0
     if isinstance(obj, list):
@@ -235,7 +238,7 @@ def find_list_path(obj: Any, prefix: str = "", depth: int = 0) -> Tuple[str, Lis
             return prefix, [str(i) for i in range(len(first))], len(obj)
         return "", [], 0
     if isinstance(obj, dict):
-        best: Tuple[str, List[str], int] = ("", [], 0)
+        best: tuple[str, list[str], int] = ("", [], 0)
         for k, v in obj.items():
             p = f"{prefix}.{k}" if prefix else str(k)
             got = find_list_path(v, p, depth + 1)
@@ -245,7 +248,7 @@ def find_list_path(obj: Any, prefix: str = "", depth: int = 0) -> Tuple[str, Lis
     return "", [], 0
 
 
-def html_columns(body: str) -> Tuple[List[str], int]:
+def html_columns(body: str) -> tuple[list[str], int]:
     heads = re.findall(r"<th[^>]*>(.*?)</th>", body, flags=re.I | re.S)
     clean = [re.sub(r"<[^>]+>", "", h).strip() for h in heads]
     rows = len(re.findall(r"<tr[^>]*>", body, flags=re.I))
@@ -255,7 +258,7 @@ def html_columns(body: str) -> Tuple[List[str], int]:
 # Order matters: more specific keys/hints first so Chinese headers such as
 # 课号 / 课程名称 disambiguate from 课程. Real 青果/Kingosoft pages use Chinese
 # <th> text, so Chinese hints are required for automatic column mapping.
-COLUMN_HINTS: Dict[str, List[str]] = {
+COLUMN_HINTS: dict[str, list[str]] = {
     "course_id": ["kcid", "kch", "courseid", "course_id", "courseno", "kcdm",
                   "kcbm", "kcbh", "coursecode",
                   "课号", "课程号", "课程代码", "课程编码", "编号", "代码"],
@@ -273,10 +276,10 @@ COLUMN_HINTS: Dict[str, List[str]] = {
 }
 
 
-def guess_columns(keys: List[str]) -> Tuple[Dict[str, str], List[str]]:
+def guess_columns(keys: list[str]) -> tuple[dict[str, str], list[str]]:
     low = {str(k).lower().replace("_", "").replace("-", ""): str(k) for k in keys}
-    cols: Dict[str, str] = {}
-    notes: List[str] = []
+    cols: dict[str, str] = {}
+    notes: list[str] = []
     for role, hints in COLUMN_HINTS.items():
         hit = None
         for h in hints:
@@ -310,13 +313,13 @@ WINDOW_MARKERS = ["不是有效的选课时间", "未开放", "尚未开始", "�
 TERM_WORDS = re.compile(r"xnxq|term|xqdm|\bxq\b|学年|学期", re.I)
 
 
-def score_all(cands: List[Candidate]) -> None:
+def score_all(cands: list[Candidate]) -> None:
     for c in cands:
         body_low = c.body[:20000].lower()
         url = c.path + "?" + urllib.parse.urlencode(c.query)
         keys_blob = " ".join(c.row_keys + list(c.params.keys())).lower()
         s = {"catalog": 0, "submit": 0, "enrollment": 0}
-        r: Dict[str, List[str]] = {"catalog": [], "submit": [], "enrollment": []}
+        r: dict[str, list[str]] = {"catalog": [], "submit": [], "enrollment": []}
 
         lp, keys, n = find_list_path(_safe_json(c.body))
         if lp:
@@ -324,8 +327,10 @@ def score_all(cands: List[Candidate]) -> None:
         if "json" in c.mime.lower():
             try:
                 json.loads(c.body)
-            except Exception:
-                pass
+            except Exception as error:
+                # Best effort only: a non-JSON body is classified by the HTML
+                # probe below, but the reason must stay inspectable.
+                _log.debug("body declared JSON but failed to parse: %s", error)
         heads, nrows = html_columns(c.body)
         if heads:
             c.row_keys, c.row_count = heads, nrows
@@ -404,8 +409,8 @@ PRODUCT_COLUMN_ROLES = ("course_id", "course_name", "teacher", "remain", "class_
 PRODUCT_REQUIRED = ("course_id", "course_name", "teacher", "remain")
 
 
-def choose(cands: List[Candidate], role: str, picks: Dict[str, int],
-           *, prefer_html: bool = False) -> Optional[Candidate]:
+def choose(cands: list[Candidate], role: str, picks: dict[str, int],
+           *, prefer_html: bool = False) -> Candidate | None:
     if role in picks:
         for c in cands:
             if c.idx == picks[role]:
@@ -428,9 +433,9 @@ def path_only(c: Candidate) -> str:
 
 
 def derive_list_fields(cat: Candidate, strict: bool,
-                       warnings: List[str]) -> Tuple[str, Dict[str, str]]:
+                       warnings: list[str]) -> tuple[str, dict[str, str]]:
     """Split the catalog request params into term_field + static list_fields."""
-    params: Dict[str, str] = {}
+    params: dict[str, str] = {}
     for k, v in cat.query:
         params[str(k)] = str(v)
     params.update({str(k): str(v) for k, v in cat.params.items()})
@@ -441,7 +446,7 @@ def derive_list_fields(cat: Candidate, strict: bool,
         warnings.append("no term field (xnxq/term) found in catalog request -> "
                         "set protocol.term_field manually")
 
-    list_fields: Dict[str, str] = {}
+    list_fields: dict[str, str] = {}
     for k, v in params.items():
         if k == term_field:
             continue
@@ -453,14 +458,14 @@ def derive_list_fields(cat: Candidate, strict: bool,
     return term_field, list_fields
 
 
-def derive_columns(cat: Candidate, warnings: List[str]) -> Dict[str, int]:
+def derive_columns(cat: Candidate, warnings: list[str]) -> dict[str, int]:
     """Map HTML <th> headers to 0-based column indices for client._column_map."""
     if "html_table" not in cat.tags:
         warnings.append("catalog response is JSON, not an HTML table; the "
                         "read-only client requires HTML columns -> set "
                         "protocol.columns manually from the real page")
         return {}
-    cols: Dict[str, int] = {}
+    cols: dict[str, int] = {}
     for i, header in enumerate(cat.row_keys):
         norm = header.lower().replace("_", "").replace("-", "")
         role = None
@@ -479,8 +484,8 @@ def derive_columns(cat: Candidate, warnings: List[str]) -> Dict[str, int]:
     return cols
 
 
-def choose_entry(cands: List[Candidate], cat: Optional[Candidate]) -> Tuple[str, List[str]]:
-    warnings: List[str] = []
+def choose_entry(cands: list[Candidate], cat: Candidate | None) -> tuple[str, list[str]]:
+    warnings: list[str] = []
     for c in cands:
         if c is cat:
             continue
@@ -496,10 +501,10 @@ def choose_entry(cands: List[Candidate], cat: Optional[Candidate]) -> Tuple[str,
     return "", warnings
 
 
-def build_protocol_draft(cands: List[Candidate], picks: Dict[str, int],
-                         strict: bool = False) -> Tuple[dict, dict]:
+def build_protocol_draft(cands: list[Candidate], picks: dict[str, int],
+                         strict: bool = False) -> tuple[dict, dict]:
     cat = choose(cands, "catalog", picks, prefer_html=True)
-    warnings: List[str] = []
+    warnings: list[str] = []
 
     draft: dict = {
         "verified": False,
@@ -607,7 +612,7 @@ def dump_config(block: dict, path: Path) -> None:
 # CLI
 # ---------------------------------------------------------------------------
 
-def print_table(cands: List[Candidate], picks: Dict[str, int]) -> None:
+def print_table(cands: list[Candidate], picks: dict[str, int]) -> None:
     print(f"{'#':>4} {'method':<7} {'status':>6} {'cat':>4}  path")
     print("-" * 90)
     for c in cands:
@@ -618,8 +623,8 @@ def print_table(cands: List[Candidate], picks: Dict[str, int]) -> None:
     print("  * = auto-selected catalog role. Override with --pick catalog=N")
 
 
-def parse_picks(items: List[str]) -> Dict[str, int]:
-    out: Dict[str, int] = {}
+def parse_picks(items: list[str]) -> dict[str, int]:
+    out: dict[str, int] = {}
     for it in items:
         if "=" not in it:
             continue
@@ -724,7 +729,7 @@ def self_test() -> int:
         cands = load_entries(str(p))
         cands = [c for c in cands if c.host == guess_host(cands)]
         score_all(cands)
-        picks: Dict[str, int] = {}
+        picks: dict[str, int] = {}
         draft, report = build_protocol_draft(cands, picks, strict=False)
         report_text = json.dumps(report, ensure_ascii=False)
 
@@ -780,7 +785,7 @@ def self_test() -> int:
         return 1 if bad else 0
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         description="Offline HAR -> KingoClient protocol draft (read-only, draft-only)")
     ap.add_argument("har", nargs="?", help="path to .har file")
