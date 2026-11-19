@@ -346,16 +346,17 @@ class Application(tk.Tk):
         self.notebook.pack(
             fill="both", expand=True, padx=(11, 12), pady=(0, 4),
         )
-        # Each long page scrolls independently. The Notebook pages remain
-        # original navigation targets for sidebar, menus and all callbacks.
-        self._home_content, self.home_scroll_canvas, self.home_scrollbar = (
-            make_scrollable_content(self.tab_home))
+        # The daily workbench is a fixed viewport: its course table owns the
+        # only vertical scrollbar. This avoids nested page/table scrolling.
+        # Diagnostics remain scrollable because their tool list is intentionally long.
+        self._home_content = self.tab_home
+        self.home_scroll_canvas = None
+        self.home_scrollbar = None
         self._tools_content, self.tools_scroll_canvas, self.tools_scrollbar = (
             make_scrollable_content(self.tab_tools))
         build_home_page(self)
         build_manual_page(self)
         build_tools_page(self)
-        bind_page_wheel(self.home_scroll_canvas, self._home_content)
         bind_page_wheel(self.tools_scroll_canvas, self._tools_content)
         connect_sidebar(self)
         bind_responsive_shell(self)
