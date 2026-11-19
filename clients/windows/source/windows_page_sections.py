@@ -343,6 +343,18 @@ def build_tools_page(app) -> None:
         contract_row, text="核验提交 HAR（离线）",
         command=app.inspect_ncwu_submit_har,
     ).pack(side="left")
+    static_contract_row = ttk.Frame(app.tools_operations)
+    static_contract_row.pack(fill="x", pady=(4, 1))
+    ttk.Button(
+        static_contract_row, text="核对提交 HTML／JS（离线）",
+        command=app.inspect_ncwu_static_submit_files,
+    ).pack(side="left", padx=(0, 8))
+    ttk.Label(
+        static_contract_row,
+        text="仅分析已保存文件；不扫描学校路径、不提交请求",
+        foreground="#666", wraplength=650,
+    ).pack(side="left", fill="x", expand=True)
+
     term_row = ttk.Frame(app.tools_operations)
     term_row.pack(fill="x", pady=(4, 1))
     app.term_probe_button = ttk.Button(
