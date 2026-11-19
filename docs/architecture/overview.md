@@ -1,28 +1,25 @@
 # Architecture overview
 
-## Product direction
+## 唯一正式架构（2026-11-20）
 
-KingoAssistant is intended to provide two independent clients:
+**KingoAssistant = Windows 原生 EXE + HTTP 登录 + 应用内会话 + 官方课程查询 + 经验证的 HTTP 提交 + 官方结果回读。**
 
-- **Windows:** Python desktop application, packaged as a standalone EXE.
-- **Android:** Kotlin-native application, planned as a separate client.
+[纯接口执行架构（唯一有效方案）](pure-api-execution.md) 是当前技术决策。浏览器点击、浏览器登录与 HTTP 混用、Cookie 导入、Playwright/CDP、手动官网预约以及移动端旁路均已退出正式方案。
 
-Neither client should require the other to operate. A cloud service is optional and is not a prerequisite for the current Windows client.
+## 客户端及实现边界
 
-## Shared contracts
+- **Windows：** Python/Tk 独立 EXE；GUI 负责配置、状态和日志，后台 HTTP 执行器完成认证、查询、定时提交与回读。
+- **Android：** 计划中的独立 Kotlin 原生客户端，不构成 Windows 执行依赖。
+- **云端：** 可选，不是当前 Windows 客户端的必要条件。
 
-The clients may share documented data contracts and validation rules (course identity, term, seat-count observation, source, timestamp, and status). They should not be forced to share a runtime or platform-specific UI code.
+## 当前状态
 
-## Current implementation
+Windows 已包含进程内登录、部分学校真实只读接口、课程计划和离线 FSM/调度组件。**正式 NCWU 选课提交适配器与回读未通过实际验收，写入保持禁用。** 旧版手动官网 UI 尚可能保留于代码中，属于待移除的历史功能，不是新版有效备选方案。
 
-The Windows V4.6 baseline contains an authenticated read-only client, bounded polling scheduler, local configuration editor, offline fixtures, GUI, and packaging verifier. The configured NCWU endpoint values are not considered verified until compared with a current, authorized official read-only session.
+## 不可突破的约束
 
-The Android client has not been implemented.
-
-## Safety invariants
-
-- Read-only by default; no enrollment POST implementation in the current baseline.
-- No CAPTCHA or access-control bypass.
-- Stop on 401/403/429 and do not evade server limits.
-- Never log credentials or personal academic data.
-- Treat seat counts as observations, not successful enrollment.
+- 学校许可、请求政策、合法会话、正式时间窗及身份校验必须先满足。
+- 不猜接口参数，不原样回放 HAR，不绕过验证码、CAS/MFA、队列、限流或访问控制。
+- 401/403/429、会话不明、字段冲突或结果不确定时停止并核验。
+- 每个明确选课意图只允许一次待确认提交；只有官方已选结果能确认成功。
+- 不持久化密码、Cookie、令牌、原始学籍数据到公共仓库或诊断日志。
