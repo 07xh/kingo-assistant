@@ -64,6 +64,11 @@ class NCWUEvidenceBoundGateway:
         """Never pre-read before the official window without proven policy."""
         return getattr(self.source, "preopen_schedule_permitted", False) is True
 
+    @property
+    def preopen_budget_headroom_verified(self) -> bool:
+        """Do not prefetch if it could starve the first OPEN/submit checks."""
+        return getattr(self.source, "preopen_budget_headroom_verified", False) is True
+
     def preflight_session_token(self) -> tuple:
         """Session/term-bound RAM token; never log or persist it."""
         if not self._read_identity_ok():
