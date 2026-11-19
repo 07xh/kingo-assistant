@@ -26,7 +26,7 @@ PALETTE = {
 
 NAV_SECTIONS = (
     ("home", "⌂", "首页", "tab_home"),
-    ("manual", "↗", "官网", "tab_manual"),
+    ("manual", "⇄", "接口", "tab_manual"),
     ("tools", "☷", "工具", "tab_tools"),
 )
 
