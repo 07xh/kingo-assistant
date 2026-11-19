@@ -149,6 +149,39 @@ class PreflightAndDeferredTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(gateway.writes), 1)
         self.assertIn("不确定", final.states["A"])
 
+    async def test_cancelled_verification_waiter_retains_submission_fence(self):
+        from core.enrollment import EnrollmentNotReady
+        gateway = self.gateway()
+        started = asyncio.Event()
+        finish_read = asyncio.Event()
+        original = gateway.read_enrollments
+
+        async def delayed_readback():
+            if gateway.writes:
+                started.set()
+                await finish_read.wait()
+            return await original()
+
+        gateway.read_enrollments = delayed_readback
+        engine = self.make_engine(gateway)
+        preliminary = await engine.run([self.a], defer_readback=True)
+        self.assertIn("等待", preliminary.states["A"])
+        await asyncio.wait_for(started.wait(), timeout=2)
+        waiter = asyncio.create_task(engine.finish_deferred_verification())
+        await asyncio.sleep(0)
+        waiter.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await waiter
+        self.assertTrue(engine.has_deferred_verification)
+        with self.assertRaises(EnrollmentNotReady):
+            await engine.run([self.a])
+        finish_read.set()
+        final = await engine.finish_deferred_verification()
+        self.assertFalse(final.halted)
+        self.assertFalse(engine.has_deferred_verification)
+        self.assertEqual(len(gateway.writes), 1)
+        self.assertEqual(self.journal.status(self.a), "confirmed")
+
     async def test_explicit_rejection_is_persisted_not_retried(self):
         gateway = self.gateway(result="reject")
         engine = self.make_engine(gateway)
