@@ -40,7 +40,9 @@ async def _verify(engine, fsm: EnrollmentFSM,
     return False, latest, read_error
 
 
-async def run_enrollment(engine, targets: Sequence[Target]) -> RunReport:
+async def run_enrollment(engine, targets: Sequence[Target], *,
+                         prepared_schedule=None, defer_readback: bool = False
+                         ) -> RunReport:
     targets = list(targets)
     _validate_targets(targets, engine.journal.semester)
     engine._gate()
@@ -70,7 +72,18 @@ async def run_enrollment(engine, targets: Sequence[Target]) -> RunReport:
                 raise ValueError("学期已选记录未经确认")
             enrolled = _read_records(await engine.gateway.read_enrollments())
             catalog = _validate_catalog(await engine.gateway.list_offerings())
-            snapshot = await engine.gateway.read_schedule()
+            # A pre-window timetable snapshot is usable only when the source
+            # explicitly permits it, the original session is identical and
+            # the snapshot is at most 30s old. Seat counts, selections and
+            # official window state are ALWAYS read live after opening.
+            snapshot = None
+            if prepared_schedule is not None:
+                from core.prepared_preflight import PreparedSchedule
+                if (isinstance(prepared_schedule, PreparedSchedule)
+                        and prepared_schedule.usable(engine.gateway, targets)):
+                    snapshot = prepared_schedule.snapshot
+            if snapshot is None:
+                snapshot = await engine.gateway.read_schedule()
             if (not isinstance(snapshot, ScheduleSnapshot)
                     or snapshot.verified is not True
                     or snapshot.semester != engine.journal.semester):
