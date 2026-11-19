@@ -31,7 +31,8 @@ from windows_config_runtime import (
 )
 from windows_monitor_runtime import MonitorEvent, MonitorWorker
 from windows_monitor_events import (
-    apply_monitor_status, format_official_probe_results, scheduled_reason_text,
+    apply_monitor_status, format_adaptive_monitor_status,
+    format_official_probe_results, scheduled_reason_text,
 )
 from windows_readonly_widgets import _open_readonly_popup, _create_readonly_tree
 from windows_page_sections import build_home_page, build_tools_page
@@ -284,6 +285,9 @@ class Application(tk.Tk):
         self.term_probe_status = tk.StringVar(value="11月3日及14日 HAR 均观察到无需表单参数的学年学期接口")
         self.path = tk.StringVar(value=str(ensure_config()))
         self.status = tk.StringVar(value="未启动｜本机离线检查可直接使用")
+        self.monitor_cadence_status = tk.StringVar(
+            value="自适应查询｜未启动 · 默认关闭"
+        )
         self._build()
         menu = tk.Menu(self)
         menu.add_command(label="工具与日志", command=lambda: self.notebook.select(self.tab_tools))
@@ -1681,6 +1685,9 @@ class Application(tk.Tk):
                 elif event.kind == "status":
                     apply_monitor_status(
                         self, event.value, change_detector=status_changes)
+                elif event.kind == "cadence":
+                    self.monitor_cadence_status.set(
+                        format_adaptive_monitor_status(event.value))
                 elif event.kind == "official_probe_done":
                     self._entry_probe_in_progress = False
                     self.status.set("官网登录页检测完毕｜未验证课程查询接口")
