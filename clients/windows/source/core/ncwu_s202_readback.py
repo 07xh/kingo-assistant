@@ -35,7 +35,7 @@ _TEACHER_HEADERS = frozenset(("任课教师", "教师", "授课教师"))
 # The November 14 firsthand HAR shows display-only S202 results with
 # <thead><td> headers. These are structural hints, never exact identity.
 _DISPLAY_COURSE = "课程"
-_DISPLAY_CLASS = frozenset(("上课班级", "上课班级名称"))
+_DISPLAY_CLASS = frozenset(("上课班级",))
 
 
 @dataclass(frozen=True)
