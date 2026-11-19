@@ -8,12 +8,12 @@ This is NOT a validated remaining-seat or enrollment-submit adapter.
 """
 from __future__ import annotations
 
-from contextlib import asynccontextmanager
-from dataclasses import dataclass
 import json
 import re
 import threading
 import time
+from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from typing import Callable, Mapping
 from urllib.parse import urlsplit
 
@@ -22,11 +22,13 @@ from bs4 import BeautifulSoup
 
 from core.client import encode_gbk_form, html_encoding
 from core.ncwu_elective_table import EXPECTED_HEADINGS
-from core.request_budget import build_verified_budget
 from core.ncwu_read_support import (
-    classify_read_response, default_read_client, get_optional_verified_budget,
+    classify_read_response,
+    default_read_client,
+    get_optional_verified_budget,
     set_scoped_cookie,
 )
+from core.request_budget import build_verified_budget
 
 HOST = "jwmis.ncwu.edu.cn"
 ORIGIN = "https://" + HOST

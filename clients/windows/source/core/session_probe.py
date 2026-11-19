@@ -6,12 +6,14 @@ authenticated identity GET, not merely a present Cookie or an opened browser.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
 import os
+from dataclasses import dataclass
 from typing import Callable, Mapping
 
 from core.client import (
-    AuthenticationError, KingoClient, RateLimitError,
+    AuthenticationError,
+    KingoClient,
+    RateLimitError,
 )
 
 

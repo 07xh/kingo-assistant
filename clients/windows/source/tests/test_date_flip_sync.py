@@ -7,8 +7,13 @@ can be checked against the truth rather than against itself.
 import unittest
 
 from core.date_flip_sync import (
-    DATE_RESOLUTION_MS, MAX_SAMPLES, DateSample, DateSyncError,
-    bisect_plan, estimate_offset, next_probe_after,
+    DATE_RESOLUTION_MS,
+    MAX_SAMPLES,
+    DateSample,
+    DateSyncError,
+    bisect_plan,
+    estimate_offset,
+    next_probe_after,
 )
 
 D = 1_766_275_200.0      # an arbitrary integer second

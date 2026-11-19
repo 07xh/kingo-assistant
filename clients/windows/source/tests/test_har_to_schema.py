@@ -12,8 +12,14 @@ import unittest
 from pathlib import Path
 
 from core.har_to_schema import (
-    build_protocol_draft, load_entries, guess_host, score_all,
-    merge_protocol, redact, is_sensitive, self_test,
+    build_protocol_draft,
+    guess_host,
+    is_sensitive,
+    load_entries,
+    merge_protocol,
+    redact,
+    score_all,
+    self_test,
 )
 
 

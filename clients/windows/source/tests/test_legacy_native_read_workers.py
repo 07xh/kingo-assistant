@@ -8,9 +8,9 @@ from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import AsyncMock, Mock, patch
 
+from core.known_school_pages import KnownSchoolPageResult
 from core.native_timetable import TimetableReadResult
 from core.ncwu_term_probe import TermProbeResult
-from core.known_school_pages import KnownSchoolPageResult
 from windows_gui import Application
 
 

@@ -1,14 +1,18 @@
 """No university traffic: official channel registry and entry routing gates."""
 from __future__ import annotations
 
-import asyncio
 import unittest
 
 import httpx
 
 from core.official_entries import (
-    CatalogObservation, CatalogState, EntryKind, OfficialEntry,
-    OFFICIAL_ENTRIES, ProbeState, choose_readonly_catalog_route,
+    OFFICIAL_ENTRIES,
+    CatalogObservation,
+    CatalogState,
+    EntryKind,
+    OfficialEntry,
+    ProbeState,
+    choose_readonly_catalog_route,
     probe_official_login_surfaces,
 )
 

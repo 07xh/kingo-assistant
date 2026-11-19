@@ -4,13 +4,20 @@ No test performs an external network request: the only socket call targets a
 closed local port to assert the failure path, and HTTP clients are never built.
 """
 import json
-from pathlib import Path
 import tempfile
 import unittest
+from pathlib import Path
 
 from core.latency import (
-    DEFAULT_LATENCY_FILE, HandshakeProfile, LatencyRecorder, LatencySample,
-    PHASES, handshake_profile, merge_summaries, percentiles, summarize_file,
+    DEFAULT_LATENCY_FILE,
+    PHASES,
+    HandshakeProfile,
+    LatencyRecorder,
+    LatencySample,
+    handshake_profile,
+    merge_summaries,
+    percentiles,
+    summarize_file,
 )
 
 

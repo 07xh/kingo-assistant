@@ -1,14 +1,13 @@
 """GUI regression: offline auth audit never contacts school or prompts login."""
-import queue
+import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import Mock, patch
-import json
 
-from windows_gui import Application
 from core.native_login import validate_login_contract
+from windows_gui import Application
 
 
 class AuthenticationAuditGuiTests(TestCase):

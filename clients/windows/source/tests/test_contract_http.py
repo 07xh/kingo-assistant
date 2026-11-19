@@ -1,18 +1,16 @@
 """Contract wiring regression against httpx.MockTransport, never a school host."""
-import asyncio
-from contextlib import closing
-from datetime import datetime, timedelta, timezone
-from email.utils import format_datetime
-from pathlib import Path
 import sqlite3
 import tempfile
-import time
 import unittest
+from contextlib import closing
+from datetime import UTC, datetime, timedelta
+from email.utils import format_datetime
+from pathlib import Path
 from unittest.mock import patch
 
 import httpx
 
-from core.client import KingoClient, RateLimitError, ProtocolError
+from core.client import KingoClient, ProtocolError, RateLimitError
 from core.request_budget import PolicyError, read_verified_policy_config
 from core.time_sync import TimeSync
 from tests.test_local import config as synthetic_config
@@ -123,7 +121,7 @@ class BudgetedClientTest(unittest.IsolatedAsyncioTestCase):
         def handler(req):
             calls.append(req.url.path)
             return httpx.Response(200, headers={
-                "Date": format_datetime(datetime.now(timezone.utc) + timedelta(seconds=1)),
+                "Date": format_datetime(datetime.now(UTC) + timedelta(seconds=1)),
                 "Age": "0",
             })
         client = await self.client(handler)
@@ -138,7 +136,7 @@ class BudgetedClientTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(conn.execute("SELECT count(*) FROM requests").fetchone()[0], 1)
 
     def test_retry_after_header_http_date_or_invalid(self):
-        date = format_datetime(datetime.now(timezone.utc) + timedelta(seconds=12))
+        date = format_datetime(datetime.now(UTC) + timedelta(seconds=12))
         value = KingoClient._retry_after_seconds(date)
         self.assertIsNotNone(value)
         self.assertGreater(value, 9.0)

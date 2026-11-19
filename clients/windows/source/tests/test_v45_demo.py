@@ -2,11 +2,11 @@
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import AsyncMock, patch
+from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 
 from core.client import AuthenticationError, ProtocolError, RateLimitError, Status
 from core.demo import run_demo

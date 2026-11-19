@@ -1,13 +1,11 @@
 """Offline behavior tests; no network connection to any university site."""
 import asyncio
-import time
 import unittest
 from collections import Counter
 
 import httpx
 
-from core.client import (CourseItem, KingoClient, AuthenticationError, RateLimitError,
-                         encode_gbk_form, parse_courses)
+from core.client import CourseItem, KingoClient, RateLimitError, encode_gbk_form, parse_courses
 from core.scheduler import Scheduler
 
 
@@ -43,7 +41,7 @@ class ParserTest(unittest.TestCase):
         body = encode_gbk_form([("term", "2026-2027-1"), ("type", "选修课")])
         self.assertTrue(body.startswith(b"term="))
         self.assertIn(b"%D1%A1%D0%DE%BF%CE", body)
-        self.assertNotIn("选修课".encode("utf-8"), body)
+        self.assertNotIn("选修课".encode(), body)
 
     def test_fast_row_filter_and_missing_seats(self):
         rows = parse_courses(html(), config()["protocol"], ["TEST101", "TEST303"])

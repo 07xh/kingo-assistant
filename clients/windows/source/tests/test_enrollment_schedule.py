@@ -1,15 +1,20 @@
 """Offline tests for the scheduled official-window coordinator."""
 import asyncio
-from pathlib import Path
 import tempfile
 import unittest
+from pathlib import Path
 
+from core.course_models import ScheduleSnapshot
 from core.enrollment import (
-    AttemptJournal, EnrollmentEngine, EnrollmentNotReady, Offering,
-    SubmitReceipt, Target, WindowState,
+    AttemptJournal,
+    EnrollmentEngine,
+    EnrollmentNotReady,
+    Offering,
+    SubmitReceipt,
+    Target,
+    WindowState,
 )
 from core.enrollment_schedule import ScheduledEnrollmentRunner
-from core.course_models import ScheduleSnapshot
 from tests.attestation_support import valid_registry
 
 

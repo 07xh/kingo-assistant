@@ -1,9 +1,11 @@
 """Offline-only official-portal appointment tests: no school HTTP."""
-from datetime import datetime
 import unittest
+from datetime import datetime
 
 from core.official_portal_schedule import (
-    CHINA_TIMEZONE, OfficialPortalAppointment, format_countdown,
+    CHINA_TIMEZONE,
+    OfficialPortalAppointment,
+    format_countdown,
     prepare_appointment,
 )
 

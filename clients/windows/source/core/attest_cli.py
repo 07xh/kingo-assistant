@@ -15,11 +15,14 @@ Usage
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 import sys
+from pathlib import Path
 
 from core.attestation import (
-    GATE_NAMES, AttestationError, AttestationRegistry, REGISTRY_FILENAME,
+    GATE_NAMES,
+    REGISTRY_FILENAME,
+    AttestationError,
+    AttestationRegistry,
     expiry_after,
 )
 

@@ -4,7 +4,9 @@ import json
 from unittest import TestCase
 
 from core.ncwu_contract_capture import (
-    INIT_PATH, ELIGIBILITY_PATH, inspect_two_endpoint_contracts,
+    ELIGIBILITY_PATH,
+    INIT_PATH,
+    inspect_two_endpoint_contracts,
 )
 
 HOST = "https://jwmis.ncwu.edu.cn"

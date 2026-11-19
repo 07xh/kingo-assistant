@@ -11,18 +11,16 @@ import os
 import re
 import time
 from dataclasses import dataclass
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 from enum import Enum
 from urllib.parse import urlencode, urljoin, urlsplit
-from datetime import datetime, timezone
-from email.utils import parsedate_to_datetime
-import math
 
 import httpx
 from bs4 import BeautifulSoup
-from loguru import logger
 
-from .request_budget import SingleFlight, build_verified_budget
 from .latency import LatencyRecorder, LatencySample
+from .request_budget import SingleFlight, build_verified_budget
 
 
 class Status(str, Enum):
@@ -305,7 +303,7 @@ class KingoClient:
             date = parsedate_to_datetime(value)
             if date.tzinfo is None:
                 return None
-            return max(0.0, (date - datetime.now(timezone.utc)).total_seconds())
+            return max(0.0, (date - datetime.now(UTC)).total_seconds())
         except (TypeError, ValueError, OverflowError):
             return None
 

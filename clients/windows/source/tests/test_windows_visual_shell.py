@@ -4,8 +4,12 @@ from unittest import TestCase
 from unittest.mock import Mock, patch
 
 from windows_visual_shell import (
-    PALETTE, NAV_SECTIONS, apply_light_theme, make_visual_shell,
-    connect_sidebar, sync_sidebar,
+    NAV_SECTIONS,
+    PALETTE,
+    apply_light_theme,
+    connect_sidebar,
+    make_visual_shell,
+    sync_sidebar,
 )
 
 

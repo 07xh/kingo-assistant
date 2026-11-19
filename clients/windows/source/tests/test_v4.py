@@ -4,9 +4,7 @@ import contextlib
 import io
 import tempfile
 import unittest
-from copy import deepcopy
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import patch
 
 import httpx

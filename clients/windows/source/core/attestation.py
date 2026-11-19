@@ -19,7 +19,7 @@ import json
 import os
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Mapping
 
@@ -63,11 +63,11 @@ def _parse_moment(value: object, label: str) -> datetime:
         raise AttestationError(f"{label}时间格式无效") from exc
     if moment.tzinfo is None:
         raise AttestationError(f"{label}时间必须带时区")
-    return moment.astimezone(timezone.utc)
+    return moment.astimezone(UTC)
 
 
 def _utc(moment: datetime) -> datetime:
-    return moment.astimezone(timezone.utc)
+    return moment.astimezone(UTC)
 
 
 def _safe_relative(root: Path, evidence: str) -> Path:
@@ -120,7 +120,7 @@ class Attestation:
     def expired(self, now: datetime | None = None) -> bool:
         if self.expires_at is None:
             return False
-        return _utc(self.expires_at) <= _utc(now or datetime.now(timezone.utc))
+        return _utc(self.expires_at) <= _utc(now or datetime.now(UTC))
 
     def to_mapping(self) -> dict:
         return {
@@ -134,7 +134,7 @@ class Attestation:
         }
 
     @classmethod
-    def from_mapping(cls, value: object) -> "Attestation":
+    def from_mapping(cls, value: object) -> Attestation:
         if not isinstance(value, dict):
             raise AttestationError("验收登记项格式无效")
         gate = value.get("gate")
@@ -192,7 +192,7 @@ class AttestationRegistry:
     # -- construction ------------------------------------------------------
 
     @classmethod
-    def load(cls, path: Path, root: Path | None = None) -> "AttestationRegistry":
+    def load(cls, path: Path, root: Path | None = None) -> AttestationRegistry:
         """Read ``attestations.json``. A missing file yields an EMPTY registry.
 
         An empty registry is not an error at load time; :meth:`require` is what
@@ -212,7 +212,7 @@ class AttestationRegistry:
         return cls.from_document(document, base)
 
     @classmethod
-    def from_document(cls, document: object, root: Path) -> "AttestationRegistry":
+    def from_document(cls, document: object, root: Path) -> AttestationRegistry:
         if not isinstance(document, dict) or document.get("version") != REGISTRY_VERSION:
             raise AttestationError("验收登记表版本无效")
         raw = document.get("attestations")
@@ -241,12 +241,12 @@ class AttestationRegistry:
         temporary.write_text(encoded, encoding="utf-8")
         os.replace(temporary, target)
 
-    def with_entry(self, attestation: Attestation) -> "AttestationRegistry":
+    def with_entry(self, attestation: Attestation) -> AttestationRegistry:
         merged = dict(self.entries)
         merged[attestation.gate] = attestation
         return AttestationRegistry(entries=merged, root=self.root)
 
-    def without_entry(self, gate: str) -> "AttestationRegistry":
+    def without_entry(self, gate: str) -> AttestationRegistry:
         merged = {key: value for key, value in self.entries.items() if key != gate}
         return AttestationRegistry(entries=merged, root=self.root)
 
@@ -269,7 +269,7 @@ class AttestationRegistry:
             gate=gate,
             evidence=evidence,
             contract_sha256=hash_evidence(document),
-            captured_at=captured_at or datetime.now(timezone.utc),
+            captured_at=captured_at or datetime.now(UTC),
             expires_at=expires_at,
             reviewer=reviewer,
             note=note,
@@ -285,7 +285,7 @@ class AttestationRegistry:
         attestation = self.entries.get(gate)
         if attestation is None:
             raise AttestationError(f"{_GATE_LABELS[gate]}尚未登记验收证据")
-        moment = _utc(now or datetime.now(timezone.utc))
+        moment = _utc(now or datetime.now(UTC))
         if _utc(attestation.captured_at) - moment > _MAX_FUTURE_SKEW:
             raise AttestationError(f"{_GATE_LABELS[gate]}验收时间在未来")
         if attestation.expired(moment):
@@ -307,7 +307,7 @@ class AttestationRegistry:
 
     def describe(self, *, now: datetime | None = None) -> dict:
         """Privacy-safe summary for CLI/GUI display (no file contents)."""
-        moment = _utc(now or datetime.now(timezone.utc))
+        moment = _utc(now or datetime.now(UTC))
         rows = []
         for gate in GATE_NAMES:
             attestation = self.entries.get(gate)
@@ -374,4 +374,4 @@ def resolve_registry(raw: object, *, app_dir: Path = Path.cwd(),
 def expiry_after(days: int, *, start: datetime | None = None) -> datetime:
     if type(days) is not int or not 1 <= days <= 3650:
         raise AttestationError("验收有效期天数需为 1–3650")
-    return (start or datetime.now(timezone.utc)) + timedelta(days=days)
+    return (start or datetime.now(UTC)) + timedelta(days=days)

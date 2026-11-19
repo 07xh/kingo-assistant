@@ -2,17 +2,16 @@
 
 All adapters in this module are synthetic and no school requests are made.
 """
-import asyncio
 import threading
-from types import SimpleNamespace
 import unittest
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 from core.course_models import CourseTarget
 from core.enrollment import EnrollmentEngine, RunReport
 from core.enrollment_schedule import ScheduledRunReport
 from core.scheduled_ui_bridge import PreparedScheduledPlan
-from desktop_scheduled_worker import DesktopScheduledWorker, ScheduledWorkerEvent
+from desktop_scheduled_worker import DesktopScheduledWorker
 from tests.attestation_support import valid_registry
 
 

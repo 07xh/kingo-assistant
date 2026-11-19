@@ -1,8 +1,8 @@
 """Offline Windows GUI bridge tests; never start a live NCWU gateway."""
-from pathlib import Path
 import queue
-from types import SimpleNamespace
 import unittest
+from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from core.enrollment import RunReport

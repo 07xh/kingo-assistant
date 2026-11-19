@@ -19,7 +19,7 @@ import socket
 import ssl
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Iterable, Sequence
 
@@ -66,7 +66,7 @@ class LatencySample:
     bytes_read: int = 0
     rows: int = 0
     note: str = ""
-    at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def __post_init__(self) -> None:
         if not isinstance(self.kind, str) or not self.kind.strip() or len(self.kind) > 40:

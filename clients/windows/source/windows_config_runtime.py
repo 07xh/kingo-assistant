@@ -6,9 +6,9 @@ File creation is idempotent: existing user config is never overwritten.
 from __future__ import annotations
 
 import os
-from pathlib import Path
 import shutil
 import sys
+from pathlib import Path
 from typing import Callable
 
 from core.desktop_settings import load_config, resolve_state_file

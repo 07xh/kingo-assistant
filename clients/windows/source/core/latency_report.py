@@ -17,7 +17,7 @@ import argparse
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Sequence
+from typing import Sequence
 
 from core.latency import DEFAULT_LATENCY_FILE, PHASES, percentiles
 

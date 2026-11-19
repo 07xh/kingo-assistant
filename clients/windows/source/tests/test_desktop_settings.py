@@ -1,18 +1,24 @@
 """V4.3 desktop controls, all tests strictly offline and headless."""
 from __future__ import annotations
 
-from copy import deepcopy
-from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import patch
+from copy import deepcopy
+from pathlib import Path
 
-from core.desktop_settings import (INTERVAL_CUSTOM, INTERVAL_PRESETS,
-                                   interval_preset_for, parse_interval_range,
-                                   quick_copy_value,
-                                   load_config, normalize_course,
-                                   resolve_state_file, save_config_atomic,
-                                   scrub_secrets, status_changes, update_config)
+from core.desktop_settings import (
+    INTERVAL_CUSTOM,
+    INTERVAL_PRESETS,
+    interval_preset_for,
+    load_config,
+    normalize_course,
+    parse_interval_range,
+    quick_copy_value,
+    resolve_state_file,
+    save_config_atomic,
+    status_changes,
+    update_config,
+)
 from windows_gui import bundled_config
 
 

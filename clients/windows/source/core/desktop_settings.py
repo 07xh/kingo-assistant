@@ -6,14 +6,13 @@ users can provide them via process environment variables when permitted.
 """
 from __future__ import annotations
 
-from copy import deepcopy
-from pathlib import Path
 import os
 import tempfile
+from copy import deepcopy
+from pathlib import Path
 from typing import Any
 
 import yaml
-
 
 MAX_CONFIG_SIZE = 256 * 1024
 COURSE_FIELDS = ("key", "course_id", "class_id", "course_name", "teacher")

@@ -5,8 +5,8 @@ from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import AsyncMock, Mock, patch
 
-from windows_gui import Application, scoped_native_cookie
 from core.native_login import NativeLoginResult
+from windows_gui import Application, scoped_native_cookie
 
 
 class NativeLoginGuiTests(TestCase):

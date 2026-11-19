@@ -1,9 +1,10 @@
 """Safety and structural tests for offline-only NCWU/Xiqueer HAR audits."""
 import json
-from pathlib import Path
 import tempfile
 import unittest
-from core.har_audit import summarize_har, format_summary
+from pathlib import Path
+
+from core.har_audit import format_summary, summarize_har
 
 
 def capture_entry(url, content, status=200, method='POST'):

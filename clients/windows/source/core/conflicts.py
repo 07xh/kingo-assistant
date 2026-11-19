@@ -6,8 +6,8 @@ classes that alternate weeks, or the official enrollment conflict policy.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
 import re
+from dataclasses import dataclass
 
 PART = re.compile(r"^([1-7]):([1-9]|1[0-6])-([1-9]|1[0-6])$")
 

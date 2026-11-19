@@ -9,11 +9,14 @@ from __future__ import annotations
 import atexit
 import shutil
 import tempfile
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from core.attestation import (
-    GATE_NAMES, Attestation, AttestationRegistry, expiry_after,
+    GATE_NAMES,
+    Attestation,
+    AttestationRegistry,
+    expiry_after,
 )
 
 _ROOT: Path | None = None
@@ -62,7 +65,7 @@ def registry_without(gate: str) -> AttestationRegistry:
 
 def expired_registry(gate: str) -> AttestationRegistry:
     root = evidence_root()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     attestation = AttestationRegistry.issue(
         root, gate=gate, evidence=evidence_for(gate), reviewer="synthetic-test",
         captured_at=now - timedelta(days=10),

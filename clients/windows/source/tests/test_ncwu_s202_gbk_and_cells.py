@@ -1,7 +1,7 @@
 """Synthetic S202 DataTable regression fixtures, including GBK form encoding."""
 import asyncio
-from urllib.parse import parse_qs
 from unittest import TestCase
+from urllib.parse import parse_qs
 
 import httpx
 

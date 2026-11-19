@@ -1,16 +1,23 @@
 """Offline course/strategy editor for the Windows desktop application."""
 from __future__ import annotations
 
+import tkinter as tk
 from copy import deepcopy
 from pathlib import Path
-import tkinter as tk
 from tkinter import messagebox, simpledialog, ttk
 
-from core.desktop_settings import (COURSE_FIELDS, INTERVAL_CUSTOM, INTERVAL_PRESETS,
-                                   interval_preset_for, parse_interval_range,
-                                   load_config, normalize_course, save_config_atomic,
-                                   update_config)
 from core.conflicts import find_conflicts
+from core.desktop_settings import (
+    COURSE_FIELDS,
+    INTERVAL_CUSTOM,
+    INTERVAL_PRESETS,
+    interval_preset_for,
+    load_config,
+    normalize_course,
+    parse_interval_range,
+    save_config_atomic,
+    update_config,
+)
 from main import validate
 
 

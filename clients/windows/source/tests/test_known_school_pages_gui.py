@@ -5,8 +5,8 @@ from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import AsyncMock, Mock, patch
 
-from windows_gui import Application
 from core.known_school_pages import KnownSchoolPageResult
+from windows_gui import Application
 
 
 def app():

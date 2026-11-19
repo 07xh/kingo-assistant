@@ -2,7 +2,9 @@
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+
 from windows_gui import Application
+
 
 class CatalogGuiTest(unittest.TestCase):
     def test_menu_exposes_offline_evidence_review(self):

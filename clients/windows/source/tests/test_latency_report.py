@@ -3,13 +3,20 @@
 Samples are synthesised in temporary files; nothing here touches a network.
 """
 import json
-from pathlib import Path
 import tempfile
 import unittest
+from pathlib import Path
 
 from core.latency_report import (
-    COMPONENT_PHASES, LatencyRun, ReportError, build_run, compare_runs,
-    format_comparison, format_run, latest_capture, load_records, main,
+    COMPONENT_PHASES,
+    ReportError,
+    build_run,
+    compare_runs,
+    format_comparison,
+    format_run,
+    latest_capture,
+    load_records,
+    main,
 )
 
 

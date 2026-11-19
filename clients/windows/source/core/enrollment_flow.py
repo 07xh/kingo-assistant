@@ -10,8 +10,14 @@ from typing import Sequence
 
 from core.course_models import ScheduleSnapshot, offering_matches
 from core.enrollment import (
-    EnrollmentNotReady, Offering, RunReport, SubmitReceipt, Target,
-    WindowState, _read_records, _validate_catalog, _validate_targets,
+    EnrollmentNotReady,
+    RunReport,
+    SubmitReceipt,
+    Target,
+    WindowState,
+    _read_records,
+    _validate_catalog,
+    _validate_targets,
 )
 from core.enrollment_state import EngineState, EnrollmentFSM
 from core.preflight import inspect_enrollment_schedule

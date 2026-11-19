@@ -2,12 +2,13 @@
 import asyncio
 from contextlib import asynccontextmanager
 from unittest import TestCase
-from unittest.mock import patch
 
 import httpx
 
 from core.known_school_pages import (
-    PAGES, validate_known_page_contract, read_known_school_page,
+    PAGES,
+    read_known_school_page,
+    validate_known_page_contract,
 )
 from core.native_login import validate_login_contract
 

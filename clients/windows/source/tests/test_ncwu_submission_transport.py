@@ -1,18 +1,17 @@
 """Offline contract tests: never send a real NCWU enrollment."""
 from __future__ import annotations
 
-import asyncio
+import unittest
 from contextlib import asynccontextmanager
 from hashlib import sha256
 from urllib.parse import parse_qs
-import unittest
 
 import httpx
 
 from core.enrollment import EnrollmentNotReady, SubmitReceipt
 from core.ncwu_submission_transport import (
-    PreparedNCWUSubmission,
     SUBMIT_PATH,
+    PreparedNCWUSubmission,
     submit_prepared_s202_once,
 )
 

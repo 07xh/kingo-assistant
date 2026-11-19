@@ -4,15 +4,22 @@ Validates the client-side port of the research optimisations plus the new
 peak-window polling schedule. No university endpoint is contacted.
 """
 import datetime
-from dataclasses import dataclass
 import time
 import unittest
+from dataclasses import dataclass
 
 from core.course_models import CourseOffering
 from core.selection_optim import (
-    ABSOLUTE_MIN_INTERVAL, ClockSync, Decision, FailoverPlanner,
-    FailureClassifier, PeakWindow, PollingSchedule, ReleaseMonitor,
-    offering_fingerprint, parse_server_time,
+    ABSOLUTE_MIN_INTERVAL,
+    ClockSync,
+    Decision,
+    FailoverPlanner,
+    FailureClassifier,
+    PeakWindow,
+    PollingSchedule,
+    ReleaseMonitor,
+    offering_fingerprint,
+    parse_server_time,
 )
 
 
@@ -190,12 +197,12 @@ class ClassifierTests(unittest.TestCase):
                          "cooldown")
 
     def test_full_marker_moves_to_next_without_retry(self):
-        decision = self.classifier.classify(200, "名额已满".encode("utf-8"), False)
+        decision = self.classifier.classify(200, "名额已满".encode(), False)
         self.assertEqual(decision.action, "next")
 
     def test_window_marker_waits(self):
         decision = self.classifier.classify(
-            200, "当前时间不是有效的选课时间区段".encode("utf-8"), False)
+            200, "当前时间不是有效的选课时间区段".encode(), False)
         self.assertEqual(decision.action, "wait")
 
     def test_confirmed_readback_stops(self):

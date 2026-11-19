@@ -5,8 +5,15 @@ Pure arithmetic and validation: no clock source, no HTTP client, no school.
 import unittest
 
 from core.window_probe import (
-    DEFAULT_MIN_INTERVAL_MS, MAX_SCHEDULE_LENGTH, MIN_MEANINGFUL_GAP_MS,
-    ProbeError, ProbeSchedule, WindowPhase, WindowProbe, estimate_flip, replay,
+    DEFAULT_MIN_INTERVAL_MS,
+    MAX_SCHEDULE_LENGTH,
+    MIN_MEANINGFUL_GAP_MS,
+    ProbeError,
+    ProbeSchedule,
+    WindowPhase,
+    WindowProbe,
+    estimate_flip,
+    replay,
 )
 
 T0 = 1_766_275_200.0     # 2026-12-21 00:00:00 UTC, arbitrary but fixed

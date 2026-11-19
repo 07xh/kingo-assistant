@@ -6,13 +6,15 @@ from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
-from windows_gui import (
-    Application, MonitorEvent, _invalidate_native_session,
-    _ncwu_read_busy, _native_read_in_progress,
-)
-from core.ncwu_live_elective import LiveElectiveSnapshot
 from core.native_timetable import TimetableReadResult
 from core.ncwu_s202_score import PersonalScoreCount
+from windows_gui import (
+    Application,
+    MonitorEvent,
+    _invalidate_native_session,
+    _native_read_in_progress,
+    _ncwu_read_busy,
+)
 
 
 def app():

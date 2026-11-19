@@ -1,18 +1,24 @@
 """Offline-only tests for automatic enrollment safety and priority flow."""
 import asyncio
 import json
-from dataclasses import replace
-from pathlib import Path
 import tempfile
 import unittest
+from dataclasses import replace
+from pathlib import Path
 
-from core.enrollment import (
-    AttemptJournal, EnrollmentEngine, EnrollmentNotReady,
-    Offering, SubmitReceipt, Target, WindowState, VerificationPolicy,
-)
 from core.course_models import ScheduleSnapshot
+from core.enrollment import (
+    AttemptJournal,
+    EnrollmentEngine,
+    EnrollmentNotReady,
+    Offering,
+    SubmitReceipt,
+    Target,
+    VerificationPolicy,
+    WindowState,
+)
 from tests.attestation_support import (
-    expired_registry, registry_without, tampered_registry, valid_registry,
+    valid_registry,
 )
 
 

@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 import asyncio
+import unittest
 from copy import deepcopy
 from datetime import datetime
-import unittest
 
 from core.enrollment import EnrollmentNotReady
 from core.official_portal_schedule import CHINA_TIMEZONE

@@ -7,16 +7,19 @@ The underlying EnrollmentEngine re-checks the window before any write.
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
 import math
 import random
 import time
+from dataclasses import dataclass
 from typing import Callable, Protocol, Sequence
 
 from core.enrollment import (
-    EnrollmentEngine, RunReport, Target, WindowState, _validate_targets,
+    EnrollmentEngine,
+    RunReport,
+    Target,
+    WindowState,
+    _validate_targets,
 )
-
 
 MIN_WINDOW_POLL_SECONDS = 60
 MAX_WINDOW_POLL_SECONDS = 3600

@@ -1,12 +1,16 @@
 """Offline, network-free policy and shared-budget regression tests."""
 import asyncio
-from pathlib import Path
 import tempfile
 import time
 import unittest
+from pathlib import Path
 
 from core.request_budget import (
-    GlobalRequestBudget, PolicyError, RequestPolicy, SingleFlight, WindowLimit,
+    GlobalRequestBudget,
+    PolicyError,
+    RequestPolicy,
+    SingleFlight,
+    WindowLimit,
 )
 
 

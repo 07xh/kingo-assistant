@@ -9,8 +9,8 @@ No captured secret, account, one-time token or school Javascript is embedded.
 """
 from __future__ import annotations
 
-from cryptography.hazmat.primitives.ciphers import Cipher, modes
 from cryptography.hazmat.decrepit.ciphers.algorithms import TripleDES
+from cryptography.hazmat.primitives.ciphers import Cipher, modes
 
 _FIPS_PC1 = (
     56, 48, 40, 32, 24, 16, 8, 0, 57, 49, 41, 33, 25, 17, 9, 1,

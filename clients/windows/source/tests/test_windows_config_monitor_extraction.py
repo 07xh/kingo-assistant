@@ -1,13 +1,12 @@
 """Config and read-only monitor extraction is compatible with old GUI APIs."""
-import asyncio
-from pathlib import Path
 import queue
 import tempfile
+from pathlib import Path
 from unittest import TestCase
 from unittest.mock import AsyncMock, Mock, patch
 
-import windows_gui
 import windows_config_runtime
+import windows_gui
 import windows_monitor_runtime
 from windows_gui import MonitorEvent, MonitorWorker
 

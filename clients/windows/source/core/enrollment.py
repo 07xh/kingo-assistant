@@ -11,25 +11,27 @@ An uncertain outcome is never automatically retried.
 from __future__ import annotations
 
 import base64
-from contextlib import contextmanager
-from dataclasses import dataclass, field
-from enum import Enum
 import hashlib
 import hmac
 import json
 import os
-from pathlib import Path
 import secrets
 import tempfile
 import threading
+from contextlib import contextmanager
+from dataclasses import dataclass, field
+from enum import Enum
+from pathlib import Path
 from typing import Protocol, Sequence
 
-from core.attestation import AttestationError, AttestationRegistry, GATE_NAMES
+from core.attestation import GATE_NAMES, AttestationError, AttestationRegistry
 from core.course_models import (
-    CourseTarget as Target, CourseOffering as Offering,
+    CourseOffering as Offering,
+)
+from core.course_models import (
+    CourseTarget as Target,
 )
 from core.enrollment_state import Transition
-
 
 JOURNAL_VERSION = 2
 MAX_JOURNAL_BYTES = 128 * 1024

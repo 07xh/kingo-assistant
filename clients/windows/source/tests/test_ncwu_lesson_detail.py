@@ -5,7 +5,10 @@ from unittest import TestCase
 import httpx
 
 from core.ncwu_lesson_detail import (
-    PATH, LessonCell, parse_lesson_detail, read_lesson_detail,
+    PATH,
+    LessonCell,
+    parse_lesson_detail,
+    read_lesson_detail,
 )
 
 CONFIG = {"base_url": "https://jwmis.ncwu.edu.cn"}
@@ -95,7 +98,7 @@ class NcwuLessonDetailTests(TestCase):
 
     def test_200_expiry_page_is_not_success(self):
         result, requests = call(lambda _: httpx.Response(
-            200, content="凭证已失效".encode("utf-8"),
+            200, content="凭证已失效".encode(),
             headers={"content-type": "text/html"}))
         self.assertEqual(result.code, "expired")
         self.assertEqual(len(requests), 1)

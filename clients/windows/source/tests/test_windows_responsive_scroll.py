@@ -4,7 +4,9 @@ from unittest import TestCase
 from unittest.mock import Mock, patch
 
 from windows_visual_shell import (
-    bind_page_wheel, bind_responsive_shell, make_scrollable_content,
+    bind_page_wheel,
+    bind_responsive_shell,
+    make_scrollable_content,
     update_responsive_shell,
 )
 

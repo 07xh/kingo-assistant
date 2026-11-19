@@ -1,13 +1,13 @@
 """Optional interactive-display smoke check (Linux: xvfb-run -a python tests/smoke_gui.py)."""
-from pathlib import Path
 import sys
 import tempfile
+from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from windows_gui import Application
-from desktop_editor import SettingsEditor
 from core.desktop_settings import load_config
+from desktop_editor import SettingsEditor
+from windows_gui import Application
 
 
 def main():

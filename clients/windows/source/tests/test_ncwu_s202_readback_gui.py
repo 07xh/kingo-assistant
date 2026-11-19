@@ -4,8 +4,8 @@ from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import AsyncMock, Mock, patch
 
-from windows_gui import Application
 from core.ncwu_s202_readback import S202ReadbackResult
+from windows_gui import Application
 
 
 class S202GuiTests(TestCase):

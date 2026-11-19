@@ -1,8 +1,8 @@
 """Headless checks for Windows scheduled-runner admission UI."""
+import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
-import unittest
 
 from windows_gui import Application
 

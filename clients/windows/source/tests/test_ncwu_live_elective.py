@@ -2,16 +2,18 @@
 import asyncio
 import json
 from unittest import TestCase
-from unittest.mock import patch
 
 import httpx
 
-from core.ncwu_live_elective import (
-    CATALOG_PATH, HOST, REFERER, S202_PAGE, WINDOW_PATH,
-    _extract_query_form, live_s202_snapshot,
-)
 from core.ncwu_elective_table import EXPECTED_HEADINGS
-
+from core.ncwu_live_elective import (
+    HOST,
+    REFERER,
+    S202_PAGE,
+    WINDOW_PATH,
+    _extract_query_form,
+    live_s202_snapshot,
+)
 
 COOKIE = "JSESSIONID=SYNTHETIC_SESSION_12345"
 CONF = {"base_url": "https://jwmis.ncwu.edu.cn"}

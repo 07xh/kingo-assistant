@@ -1,15 +1,14 @@
 """V4.9 startup gates and lossless switch-backup regression tests. Offline only."""
 from __future__ import annotations
 
-from copy import deepcopy
-from datetime import datetime, timezone
-from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import patch, Mock
+from copy import deepcopy
+from datetime import UTC, datetime
+from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
-from core.conflicts import find_conflicts
 from core.desktop_settings import load_config
 from core.plan_store import list_plans, load_plan, save_switch_backup
 from core.preflight import format_checks, inspect_readiness, split_checks
@@ -108,7 +107,7 @@ class ReadinessV49Test(unittest.TestCase):
         cfg = self._ready_config()
         with tempfile.TemporaryDirectory() as tmp:
             folder = Path(tmp) / 'plans'
-            clock = datetime(2026, 11, 11, 8, 43, 17, 890059, tzinfo=timezone.utc)
+            clock = datetime(2026, 11, 11, 8, 43, 17, 890059, tzinfo=UTC)
             with patch('core.plan_store.datetime') as fake_datetime, \
                  patch('core.plan_store.secrets.token_hex',
                        side_effect=['aaaaaaaa', 'aaaaaaaa', 'bbbbbbbb']):

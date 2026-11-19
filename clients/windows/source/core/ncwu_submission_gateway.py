@@ -9,16 +9,20 @@ from __future__ import annotations
 
 from typing import Awaitable, Callable, Mapping
 
-from core.attestation import AttestationRegistry, GATE_NAMES
+from core.attestation import GATE_NAMES, AttestationRegistry
 from core.course_models import CourseTarget
 from core.enrollment import (
-    AttemptJournal, EnrollmentEngine, EnrollmentNotReady, SubmitReceipt,
+    AttemptJournal,
+    EnrollmentEngine,
+    EnrollmentNotReady,
+    SubmitReceipt,
 )
 from core.ncwu_live_elective import ORIGIN, _validate_origin
-from core.ncwu_submission_transport import (
-    PreparedNCWUSubmission, submit_prepared_s202_once,
-)
 from core.ncwu_read_support import default_read_client
+from core.ncwu_submission_transport import (
+    PreparedNCWUSubmission,
+    submit_prepared_s202_once,
+)
 
 
 class NCWUEvidenceBoundGateway:

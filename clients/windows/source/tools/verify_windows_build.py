@@ -8,11 +8,11 @@ from __future__ import annotations
 
 import hashlib
 import json
-from pathlib import Path
 import platform
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from pathlib import Path
 
 
 class BuildVerificationError(RuntimeError):
@@ -51,7 +51,7 @@ def verify(exe: Path, *, system: str | None = None) -> dict:
         sha256 = hashlib.file_digest(handle, "sha256").hexdigest()
     return {
         "platform": "Windows",
-        "verified_at_utc": datetime.now(timezone.utc).isoformat(),
+        "verified_at_utc": datetime.now(UTC).isoformat(),
         "artifact": exe.name,
         "size_bytes": exe.stat().st_size,
         "sha256": sha256,

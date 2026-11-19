@@ -1,14 +1,13 @@
 """Synthetic, no-network tests for NCWU timetable evidence classification."""
 import json
-from pathlib import Path
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from core.har_audit import summarize_har
-from core.ncwu_timetable_schema import (TimetableSchemaError,
-                                        inspect_timetable_json)
+from core.ncwu_timetable_schema import TimetableSchemaError, inspect_timetable_json
 
 
 def timetable():

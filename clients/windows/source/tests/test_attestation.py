@@ -4,22 +4,30 @@ Every fixture writes a real temporary document, so digest verification,
 tamper detection and expiry are exercised instead of bypassed.
 """
 import json
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
 import tempfile
 import unittest
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 from core.attestation import (
-    GATE_NAMES, Attestation, AttestationError, AttestationRegistry,
-    expiry_after, hash_evidence, resolve_registry,
+    GATE_NAMES,
+    Attestation,
+    AttestationError,
+    AttestationRegistry,
+    expiry_after,
+    hash_evidence,
+    resolve_registry,
 )
 from core.enrollment import EnrollmentEngine, EnrollmentNotReady
 from tests.attestation_support import (
-    evidence_for, evidence_root, expired_registry, registry_without,
-    tampered_registry, valid_registry,
+    evidence_for,
+    evidence_root,
+    expired_registry,
+    registry_without,
+    tampered_registry,
+    valid_registry,
 )
 from tests.test_enrollment import FakeOfficialGateway
-
 
 TERM = "2026-2027-1"
 
@@ -43,7 +51,7 @@ class AttestationModelTests(unittest.TestCase):
         with self.assertRaises(AttestationError):
             Attestation(gate="made_up_gate", evidence=evidence_for(GATE_NAMES[0]),
                         contract_sha256="a" * 64,
-                        captured_at=datetime.now(timezone.utc),
+                        captured_at=datetime.now(UTC),
                         expires_at=None, reviewer="t")
 
     def test_naive_datetime_and_bad_digest_are_rejected(self):
@@ -52,11 +60,11 @@ class AttestationModelTests(unittest.TestCase):
                         captured_at=datetime.now(), expires_at=None, reviewer="t")
         with self.assertRaises(AttestationError):
             Attestation(gate=GATE_NAMES[0], evidence="x.md", contract_sha256="zz",
-                        captured_at=datetime.now(timezone.utc), expires_at=None,
+                        captured_at=datetime.now(UTC), expires_at=None,
                         reviewer="t")
 
     def test_expiry_must_be_after_capture(self):
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         with self.assertRaises(AttestationError):
             Attestation(gate=GATE_NAMES[0], evidence="x.md", contract_sha256="a" * 64,
                         captured_at=now, expires_at=now - timedelta(days=1),
