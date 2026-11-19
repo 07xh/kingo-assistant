@@ -137,10 +137,13 @@ class ScheduledEnrollmentRunner:
                     0, max(0.0, self.monotonic() - started),
                 )
             remaining = target_epoch - self.clock.now()
-            # Avoid waking the local event loop twice per second for days.
-            # Coarse waits are cancellation-aware; use subsecond precision
-            # only in the final 10 seconds before the confirmed start time.
-            step = 30.0 if remaining > 60 else (5.0 if remaining > 10 else 0.25)
+            # Coarse sleeps avoid waking for hours. During the final second,
+            # use 50 ms *local* checks only; no school requests occur here.
+            # asyncio/OS scheduling can still delay wakeups, so this is a
+            # best-effort improvement rather than a sub-50 ms guarantee.
+            step = (30.0 if remaining > 60 else
+                    (5.0 if remaining > 10 else
+                     (0.25 if remaining > 1 else 0.05)))
             if await self._pause(min(step, remaining), stop_event):
                 return ScheduledRunReport(
                     "cancelled_before_start",
