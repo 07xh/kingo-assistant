@@ -228,7 +228,7 @@ official_write:
 
 `windows_gui.py` 1850 行单文件，已出现 `_xxx_in_progress` 布尔标志 11 个（`_entry_probe_in_progress` / `_session_check_in_progress` / `_term_probe_in_progress` ...）。这是典型的「互斥靠布尔堆」反模式，加第 12 个功能必然漏。
 
-- 纯接口版本只保留登录/课程/执行状态/日志所需页面，不新增 `ui/manual_tab.py`，现存手动官网入口列入清理计划
+- 纯接口版本只保留登录/课程/执行状态/日志所需页面，不新增 `ui/manual_tab.py`，旧手动官网入口与浏览器预约模块已从运行时删除
 - 11 个布尔合并成一个 `OperationLock` 上下文管理器
 - 工作量：2-3 天，纯重构，无功能变化
 
@@ -321,9 +321,9 @@ official_write:
 | 阶段 | 内容 | 交付物 | 验收判据 | 依赖 |
 |---|---|---|---|---|
 | **A（1 周）** | 门禁 attestation 化 + 时延埋点 + 合并 optimizations | `core/attestation.py`、`data/latency.jsonl`、删除重复传输层 | 单测全绿；能看到一次轮询的六段分解 | 无 |
-| **B（1 周）** | 三未知取证（离线部分）+ ReleaseMonitor 接入 + 亚秒窗口状态机 | schema 草案、退课高峰轮询策略、`WindowProbe` | 用 HAR 生成的 schema 能过 `har_to_schema` 校验；窗口状态机能识别 prohibit 翻转 | 需 HAR/APK |
-| **C（1-2 周）** | 写适配器（先接移动端，后接 Web）+ 幂等 + 读回 | `core/adapter_ncwu.py` | 补选期低风险窗口完成 1 次真实提交 + 读回确认 | 需真实窗口 |
-| **D（1 周）** | CDP 兜底 + GUI 拆分 + 复盘页 | `ui/` 拆分、`run-<ts>.json` 时间线 | 复盘页能定位失败原因 | A/B 完成 |
+| **B（1 周）** | 三未知取证（离线部分）+ ReleaseMonitor 接入 + 亚秒窗口状态机 | schema 草案、退课高峰轮询策略、`WindowProbe` | 用 HAR 生成的 schema 能过 `har_to_schema` 校验；窗口状态机能识别 prohibit 翻转 | 需合法验收证据 |
+| **C（1-2 周）** | 经许可的正式 HTTP 提交适配器 + 幂等 + 官方读回 | `core/adapter_ncwu.py` | 补选期低风险窗口完成 1 次真实提交 + 读回确认 | 需真实窗口 |
+| **D（1 周）** | 纯 HTTP 会话健壮性 + GUI 整理 + 复盘页 | `ui/` 拆分、`run-<ts>.json` 时间线 | 复盘页能定位失败原因 | A/B 完成 |
 
 **关键判断**：A 阶段全部不需要任何外部输入，**现在就能开工**。C 阶段是真正的分水岭，之前所有工作都只是给它铺路。
 
