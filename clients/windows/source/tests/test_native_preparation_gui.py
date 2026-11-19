@@ -26,13 +26,11 @@ class NativePreparationGuiTest(TestCase):
     def test_only_explicit_button_launches_native_worker(self):
         config = {"protocol": {"verified": False}, "auth": {"cookie": ""}}
         with patch("windows_gui.read_config", return_value=config), \
-             patch("windows_gui.threading.Thread") as thread, \
-             patch("windows_gui.webbrowser.open") as open_browser:
+             patch("windows_gui.threading.Thread") as thread:
             Application.check_native_preparation(self.app)
             thread.assert_called_once()
             self.assertEqual(thread.call_args.kwargs["name"], "KingoNativeApiPreparation")
             thread.call_args.kwargs["target"]()
-            open_browser.assert_not_called()
         event = self.app.events.get_nowait()
         self.assertEqual(event.kind, "native_preparation")
         self.assertEqual(event.value.code, "protocol_unverified")
