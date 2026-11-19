@@ -473,7 +473,12 @@ class EnrollmentEngine:
         try:
             return await verifier.finish()
         finally:
-            self._deferred_verifier = None
+            # finish() shields the read-only task. If the waiting caller is
+            # cancelled, the underlying verification may still be running.
+            # Retain the fence until the task really completes; otherwise a
+            # new submission could start with an unresolved in-flight result.
+            if verifier.task is not None and verifier.task.done():
+                self._deferred_verifier = None
 
     async def run(self, targets: Sequence[Target], *, prepared_schedule=None,
                   defer_readback: bool = False) -> RunReport:
