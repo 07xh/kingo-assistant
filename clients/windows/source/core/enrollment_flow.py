@@ -112,7 +112,7 @@ async def run_enrollment(engine, targets: Sequence[Target], *,
         occupied = snapshot.slots
         refresh_catalog = False
 
-        for target in targets:
+        for target_index, target in enumerate(targets):
             fsm = fsms[target.key]
             fsm.move(EngineState.MONITORING, "preflight_ready")
             identity = (target.course_id, target.class_id)
@@ -247,6 +247,22 @@ async def run_enrollment(engine, targets: Sequence[Target], *,
                 receipt is not None and receipt.accepted is False
                 and not submit_error
             )
+            # The final target has no dependent follow-up submission.
+            # Let a dedicated read-only task finish after releasing the
+            # submission journal lock. Earlier targets retain synchronous
+            # authoritative verification to preserve ordered fallback.
+            if defer_readback and target_index == len(targets) - 1:
+                from core.verification_coordinator import VerificationCoordinator
+                verifier = VerificationCoordinator(
+                    engine, target, fsm, states, fsms,
+                    explicit_rejection=explicit_rejection,
+                    submit_error=submit_error,
+                )
+                engine._deferred_verifier = verifier
+                verifier.start()
+                states[target.key] = "已发送，等待官方结果核验"
+                return report(True)
+
             confirmed, latest, read_error = await _verify(
                 engine, fsm, identity, reads=1 if explicit_rejection else None)
             if confirmed:
