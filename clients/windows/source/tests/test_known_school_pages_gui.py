@@ -112,6 +112,7 @@ class SchoolResultsGuiTests(TestCase):
         current = app()
         current._tick_portal_appointment = Mock()
         current.after = Mock()
+        current.poll = Mock()
         current.log = Mock()
         current.native_login_status = Mock()
         current.native_preparation_status = Mock()
