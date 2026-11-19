@@ -1,6 +1,4 @@
 """Offline-only first-party login phase diagnostics, no live NCWU access."""
-import asyncio
-import json
 import unittest
 from unittest.mock import patch
 
