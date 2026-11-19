@@ -73,7 +73,7 @@ class SchoolResultsGuiTests(TestCase):
         self.assertEqual(tree.return_value.insert.call_count, 1)
         self.assertIn("INTERNAL-SKBJDM",
                       tree.return_value.insert.call_args.kwargs["values"])
-        self.assertNotIn("成功", result.message)
+        self.assertIn("不能据此认定身份已独立验证、选课成功", result.message)
 
     def test_blocked_when_timetable_active(self):
         current = app()
