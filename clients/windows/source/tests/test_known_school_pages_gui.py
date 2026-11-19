@@ -171,7 +171,7 @@ class SchoolResultsGuiTests(TestCase):
         cells = tree.return_value.insert.call_args.kwargs["values"]
         self.assertIn("03", cells)
         self.assertIn("志愿 A：精确候选", cells)
-        self.assertIn("status_code", tree.call_args.kwargs["columns"])
+        self.assertIn("state_code", tree.call_args.kwargs["columns"])
         self.assertIn("志愿 1 条", str(popup.call_args))
         button.assert_called_once()
         self.assertIn("均不是选课成功证明",
