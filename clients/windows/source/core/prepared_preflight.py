@@ -26,7 +26,8 @@ class PreparedSchedule:
     snapshot: ScheduleSnapshot
 
     def usable(self, gateway, targets: Sequence[CourseTarget]) -> bool:
-        if getattr(gateway, "preopen_schedule_permitted", False) is not True:
+        if (getattr(gateway, "preopen_schedule_permitted", False) is not True
+                or getattr(gateway, "preopen_budget_headroom_verified", False) is not True):
             return False
         token_reader = getattr(gateway, "preflight_session_token", None)
         if not callable(token_reader):
@@ -52,7 +53,11 @@ async def prepare_schedule(engine, targets: Sequence[CourseTarget]) -> PreparedS
     _validate_targets(targets, engine.journal.semester)
     engine.validate_ready()
     gateway = engine.gateway
-    if getattr(gateway, "preopen_schedule_permitted", False) is not True:
+    # A pre-window read can consume the rate budget needed at T0. Unless
+    # capacity for both the optional read and mandatory post-window checks
+    # has been independently verified, skip prefetch entirely.
+    if (getattr(gateway, "preopen_schedule_permitted", False) is not True
+            or getattr(gateway, "preopen_budget_headroom_verified", False) is not True):
         return None
     token_reader = getattr(gateway, "preflight_session_token", None)
     if not callable(token_reader):
