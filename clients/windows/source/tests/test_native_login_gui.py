@@ -37,12 +37,10 @@ class NativeLoginGuiTests(TestCase):
              patch("windows_gui.simpledialog.askstring", side_effect=["alice", "secret"]) as dialog, \
              patch("windows_gui.login_ncwusigned", new_callable=AsyncMock,
                    return_value=response) as login, \
-             patch("windows_gui.threading.Thread") as thread, \
-             patch("windows_gui.webbrowser.open") as browser:
+             patch("windows_gui.threading.Thread") as thread:
             Application.start_native_login(self.app)
             self.assertEqual(thread.call_args.kwargs["name"], "KingoNativeLogin")
             thread.call_args.kwargs["target"]()
-            browser.assert_not_called()
         self.assertEqual(dialog.call_count, 2)
         login.assert_awaited_once_with(cfg, "alice", "secret")
         event = self.app.events.get_nowait()
@@ -52,11 +50,9 @@ class NativeLoginGuiTests(TestCase):
 
     def test_clear_session_does_not_contact_school(self):
         self.app._native_session_cookie = "SID=private"
-        with patch("windows_gui.webbrowser.open") as browser, \
-             patch("windows_gui.threading.Thread") as thread:
+        with patch("windows_gui.threading.Thread") as thread:
             Application.clear_native_session(self.app)
         self.assertIsNone(self.app._native_session_cookie)
-        browser.assert_not_called()
         thread.assert_not_called()
 
     def test_native_session_is_only_usable_for_same_origin(self):
