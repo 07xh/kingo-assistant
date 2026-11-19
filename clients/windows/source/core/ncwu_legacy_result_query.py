@@ -14,13 +14,18 @@ _REQUIRED = ("xn", "xqM", "xqName", "jwUserYeartermId", "userCode")
 _ACCOUNT = re.compile(r"^[0-9A-Za-z_.-]{3,64}$")
 _YEAR = re.compile(r"^20[0-9]{2}$")
 _TERM = re.compile(r"^[0-9]$")
+# The owner's two Nov 2026 captures both show first term as xqM=0,
+# xqName=第一学期. Do NOT guess a second-term encoding from this evidence.
+_FIRST_SEMESTER = re.compile(r"^(20[0-9]{2})-(20[0-9]{2})-1$")
 
 
 class CurrentResultQueryError(ValueError):
     """Reason code only; must never print response or account identifiers."""
 
     def __init__(self, code: str):
-        if code not in ("identity_unverified", "identity_mismatch", "invalid_response"):
+        if code not in ("identity_unverified", "identity_mismatch",
+                        "semester_unverified", "semester_mismatch",
+                        "invalid_response"):
             code = "invalid_response"
         self.code = code
         super().__init__(code)
@@ -30,10 +35,27 @@ def valid_current_account(value: object) -> bool:
     return isinstance(value, str) and _ACCOUNT.fullmatch(value) is not None
 
 
-def build_current_result_params(response: bytes, *, verified_user_code: str) -> str:
-    """Return an ephemeral Base64 query using only a verified session account."""
+def valid_first_semester(value: object) -> bool:
+    """Accept only the currently evidenced academic-year + first-term mapping."""
+    if not isinstance(value, str):
+        return False
+    matched = _FIRST_SEMESTER.fullmatch(value)
+    return bool(matched and int(matched.group(2)) == int(matched.group(1)) + 1)
+
+
+def build_current_result_params(
+    response: bytes, *, verified_user_code: str, expected_semester: str,
+) -> str:
+    """Return an ephemeral Base64 query bound to account AND local semester.
+
+    The recorded first-term mapping is verified offline against the owner's
+    separate 3 Nov and 14 Nov captures. We never infer the second term's
+    academic year or xqM encoding without further accepted evidence.
+    """
     if not valid_current_account(verified_user_code):
         raise CurrentResultQueryError("identity_unverified")
+    if not valid_first_semester(expected_semester):
+        raise CurrentResultQueryError("semester_unverified")
     if not isinstance(response, bytes) or not 0 < len(response) <= 8192:
         raise CurrentResultQueryError("invalid_response")
     try:
@@ -53,6 +75,13 @@ def build_current_result_params(response: bytes, *, verified_user_code: str) -> 
         record["userCode"].encode("utf-8"), verified_user_code.encode("utf-8")
     ):
         raise CurrentResultQueryError("identity_mismatch")
+    # A yearterm response may be for another academic term even when
+    # userCode matches. Never request the report under the wrong local plan.
+    first_year = expected_semester.split("-", 1)[0]
+    if (record["xn"] != first_year
+            or record["xqM"] != "0"
+            or record["xqName"] != "第一学期"):
+        raise CurrentResultQueryError("semester_mismatch")
     # Observed JS uses standard Base64; HTTPX will encode it as URL params.
     query = f'xn={record["xn"]}&xq={record["xqM"]}&xh={record["userCode"]}'
     return base64.b64encode(query.encode("ascii")).decode("ascii")
