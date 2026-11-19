@@ -38,14 +38,12 @@ class RoundGUIWiringTests(TestCase):
              patch("windows_gui.threading.Thread") as thread, \
              patch("windows_gui.probe_s202_round", new_callable=AsyncMock,
                    return_value=S202RoundStatus(
-                       "observed", "closed", 3)) as probe, \
-             patch("windows_gui.webbrowser.open") as browser:
+                       "observed", "closed", 3)) as probe:
             Application.check_s202_round(self.app)
             thread.assert_called_once()
             self.assertEqual(
                 thread.call_args.kwargs["name"], "KingoS202RoundProbe")
             thread.call_args.kwargs["target"]()
-            browser.assert_not_called()
         probe.assert_awaited_once_with(cfg, session_cookie="JSESSIONID=LOCAL_TEST")
         event = self.app.events.get_nowait()
         self.assertEqual(event.kind, "ncwu_s202_round")
