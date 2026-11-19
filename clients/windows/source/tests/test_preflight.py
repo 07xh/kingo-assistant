@@ -1,8 +1,9 @@
 """Verify that readiness checks do not leak secrets or fetch school content."""
 import unittest
 from copy import deepcopy
-from core.preflight import inspect_readiness
+
 from core.desktop_settings import load_config
+from core.preflight import inspect_readiness
 from windows_gui import bundled_config
 
 

@@ -8,9 +8,9 @@ proof by itself. Never return the school's private field values.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
 import hmac
 import json
+from dataclasses import dataclass
 from typing import Callable, Mapping
 from urllib.parse import urlsplit
 

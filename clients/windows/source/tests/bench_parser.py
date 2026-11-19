@@ -1,6 +1,7 @@
 """Synthetic local benchmark. NOT a campus-server load test."""
 import statistics
 import time
+
 from core.client import parse_courses
 
 html = ('<table>' + ''.join(

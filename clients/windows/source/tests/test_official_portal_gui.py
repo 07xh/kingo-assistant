@@ -1,9 +1,9 @@
 """Headless tests for the official-browser one-shot fallback in Windows GUI."""
+import unittest
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
-import unittest
 
 from core.official_portal_schedule import CHINA_TIMEZONE
 from windows_gui import Application

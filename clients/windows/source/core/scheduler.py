@@ -9,18 +9,21 @@ import asyncio
 import os
 import random
 import time
-from collections import defaultdict
 
 import httpx
 from loguru import logger
 
 from .client import AuthenticationError, ProtocolError, RateLimitError, Status
-from .monitor_state import MonitorStateStore
 from .monitor_policy import validate_limits
-from .selection_optim import PollingSchedule
+from .monitor_state import MonitorStateStore
 from .release_watch import (
-    NotificationLedger, WatchState, apply_observations, observe_all, target_matches,
+    NotificationLedger,
+    WatchState,
+    apply_observations,
+    observe_all,
+    target_matches,
 )
+from .selection_optim import PollingSchedule
 
 #: Watch classification -> the user-facing Status string defined in client.py.
 _STATE_STATUS = {
@@ -149,7 +152,7 @@ class Scheduler:
         try:
             await asyncio.wait_for(self.client.stop.wait(), timeout=seconds)
             return False
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return True
 
     def _next_interval(self, limits) -> float:

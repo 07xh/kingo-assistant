@@ -8,10 +8,10 @@ Never writes a registration or silently fabricates qdrs from cap - enrolled.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
 import re
 import threading
 import time
+from dataclasses import dataclass
 from typing import Callable, Mapping
 
 import httpx
@@ -19,15 +19,21 @@ from bs4 import BeautifulSoup
 
 from core.client import encode_gbk_form
 from core.ncwu_live_elective import (
-    HOST, ORIGIN, _decode_html, _LOGIN_MARKERS, _validate_origin, MAX_BODY,
+    _LOGIN_MARKERS,
+    MAX_BODY,
+    ORIGIN,
+    WINDOW_PATH,
+    _decode_html,
+    _validate_origin,
+)
+from core.ncwu_read_support import (
+    classify_read_response,
+    default_read_client,
+    get_optional_verified_budget,
+    set_scoped_cookie,
 )
 from core.ncwu_s202_score import _context_from_window
-from core.ncwu_live_elective import WINDOW_PATH
 from core.request_budget import build_verified_budget
-from core.ncwu_read_support import (
-    default_read_client, set_scoped_cookie,
-    get_optional_verified_budget, classify_read_response,
-)
 
 PAGE = "/hsjw/student/wsxk.kcbcx10319.html?menucode=S2020103"
 TABLE = "/hsjw/taglib/DataTable.jsp?tableId=5327042&clientWidth=1210"
@@ -261,7 +267,6 @@ async def read_current_course_plan(
             http_factory = default_read_client
         async with http_factory() as client:
             set_scoped_cookie(client, session_cookie)
-            stage = "window"
 
             async def req(method: str, path: str, *, content: bytes | None = None,
                           referer: str | None = None) -> httpx.Response:
@@ -295,7 +300,6 @@ async def read_current_course_plan(
             scope = _context_from_window(window.content)
             if scope is None:
                 return PlanSnapshot("round_unavailable", stage="window")
-            stage = "page"
             page = await req("GET", PAGE)
             html = _decode_html(page)
             if any(m in html for m in _LOGIN_MARKERS):
@@ -309,7 +313,6 @@ async def read_current_course_plan(
             })
             if form is None:
                 return PlanSnapshot("form_unavailable", stage="page")
-            stage = "table"
             table = await req("POST", TABLE, content=encode_gbk_form(form))
             body = _decode_html(table)
             if any(m in body for m in _LOGIN_MARKERS):

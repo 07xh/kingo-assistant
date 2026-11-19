@@ -8,22 +8,27 @@ encrypted values or other session scope leaks into logs.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
 import threading
 import time
+from dataclasses import dataclass
 from typing import Callable, Mapping
 
 import httpx
 
 from core.ncwu_live_elective import (
-    HOST, ORIGIN, REFERER, WINDOW_PATH, _validate_origin,
+    ORIGIN,
+    REFERER,
+    WINDOW_PATH,
+    _validate_origin,
+)
+from core.ncwu_read_support import (
+    classify_read_response,
+    default_read_client,
+    get_optional_verified_budget,
+    set_scoped_cookie,
 )
 from core.request_budget import build_verified_budget
-from core.ncwu_read_support import (
-    default_read_client, set_scoped_cookie,
-    get_optional_verified_budget, classify_read_response,
-)
 
 _LOCK = threading.Lock()
 _NEXT_ALLOWED_AT = 0.0

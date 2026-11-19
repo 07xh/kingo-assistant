@@ -11,10 +11,8 @@ from unittest.mock import patch
 
 import httpx
 
-from core.client import (CourseItem, ProtocolError, decode_html, html_encoding,
-                         parse_courses)
+from core.client import CourseItem, ProtocolError, decode_html, html_encoding, parse_courses
 from core.scheduler import Scheduler
-from core.monitor_state import MonitorStateStore
 from main import _read_local_html, replay_html
 from tests.test_v3 import cfg
 

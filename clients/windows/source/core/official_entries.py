@@ -10,14 +10,13 @@ from __future__ import annotations
 
 import math
 import time
+from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from enum import Enum
 from typing import Iterable, Mapping, Sequence
 from urllib.parse import urlsplit
-from contextlib import AsyncExitStack
 
 import httpx
-
 
 EVIDENCE_URL = "https://www2.ncwu.edu.cn/jiaowu/info/1008/2973.htm"
 

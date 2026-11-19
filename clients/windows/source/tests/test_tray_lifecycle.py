@@ -1,5 +1,4 @@
 """Offline lifecycle tests: window close must not silently cancel work."""
-import sys
 from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import Mock, patch

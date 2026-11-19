@@ -10,11 +10,11 @@ unverified initializer / teaching-class eligibility routes.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
 import base64
 import binascii
 import json
 import re
+from dataclasses import dataclass
 from typing import Any
 from urllib.parse import parse_qsl, urlsplit
 

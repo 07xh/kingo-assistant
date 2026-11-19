@@ -5,9 +5,9 @@ The summary is deliberately restricted to counts and fixed status labels.
 """
 from __future__ import annotations
 
+import json
 from collections import Counter
 from dataclasses import dataclass
-import json
 from pathlib import Path
 from urllib.parse import urlsplit
 

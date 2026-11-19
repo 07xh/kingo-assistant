@@ -2,27 +2,35 @@
 
 No test in this module contacts a university or contains a real endpoint.
 """
-from dataclasses import FrozenInstanceError, replace
 import json
-from pathlib import Path
 import tempfile
 import unittest
+from dataclasses import FrozenInstanceError, replace
+from pathlib import Path
 
 from core.course_models import (
-    ConflictVerdict, CourseOffering, CourseTarget, ScheduleSnapshot, TimeSlot,
-    offering_matches, time_conflict,
+    ConflictVerdict,
+    CourseOffering,
+    CourseTarget,
+    ScheduleSnapshot,
+    TimeSlot,
+    offering_matches,
+    time_conflict,
 )
 from core.enrollment import (
-    AttemptJournal, EnrollmentEngine, EnrollmentNotReady,
-    SubmitReceipt, VerificationPolicy,
+    AttemptJournal,
+    EnrollmentEngine,
+    VerificationPolicy,
 )
 from core.enrollment_state import (
-    ALLOWED_TRANSITIONS, EngineState, EnrollmentFSM, InvalidTransition,
+    ALLOWED_TRANSITIONS,
+    EngineState,
+    EnrollmentFSM,
+    InvalidTransition,
 )
 from core.preflight import inspect_enrollment_schedule
-from tests.test_enrollment import FakeOfficialGateway
 from tests.attestation_support import valid_registry
-
+from tests.test_enrollment import FakeOfficialGateway
 
 TERM = "2026-2027-1"
 WEEK_ODD = frozenset((1, 3, 5))

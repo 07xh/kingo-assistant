@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import httpx
 
 from core.client import AuthenticationError, KingoClient
-from core.native_login import NativeLoginResult, login_with_verified_form, validate_login_contract
+from core.native_login import login_with_verified_form, validate_login_contract
 
 
 def config():

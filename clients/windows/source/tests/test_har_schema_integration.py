@@ -2,12 +2,12 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import tempfile
 import unittest
+from pathlib import Path
 
+from core.har_audit import format_summary, summarize_har
 from core.har_schema import inspect_offline_readonly_shape
-from core.har_audit import summarize_har, format_summary
 
 
 def response(rows=None, *, content_type="application/json", extra=None, status=200):

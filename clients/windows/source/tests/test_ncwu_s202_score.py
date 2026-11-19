@@ -1,13 +1,15 @@
 """No-network S202 selected-count tests, with synthetic identity values."""
 import asyncio
 import json
-from urllib.parse import parse_qs
 from unittest import TestCase
+from urllib.parse import parse_qs
 
 import httpx
 
 from core.ncwu_s202_score import (
-    _context_from_window, _selected_count_from_score, read_personal_s202_score,
+    _context_from_window,
+    _selected_count_from_score,
+    read_personal_s202_score,
 )
 
 CONFIG = {"base_url": "https://jwmis.ncwu.edu.cn"}

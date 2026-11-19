@@ -7,8 +7,8 @@ It never contacts NCWU or marks any production adapter as verified.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
+from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 

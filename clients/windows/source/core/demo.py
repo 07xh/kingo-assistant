@@ -13,7 +13,6 @@ from core.desktop_settings import load_config, status_changes
 from core.scheduler import Scheduler
 from main import _read_local_html, validate
 
-
 DEMO_FILES = (
     "snapshot-01-full.html",
     "snapshot-02-available.html",

@@ -3,22 +3,27 @@
 Synthetic gateway only: no university URL, credentials or network calls.
 """
 import asyncio
-from dataclasses import FrozenInstanceError
 import json
-from pathlib import Path
 import tempfile
 import unittest
+from dataclasses import FrozenInstanceError
+from pathlib import Path
 
 from core.enrollment import (
-    AttemptJournal, EnrollmentEngine, EnrollmentNotReady,
-    Offering, Target, WindowState,
+    AttemptJournal,
+    EnrollmentEngine,
+    EnrollmentNotReady,
+    Offering,
+    Target,
+    WindowState,
 )
 from core.enrollment_recovery import (
-    RecoveryEntry, RecoveryReport, RecoveryStatus,
+    RecoveryEntry,
+    RecoveryReport,
+    RecoveryStatus,
 )
-from tests.test_enrollment import FakeOfficialGateway
 from tests.attestation_support import valid_registry
-
+from tests.test_enrollment import FakeOfficialGateway
 
 TERM = "2026-2027-1"
 

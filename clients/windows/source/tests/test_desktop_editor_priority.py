@@ -1,7 +1,7 @@
 """Tests for the course-priority ordering controls without a Tk display."""
+import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
-import unittest
 
 from desktop_editor import SettingsEditor
 

@@ -5,12 +5,12 @@ using an isolated temporary directory instead of the user's settings directory.
 """
 from __future__ import annotations
 
+import tempfile
 from copy import deepcopy
 from pathlib import Path
-import tempfile
 
-from core.desktop_settings import load_config, save_config_atomic
 from core.demo import run_demo
+from core.desktop_settings import load_config, save_config_atomic
 from core.preflight import inspect_readiness
 from main import validate
 

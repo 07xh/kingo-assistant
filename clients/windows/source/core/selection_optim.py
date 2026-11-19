@@ -26,7 +26,7 @@ import statistics
 import time
 from dataclasses import asdict, dataclass, field
 from email.utils import parsedate_to_datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 __all__ = [
     "ClockSample", "ClockSync", "Decision", "FailoverPlanner",
@@ -44,7 +44,7 @@ ABSOLUTE_MIN_INTERVAL = 30.0
 # P1: server clock alignment
 # ---------------------------------------------------------------------------
 
-def parse_server_time(value: str, header: str) -> Optional[float]:
+def parse_server_time(value: str, header: str) -> float | None:
     """Return a real epoch timestamp from an HTTP response header.
 
     Date: RFC 7231 IMF-fixdate, resolution = 1 s.
@@ -60,14 +60,14 @@ def parse_server_time(value: str, header: str) -> Optional[float]:
         try:
             moment = _dt.datetime.fromisoformat(text.replace("Z", "+00:00"))
             if moment.tzinfo is None:
-                moment = moment.replace(tzinfo=_dt.timezone.utc)
+                moment = moment.replace(tzinfo=_dt.UTC)
             return moment.timestamp()
         except ValueError:
             pass
     try:
         moment = parsedate_to_datetime(text)
         if moment.tzinfo is None:
-            moment = moment.replace(tzinfo=_dt.timezone.utc)
+            moment = moment.replace(tzinfo=_dt.UTC)
         return moment.timestamp()
     except (TypeError, ValueError, OverflowError):
         return None
@@ -97,7 +97,7 @@ class ClockSync:
 
     header: str = "Date"
     samples_target: int = 5
-    samples: List[ClockSample] = field(default_factory=list)
+    samples: list[ClockSample] = field(default_factory=list)
     offset_ms: float = 0.0
     precision_ms: float = 1000.0
 
@@ -112,7 +112,7 @@ class ClockSync:
         values = [s.offset_ms for s in self.samples]
         return round(max(values) - min(values), 3)
 
-    def observe(self, resp: Any, sent_at: float, received_at: float) -> Optional[ClockSample]:
+    def observe(self, resp: Any, sent_at: float, received_at: float) -> ClockSample | None:
         raw = resp.headers.get(self.header.lower(), "")
         server_epoch = parse_server_time(raw, self.header)
         if server_epoch is None:
@@ -224,7 +224,7 @@ class Prewarmer:
         return not any(marker in text for marker in self.login_markers)
 
     def warm(self, engine: Any) -> dict:
-        results: List[WarmResult] = []
+        results: list[WarmResult] = []
         for index, transport in enumerate(engine.transports):
             first: Any = None
             last_reused = False
@@ -274,8 +274,8 @@ class ReleaseEvent:
     kind: str                 # new | reopened | increased
     course_id: str
     class_id: str
-    remain: Optional[int]
-    previous_remain: Optional[int]
+    remain: int | None
+    previous_remain: int | None
     at_local: float
     poll_cost_ms: float
 
@@ -292,15 +292,15 @@ class ReleaseMonitor:
     """
 
     def __init__(self) -> None:
-        self.snapshot: Dict[str, Any] = {}
+        self.snapshot: dict[str, Any] = {}
         self.polls = 0
-        self.events: List[ReleaseEvent] = []
+        self.events: list[ReleaseEvent] = []
 
-    def observe(self, offers: List[Any], poll_cost_ms: float = 0.0) -> List[ReleaseEvent]:
+    def observe(self, offers: list[Any], poll_cost_ms: float = 0.0) -> list[ReleaseEvent]:
         self.polls += 1
         now = time.time()
         current = {offering_fingerprint(o): o for o in offers}
-        events: List[ReleaseEvent] = []
+        events: list[ReleaseEvent] = []
         for fingerprint, offering in current.items():
             current_remain = getattr(offering, "remain", None) or 0
             previous = self.snapshot.get(fingerprint)
@@ -350,7 +350,7 @@ class PeakWindow:
     and the first morning of the supplementary round.
     """
 
-    weekday: Optional[int]      # 0=Monday .. 6=Sunday; None = every day
+    weekday: int | None      # 0=Monday .. 6=Sunday; None = every day
     start: str                  # "HH:MM"
     end: str                    # "HH:MM", may wrap past midnight
     label: str = ""
@@ -399,7 +399,7 @@ class PollingSchedule:
 
     def __init__(self, *, peak_interval: float = ABSOLUTE_MIN_INTERVAL,
                  offpeak_interval: float = 60.0,
-                 windows: Optional[List[PeakWindow]] = None) -> None:
+                 windows: list[PeakWindow] | None = None) -> None:
         for value, label in ((peak_interval, "高峰间隔"), (offpeak_interval, "平时间隔")):
             if not isinstance(value, (int, float)) or isinstance(value, bool):
                 raise ValueError(f"{label}无效")
@@ -412,7 +412,7 @@ class PollingSchedule:
         self.windows = list(windows or [])
 
     @classmethod
-    def from_config(cls, strategy: dict) -> "PollingSchedule":
+    def from_config(cls, strategy: dict) -> PollingSchedule:
         """Read ``strategy.pickup``; absent or disabled keeps current behaviour."""
         pickup = (strategy or {}).get("pickup") or {}
         if not isinstance(pickup, dict) or pickup.get("enabled") is not True:
@@ -432,14 +432,14 @@ class PollingSchedule:
                    offpeak_interval=float(pickup.get("offpeak_interval_seconds", 60)),
                    windows=windows)
 
-    def active_window(self, moment: Optional[_dt.datetime] = None) -> Optional[PeakWindow]:
+    def active_window(self, moment: _dt.datetime | None = None) -> PeakWindow | None:
         current = moment or _dt.datetime.now()
         for window in self.windows:
             if window.contains(current):
                 return window
         return None
 
-    def interval(self, moment: Optional[_dt.datetime] = None) -> float:
+    def interval(self, moment: _dt.datetime | None = None) -> float:
         return (self.peak_interval if self.active_window(moment) is not None
                 else self.offpeak_interval)
 
@@ -523,7 +523,7 @@ class FailureClassifier:
 class FailoverPlanner:
     """Targets are tried in listed order. Exact course_id + class_id only."""
 
-    def __init__(self, targets: List[dict]):
+    def __init__(self, targets: list[dict]):
         self.targets = [dict(t) for t in targets if t.get("course_id")]
         for index, target in enumerate(self.targets):
             target.setdefault("priority", index + 1)
@@ -533,15 +533,15 @@ class FailoverPlanner:
             [t for t in self.targets if t["enabled"]],
             key=lambda t: (int(t["priority"]), t["course_id"], t["class_id"]))
         self.cursor = 0
-        self.history: List[dict] = []
+        self.history: list[dict] = []
 
     def __len__(self) -> int:
         return len(self.targets)
 
-    def first(self) -> Optional[dict]:
+    def first(self) -> dict | None:
         return self.targets[0] if self.targets else None
 
-    def next_after(self, target: dict) -> Optional[dict]:
+    def next_after(self, target: dict) -> dict | None:
         for index, candidate in enumerate(self.targets):
             if (candidate["course_id"] == target["course_id"]
                     and candidate["class_id"] == target.get("class_id", "")):
@@ -549,7 +549,7 @@ class FailoverPlanner:
         return None
 
     @staticmethod
-    def match(offers: List[Any], target: dict) -> Optional[Any]:
+    def match(offers: list[Any], target: dict) -> Any | None:
         want_class = str(target.get("class_id") or "").strip()
         for offering in offers:
             if str(getattr(offering, "course_id", "")) != str(target["course_id"]):

@@ -1,15 +1,16 @@
 """MockTransport-only contract tests for the real HAR-confirmed timetable route."""
 import asyncio
-from contextlib import asynccontextmanager
 import json
+from contextlib import asynccontextmanager
 from unittest import TestCase
 from unittest.mock import patch
 
 import httpx
 
 from core.native_timetable import (
-    OBSERVED_TIMETABLE_PATH, TimetableReadResult,
-    read_known_timetable, validate_timetable_contract,
+    OBSERVED_TIMETABLE_PATH,
+    read_known_timetable,
+    validate_timetable_contract,
 )
 
 

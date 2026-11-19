@@ -7,8 +7,8 @@ teaching-class number may differ from the underlying class identifier.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
 import re
+from dataclasses import dataclass
 from typing import Mapping
 
 from core.ncwu_course_plan import CoursePlanRow, PlanSnapshot

@@ -6,20 +6,22 @@ the school's visible timetable. No enrollment operation, retries or polling.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
 import re
 import threading
 import time
+from dataclasses import dataclass
 from typing import Callable, Mapping
 from urllib.parse import urlencode
 
 import httpx
 from bs4 import BeautifulSoup
 
-from core.ncwu_live_elective import ORIGIN, REFERER, _validate_origin, _LOGIN_MARKERS
+from core.ncwu_live_elective import _LOGIN_MARKERS, ORIGIN, REFERER, _validate_origin
 from core.ncwu_read_support import (
-    classify_read_response, default_read_client,
-    get_optional_verified_budget, set_scoped_cookie,
+    classify_read_response,
+    default_read_client,
+    get_optional_verified_budget,
+    set_scoped_cookie,
 )
 from core.request_budget import build_verified_budget
 

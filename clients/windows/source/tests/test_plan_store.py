@@ -1,15 +1,16 @@
 """Offline regression tests for user-plan persistence and class-slot hints."""
 from __future__ import annotations
 
-from copy import deepcopy
-from pathlib import Path
 import tempfile
 import unittest
+from copy import deepcopy
+from pathlib import Path
+
 import yaml
 
 from core.conflicts import find_conflicts, parse_slots
 from core.desktop_settings import normalize_course
-from core.plan_store import (delete_plan, list_plans, load_plan, save_plan)
+from core.plan_store import delete_plan, list_plans, load_plan, save_plan
 
 BASE = Path(__file__).resolve().parents[1]
 
@@ -53,7 +54,7 @@ class TestPlanStore(unittest.TestCase):
         outside = Path(self.tmp.name) / 'secrets'
         outside.write_text('DO_NOT_OVERWRITE')
         import hashlib
-        target = self.folder / (hashlib.sha256('Unsafe'.encode()).hexdigest() + '.json')
+        target = self.folder / (hashlib.sha256(b'Unsafe').hexdigest() + '.json')
         try:
             target.symlink_to(outside)
         except (OSError, NotImplementedError):

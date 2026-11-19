@@ -10,15 +10,15 @@ No browser control, school login, request replay, enrollment submit or polling.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
 import os
+from dataclasses import dataclass
 from typing import Callable, Mapping
 from urllib.parse import urlsplit
 
 import httpx
 
 from core.client import KingoClient
-from core.ncwu_timetable_schema import inspect_timetable_json, TimetableSchemaError
+from core.ncwu_timetable_schema import TimetableSchemaError, inspect_timetable_json
 from core.request_budget import build_verified_budget
 
 OFFICIAL_TIMETABLE_HOST = "jwmis.ncwu.edu.cn"

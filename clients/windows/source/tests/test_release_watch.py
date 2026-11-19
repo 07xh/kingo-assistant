@@ -3,12 +3,17 @@
 Pure logic: no httpx, no scheduler thread, no school endpoint. Every case here
 mirrors a branch that used to live inline in ``Scheduler.cycle``.
 """
-from dataclasses import dataclass
 import unittest
+from dataclasses import dataclass
 
 from core.release_watch import (
-    NotificationLedger, Observation, WatchState, apply_observations, observe,
-    observe_all, target_matches,
+    NotificationLedger,
+    Observation,
+    WatchState,
+    apply_observations,
+    observe,
+    observe_all,
+    target_matches,
 )
 
 

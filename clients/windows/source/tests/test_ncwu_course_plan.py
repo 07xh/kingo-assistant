@@ -7,8 +7,8 @@ from urllib.parse import parse_qs
 import httpx
 
 from core.ncwu_course_plan import (
-    PAGE, TABLE, _scoped_fields_from_page,
-    parse_course_plan, read_current_course_plan,
+    parse_course_plan,
+    read_current_course_plan,
 )
 
 CONF = {"base_url": "https://jwmis.ncwu.edu.cn"}

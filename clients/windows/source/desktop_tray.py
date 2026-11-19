@@ -5,9 +5,12 @@ Tk event loop consumes them, so no widget is touched by the tray thread.
 """
 from __future__ import annotations
 
+import logging
 import sys
 import threading
 from typing import Callable
+
+_log = logging.getLogger(__name__)
 
 
 class TrayController:
@@ -23,8 +26,8 @@ class TrayController:
         if sys.platform != "win32":
             return False
         try:
-            from PIL import Image, ImageDraw
             import pystray
+            from PIL import Image, ImageDraw
 
             image = Image.new("RGB", (64, 64), "#174a74")
             brush = ImageDraw.Draw(image)
@@ -73,5 +76,5 @@ class TrayController:
         if icon is not None:
             try:
                 icon.stop()
-            except Exception:
-                pass
+            except Exception as error:
+                _log.debug("tray icon stop failed: %s", error)

@@ -1,11 +1,10 @@
 """Offline-only tests of native Windows verification and stale-marker cleanup."""
-from pathlib import Path
-import json
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
-from tools.verify_windows_build import BuildVerificationError, verify, main
+from tools.verify_windows_build import BuildVerificationError, main, verify
 
 
 class TestBuildVerifier(unittest.TestCase):

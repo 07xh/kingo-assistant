@@ -5,8 +5,9 @@ from unittest import TestCase
 import httpx
 
 from core.ncwu_s202_readback import (
-    CandidateSelectedCourse, SELECTED_PAGE, S202ReadbackResult,
-    parse_s202_readback, read_s202_selected_results,
+    SELECTED_PAGE,
+    parse_s202_readback,
+    read_s202_selected_results,
 )
 
 CONF = {"base_url": "https://jwmis.ncwu.edu.cn"}

@@ -6,8 +6,10 @@ from unittest.mock import AsyncMock, Mock
 import httpx
 
 from core.ncwu_read_support import (
-    classify_read_response, default_read_client,
-    get_optional_verified_budget, set_scoped_cookie,
+    classify_read_response,
+    default_read_client,
+    get_optional_verified_budget,
+    set_scoped_cookie,
 )
 
 
@@ -91,7 +93,7 @@ class NCWUReadSupportTests(TestCase):
     def test_score_expiry_scan_is_strictly_bounded(self):
         keywords = ("凭证已失效",)
         self.assertEqual(asyncio.run(classify_read_response(
-            response(200, content="凭证已失效".encode("utf-8")),
+            response(200, content="凭证已失效".encode()),
             expired_markers=keywords, expired_scan_max_bytes=16000,
         )), "expired")
         self.assertIsNone(asyncio.run(classify_read_response(

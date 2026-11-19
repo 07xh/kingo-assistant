@@ -2,13 +2,14 @@
 import queue
 from types import SimpleNamespace
 from unittest import TestCase
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 from core.enrollment import RunReport
 from core.enrollment_schedule import ScheduledRunReport
 from windows_gui import Application, MonitorEvent
 from windows_monitor_events import (
-    apply_monitor_status, format_official_probe_results,
+    apply_monitor_status,
+    format_official_probe_results,
     scheduled_reason_text,
 )
 

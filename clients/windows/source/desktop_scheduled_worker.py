@@ -11,15 +11,16 @@ interrupt an in-flight submit/official-result readback.
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
 import threading
+from dataclasses import dataclass
 from typing import Callable
 
 from core.enrollment import EnrollmentEngine, EnrollmentNotReady
-from core.scheduled_ui_bridge import (
-    PreparedScheduledPlan, run_prepared_schedule,
-)
 from core.enrollment_schedule import ScheduledRunReport
+from core.scheduled_ui_bridge import (
+    PreparedScheduledPlan,
+    run_prepared_schedule,
+)
 
 
 @dataclass(frozen=True, slots=True)

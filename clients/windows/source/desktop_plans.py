@@ -1,8 +1,8 @@
 """Tk front-end for safe local course-plan snapshots."""
 from __future__ import annotations
 
-from pathlib import Path
 import tkinter as tk
+from pathlib import Path
 from tkinter import messagebox, simpledialog, ttk
 
 from core.desktop_settings import load_config, save_config_atomic

@@ -11,9 +11,12 @@ import httpx
 
 from core.ncwu_legacy_encoder import encode_legacy_strenc
 from core.ncwu_signed_login import (
-    _content, _form_bootstrap, _sign_login_form, login_ncwusigned, validate_ncwulogin_entry,
+    _content,
+    _form_bootstrap,
+    _sign_login_form,
+    login_ncwusigned,
+    validate_ncwulogin_entry,
 )
-
 
 _ID = "1234567890ABCDEF1234567890ABCDEF"
 _TEMP_KEY = "12345678901234567890123"

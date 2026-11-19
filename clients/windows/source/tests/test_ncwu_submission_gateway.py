@@ -11,8 +11,8 @@ import httpx
 
 from core.course_models import CourseTarget
 from core.enrollment import AttemptJournal, EnrollmentEngine, EnrollmentNotReady, SubmitReceipt, WindowState
-from core.ncwu_submission_transport import PreparedNCWUSubmission
 from core.ncwu_submission_gateway import NCWUEvidenceBoundGateway, make_ncwu_enrollment_engine
+from core.ncwu_submission_transport import PreparedNCWUSubmission
 
 
 class FakeSource:

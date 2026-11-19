@@ -7,11 +7,11 @@ No HTTP calls, credentials, selectors or course submissions are performed.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
 import math
 import re
 import time
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from typing import Mapping
 
 CHINA_TIMEZONE = timezone(timedelta(hours=8))

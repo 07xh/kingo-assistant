@@ -1,11 +1,11 @@
 """Offline structural comparison only; never verifies a live school catalog."""
 from __future__ import annotations
 
-from datetime import datetime
-from pathlib import Path
 import argparse
 import json
 import re
+from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 MAX_FILE_BYTES = 128 * 1024

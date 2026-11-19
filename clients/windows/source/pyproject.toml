@@ -1,0 +1,59 @@
+[project]
+name = "kingo-assistant"
+version = "5.1.0"
+description = "Read-only NCWU course-selection assistant (Windows desktop client)"
+requires-python = ">=3.12"
+dependencies = [
+    "httpx>=0.27,<1",
+    "cryptography>=44,<49",
+    "beautifulsoup4>=4.12,<5",
+    "lxml>=5,<7",
+    "loguru>=0.7,<1",
+    "rich>=13,<16",
+    "PyYAML>=6,<7",
+    "pystray>=0.19.5,<0.20",
+    "Pillow>=10,<13",
+]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+extend-exclude = ["demo", "tools/kingo-live", "tests/fixtures"]
+
+# The gate is scoped to defect classes that are clean today. Rules that still
+# carry debt are listed in `ignore` with a reason instead of being enabled and
+# then muted file by file.
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes: unused imports, undefined names, dead locals
+    "W",    # pycodestyle warnings
+    "I",    # import sorting
+    "UP",   # pyupgrade
+    "B",    # bugbear
+    "S110", # try-except-pass: a silent failure the operator cannot see
+]
+ignore = [
+    "E501",   # the 110-column budget is enforced by review, not the linter
+    "E702",   # semicolon one-liners in legacy test fixtures
+    "E731",   # short local request adapters are written as lambdas on purpose
+    "B008",   # Tk callbacks supplied as default arguments
+    "B017",   # assertRaises(Exception) in one legacy test
+    "B023",   # loop-variable closures are intentional factories
+    "B905",   # zip(strict=) changes behaviour; tracked separately
+    "UP035",  # typing.Dict/List -> builtin generics: large mechanical diff
+    "UP042",  # (str, Enum) -> StrEnum changes public base classes
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S110", "F841"]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+check_untyped_defs = true
+warn_redundant_casts = true
+no_implicit_optional = true
+# Advisory only: this tree predates annotations, so CI reports instead of
+# blocking (see .github/workflows/windows-build.yml).
+files = ["core", "windows_config_runtime.py", "windows_monitor_events.py", "windows_readonly_widgets.py"]

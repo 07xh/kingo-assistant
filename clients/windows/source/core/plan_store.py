@@ -5,13 +5,13 @@ Restoring a plan preserves the current installation's protocol and auth settings
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from hashlib import sha256
 import json
 import os
 import secrets
-from pathlib import Path
 import tempfile
+from datetime import UTC, datetime
+from hashlib import sha256
+from pathlib import Path
 
 from core.desktop_settings import update_config
 
@@ -84,7 +84,7 @@ def make_plan(name: str, config: dict) -> dict:
     return {
         "version": SCHEMA_VERSION,
         "name": title,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
         "semester": config["xnxq"],
         "courses": courses,
         "strategy": {
@@ -169,7 +169,7 @@ def save_switch_backup(directory: Path, current_config: dict) -> str:
     Unlike a single 'last switch' slot, a sequence of changes does not
     overwrite previous recovery points. Backup names never include credentials.
     """
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
+    timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S-%f")
     folder = _directory(directory)
     # Windows clocks can return identical microsecond timestamps for fast
     # consecutive calls. Never overwrite a prior backup on such a collision.

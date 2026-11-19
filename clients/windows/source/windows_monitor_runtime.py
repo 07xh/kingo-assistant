@@ -6,9 +6,9 @@ The school protocol, query budget and cancellation semantics are preserved.
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
 import queue
 import threading
+from dataclasses import dataclass
 
 from core.client import KingoClient
 from core.latency import DEFAULT_LATENCY_FILE, LatencyRecorder

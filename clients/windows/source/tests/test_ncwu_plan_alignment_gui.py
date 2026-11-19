@@ -1,7 +1,7 @@
 """Tk plan popup includes a non-mutating match of school and local targets."""
 from types import SimpleNamespace
 from unittest import TestCase
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 from core.ncwu_course_plan import PlanSnapshot
 from windows_gui import Application

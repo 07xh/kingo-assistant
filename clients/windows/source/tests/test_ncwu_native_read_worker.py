@@ -5,7 +5,7 @@ from unittest import TestCase
 from unittest.mock import AsyncMock, Mock, patch
 
 from core.ncwu_s202_round import S202RoundStatus
-from windows_gui import _ncwu_read_busy, _start_ncwu_read_worker, _finish_ncwu_read_event
+from windows_gui import _finish_ncwu_read_event, _ncwu_read_busy, _start_ncwu_read_worker
 
 
 def fake_app():

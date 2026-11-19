@@ -6,13 +6,13 @@ an automated query.  Manual timetable hints are warnings, not official rules.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
 import os
+from dataclasses import dataclass
+from urllib.parse import urlsplit
 
 from core.conflicts import find_conflicts
 from core.monitor_policy import validate_limits
 from core.request_budget import PolicyError, read_verified_policy_config
-from urllib.parse import urlsplit
 
 
 @dataclass(frozen=True)
@@ -125,7 +125,10 @@ def inspect_enrollment_schedule(offering, snapshot, semester: str) -> Check:
     to assert that a school will accept a write.
     """
     from core.course_models import (
-        ConflictVerdict, CourseOffering, ScheduleSnapshot, time_conflict,
+        ConflictVerdict,
+        CourseOffering,
+        ScheduleSnapshot,
+        time_conflict,
     )
 
     if (not isinstance(offering, CourseOffering)

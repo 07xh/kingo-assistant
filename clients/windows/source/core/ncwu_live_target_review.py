@@ -14,7 +14,6 @@ from typing import Mapping
 from core.ncwu_live_elective import LiveElectiveSnapshot
 from core.ncwu_plan_alignment import _term_key
 
-
 _STATUS_LABELS = {
     "missing_target": "课程代码为空或仍为模板值",
     "semester_unverified": "本轮次学期尚未得到服务器确认，仅能查看本次页面",

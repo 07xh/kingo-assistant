@@ -1,11 +1,10 @@
 """Headless checks for Windows launcher/configuration paths. No GUI and no network."""
-import os
-from pathlib import Path
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
-from windows_gui import app_dir, bundled_config, ensure_config, read_config
+from windows_gui import bundled_config, ensure_config, read_config
 
 
 class WindowsGuiConfigTest(unittest.TestCase):

@@ -1,10 +1,10 @@
 """Headless regression tests for single-snapshot, offline-first GUI startup."""
 from __future__ import annotations
 
+import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
-import unittest
 
 from core.preflight import Check
 from windows_gui import Application

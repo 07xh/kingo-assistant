@@ -97,7 +97,7 @@ class S202RoundTest(TestCase):
 
     def test_expired_html_http_200_is_rejected(self):
         status, calls = run(lambda req: httpx.Response(
-            200, content="凭证已失效".encode("utf-8")))
+            200, content="凭证已失效".encode()))
         self.assertEqual(status.code, "expired")
         self.assertEqual(len(calls), 1)
 

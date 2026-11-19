@@ -6,8 +6,8 @@ manual policy declaration is not independent proof of institutional permission.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
 import math
+from dataclasses import dataclass
 
 DEFAULT_MIN_INTERVAL = 60.0
 ABSOLUTE_MIN_INTERVAL = 30.0

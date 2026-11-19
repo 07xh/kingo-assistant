@@ -2,10 +2,10 @@
 from __future__ import annotations
 
 import asyncio
-from copy import deepcopy
-from pathlib import Path
 import tempfile
 import unittest
+from copy import deepcopy
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from core.desktop_settings import load_config, save_config_atomic, update_config
@@ -151,7 +151,7 @@ if __name__ == '__main__':
 
 class TableBoundaryTest(unittest.TestCase):
     def test_other_table_cannot_supply_false_seats(self):
-        from core.client import parse_courses, ProtocolError
+        from core.client import ProtocolError, parse_courses
         protocol = {'table_marker':'id="verified-catalog"', 'columns':{
             'course_id':0, 'course_name':1, 'teacher':2, 'remain':3}}
         fake = (b'<table id="verified-catalog"><tr><th>ID</th></tr></table>'
@@ -160,7 +160,7 @@ class TableBoundaryTest(unittest.TestCase):
             parse_courses(fake, protocol)
 
     def test_multiple_matched_tables_are_ambiguous(self):
-        from core.client import parse_courses, ProtocolError
+        from core.client import ProtocolError, parse_courses
         protocol = {'table_marker':'class="matched"', 'columns':{
             'course_id':0, 'course_name':1, 'teacher':2, 'remain':3}}
         table = b'<table class="matched"><tr><td>TEST01</td><td>Name</td><td>Teacher</td><td>2</td></tr></table>'

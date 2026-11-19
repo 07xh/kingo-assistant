@@ -7,16 +7,19 @@ enrollment writes are performed.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import logging
 import re
+from dataclasses import dataclass, field
 from typing import Callable, Mapping
 from urllib.parse import urljoin, urlsplit
 
 import httpx
 
 from core.client import AuthenticationError, KingoClient, RateLimitError
+from core.ncwu_term_probe import probe_known_year_term, validate_term_contract
 from core.request_budget import build_verified_budget
-from core.ncwu_term_probe import validate_term_contract, probe_known_year_term
+
+_log = logging.getLogger(__name__)
 
 _FIELD = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,63}$")
 _COOKIE_NAME = re.compile(r"^[!#$%&'*+.^_`|~0-9A-Za-z-]{1,128}$")
@@ -246,5 +249,7 @@ async def login_with_verified_form(
         if client is not None:
             try:
                 await client.aclose()
-            except Exception:
-                pass
+            except Exception as error:
+                # The login outcome must not be rewritten by a cleanup error,
+                # but a leaked socket is still worth a debug trace.
+                _log.debug("login client cleanup failed: %s", error)

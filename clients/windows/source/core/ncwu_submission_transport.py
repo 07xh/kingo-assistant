@@ -16,7 +16,7 @@ from typing import Callable, Mapping
 
 import httpx
 
-from core.attestation import AttestationRegistry, GATE_NAMES
+from core.attestation import GATE_NAMES, AttestationRegistry
 from core.client import encode_gbk_form
 from core.enrollment import EnrollmentNotReady, SubmitReceipt
 from core.ncwu_live_elective import ORIGIN, REFERER, _validate_origin

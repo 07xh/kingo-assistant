@@ -6,13 +6,18 @@ application-owned session are prerequisites for every network call.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+import logging
 import os
+from dataclasses import dataclass
 from typing import Callable, Mapping
 
 from core.client import (
-    AuthenticationError, KingoClient, RateLimitError,
+    AuthenticationError,
+    KingoClient,
+    RateLimitError,
 )
+
+_log = logging.getLogger(__name__)
 
 _REQUIRED_PROTOCOL_FIELDS = (
     "identity_path", "identity_referer", "identity_selector",
@@ -122,7 +127,7 @@ async def prepare_native_api(
         if client is not None:
             try:
                 await client.aclose()
-            except Exception:
+            except Exception as error:
                 # Cleanup must not turn an unknown school response into a
                 # success or leak a response body through Tk logs.
-                pass
+                _log.debug("preparation client cleanup failed: %s", error)

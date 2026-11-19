@@ -3,8 +3,10 @@ import unittest
 from unittest.mock import patch
 
 from core.offline_benchmark import (
-    REFERENCE_INTERVAL_SECONDS, REFERENCE_WORKERS,
-    format_benchmark, run_offline_benchmark,
+    REFERENCE_INTERVAL_SECONDS,
+    REFERENCE_WORKERS,
+    format_benchmark,
+    run_offline_benchmark,
 )
 
 

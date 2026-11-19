@@ -18,11 +18,11 @@ from rich.text import Text
 
 from core.client import KingoClient, parse_courses
 from core.inspector import inspect_html
-from core.scheduler import Scheduler
 from core.monitor_policy import validate_limits
-from core.request_budget import read_verified_policy_config
-from core.time_sync import TimeSync
 from core.official_entries import OFFICIAL_ENTRIES, probe_official_login_surfaces
+from core.request_budget import read_verified_policy_config
+from core.scheduler import Scheduler
+from core.time_sync import TimeSync
 
 
 def validate(config: dict, check_only: bool = False, *,

@@ -6,8 +6,8 @@ return course records or values from potentially sensitive response payloads.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
+from dataclasses import dataclass
 from typing import Any
 
 MAX_JSON_CHARS = 1024 * 1024

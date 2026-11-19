@@ -11,7 +11,11 @@ from enum import Enum
 from typing import Protocol, Sequence
 
 from core.enrollment import (
-    AttemptJournal, EnrollmentNotReady, Target, _read_records, _validate_targets,
+    AttemptJournal,
+    EnrollmentNotReady,
+    Target,
+    _read_records,
+    _validate_targets,
 )
 
 

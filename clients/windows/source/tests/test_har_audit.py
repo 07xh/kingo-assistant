@@ -1,8 +1,9 @@
 import json
-from pathlib import Path
 import tempfile
 import unittest
-from core.har_audit import summarize_har, format_summary
+from pathlib import Path
+
+from core.har_audit import format_summary, summarize_har
 
 
 class HarAuditTest(unittest.TestCase):

@@ -1,13 +1,13 @@
 """Packaged self-test must stay local and fail closed."""
-from copy import deepcopy
-from pathlib import Path
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
+
 import yaml
 
 from core.offline_selftest import run_selftest
-from windows_gui import bundled_config, OFFICIAL_PORTAL, main
+from windows_gui import OFFICIAL_PORTAL, bundled_config, main
 
 
 class OfflineSelfTest(unittest.TestCase):

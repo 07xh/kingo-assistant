@@ -2,13 +2,12 @@
 import asyncio
 from contextlib import asynccontextmanager
 from unittest import TestCase
-from unittest.mock import patch
 
 import httpx
 
-from core.ncwu_term_probe import PATH, TermProbeResult, probe_known_year_term, validate_term_contract
-from core.native_timetable import read_known_timetable, validate_timetable_contract
 from core.native_login import validate_login_contract
+from core.native_timetable import validate_timetable_contract
+from core.ncwu_term_probe import PATH, probe_known_year_term, validate_term_contract
 
 
 def config():

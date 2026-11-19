@@ -6,9 +6,9 @@ an optional artifact rather than a release gate.
 """
 from __future__ import annotations
 
-from pathlib import Path
 import sys
 import tempfile
+from pathlib import Path
 from unittest.mock import patch
 
 from PIL import ImageGrab

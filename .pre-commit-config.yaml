@@ -1,0 +1,21 @@
+# Local mirror of the blocking CI gate. Install once with:
+#   python -m pip install pre-commit && pre-commit install
+# Hooks only cover the Windows client sources; tools/kingo-live is research
+# material with a different style and is excluded on purpose.
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.17.5
+    hooks:
+      - id: ruff
+        files: ^clients/windows/source/.*\.py$
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: check-yaml
+      - id: check-toml
+      - id: end-of-file-fixer
+        files: ^clients/windows/source/.*\.py$
+      - id: trailing-whitespace
+        files: ^clients/windows/source/.*\.py$
+      - id: check-added-large-files
+        args: ["--maxkb=1024"]
