@@ -1986,6 +1986,9 @@ class Application(tk.Tk):
                 elif event.kind == "scheduled_waiting":
                     self.status.set("自动选课任务：已通过本地权限校验，后台预约等待中")
                     self.log("已进入应用内定时执行流程；尚未代表学校选课成功。")
+                elif event.kind == "scheduled_verification_pending":
+                    self.status.set("提交请求已结束｜后台核对官方已选记录中，尚未确认成功")
+                    self.log("结果核验已交给独立只读任务；不重复发起选课 POST。")
                 elif event.kind == "scheduled_result":
                     outcome = event.value
                     if isinstance(outcome, ScheduledRunReport):
