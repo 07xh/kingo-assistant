@@ -94,6 +94,7 @@ class HomePageViewTests(TestCase):
             "开始查询课程余量": "start_monitor",
             "停止查询": "stop_monitor",
             "检查是否具备运行条件": "preflight",
+            "验收详情": "show_enrollment_gate_details",
             "自动提交（暂不可用）": "start_scheduled_enrollment",
             "取消自动计划": "stop_scheduled_enrollment",
         }
