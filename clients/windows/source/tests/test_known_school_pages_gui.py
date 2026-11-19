@@ -108,6 +108,28 @@ class SchoolResultsGuiTests(TestCase):
         self.assertIsNone(current._pending_native_login_account)
         self.assertIsNone(current._native_session_cookie)
 
+    def test_account_mismatch_event_clears_exe_verified_identity(self):
+        current = app()
+        current._tick_portal_appointment = Mock()
+        current.after = Mock()
+        current.log = Mock()
+        current.native_login_status = Mock()
+        current.native_preparation_status = Mock()
+        current._native_session_cookie = "SID=EXE-LOCAL"
+        current._native_session_origin = "jwmis.ncwu.edu.cn"
+        current._native_verified_user_code = "FICTIONAL001"
+        current._pending_native_login_account = None
+        current._live_polling = False
+        current.events.put(SimpleNamespace(
+            kind="known_school_results",
+            value=KnownSchoolPageResult("identity_mismatch", "selected_results")))
+        Application.poll(current)
+        self.assertIsNone(current._native_session_cookie)
+        self.assertIsNone(current._native_session_origin)
+        self.assertIsNone(current._native_verified_user_code)
+        self.assertIn("账号核验失败",
+                      str(current.native_login_status.set.call_args))
+
     def test_known_exact_field_candidates_are_display_only(self):
         from core.ncwu_known_result_candidates import HistoricalClassCandidate
         current = app()
