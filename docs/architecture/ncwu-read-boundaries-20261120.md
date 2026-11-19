@@ -20,3 +20,15 @@ form provider and the proven course-to-items binding.
 This patch does not implement those missing institutional contracts and does
 not make automatic enrollment operational. Final acceptance requires approved
 real-interface tests and official record readback.
+
+## Offline submission evidence inspection
+
+The Tools page includes a local-only S202 submit-HAR inspector. It inventories
+exact HTTPS POST records for the known first-party submit path and GET counts
+for the selected-results page. The report includes only bounded field names,
+HTTP status codes, request formats and response shapes; no values or HAR bytes
+are retained or uploaded. A missing form field is a **contract discrepancy
+to investigate**, not a guessed field to send. A captured submit POST and
+HTTP 200 are not proof of enrollment; no form provider or write permission is
+created from the report. Synthetic tests cover secret redaction, spoofed
+hosts, wrong methods and missing samples.

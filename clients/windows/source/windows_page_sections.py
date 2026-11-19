@@ -338,6 +338,10 @@ def build_tools_page(app) -> None:
     ttk.Button(
         contract_row, text="复制脱敏契约报告",
         command=app.copy_ncwu_contract_report,
+    ).pack(side="left", padx=(0, 8))
+    ttk.Button(
+        contract_row, text="核验提交 HAR（离线）",
+        command=app.inspect_ncwu_submit_har,
     ).pack(side="left")
     term_row = ttk.Frame(app.tools_operations)
     term_row.pack(fill="x", pady=(4, 1))
