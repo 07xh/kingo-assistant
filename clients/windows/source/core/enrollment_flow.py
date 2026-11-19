@@ -41,7 +41,8 @@ async def _verify(engine, fsm: EnrollmentFSM,
 
 
 async def run_enrollment(engine, targets: Sequence[Target], *,
-                         prepared_schedule=None, defer_readback: bool = False
+                         prepared_schedule=None, defer_readback: bool = False,
+                         scheduler_window_open: bool = False
                          ) -> RunReport:
     targets = list(targets)
     _validate_targets(targets, engine.journal.semester)
