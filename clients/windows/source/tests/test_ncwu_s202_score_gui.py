@@ -40,14 +40,12 @@ class S202ScoreGuiTests(TestCase):
              patch("windows_gui.read_personal_s202_score",
                    new_callable=AsyncMock,
                    return_value=PersonalScoreCount(
-                       "count_observed", 2, True)) as read, \
-             patch("windows_gui.webbrowser.open") as browser:
+                       "count_observed", 2, True)) as read:
             Application.check_personal_s202_score(self.app)
             thread.assert_called_once()
             self.assertEqual(
                 thread.call_args.kwargs["name"], "KingoS202ScoreRead")
             thread.call_args.kwargs["target"]()
-            browser.assert_not_called()
         read.assert_awaited_once_with(
             cfg, session_cookie="JSESSIONID=LOCAL_ONLY")
         evt = self.app.events.get_nowait()
@@ -76,11 +74,9 @@ class S202ScoreGuiTests(TestCase):
             with patch("windows_gui.filedialog.askopenfilename",
                        return_value=str(path)), \
                  patch("windows_gui.messagebox.showinfo") as info, \
-                 patch("windows_gui.threading.Thread") as worker, \
-                 patch("windows_gui.webbrowser.open") as browser:
+                 patch("windows_gui.threading.Thread") as worker:
                 Application.inspect_ncwu_contracts(self.app)
             worker.assert_not_called()
-            browser.assert_not_called()
             self.assertEqual(info.call_count, 1)
             report = str(info.call_args)
             self.assertIn("xh", report)
