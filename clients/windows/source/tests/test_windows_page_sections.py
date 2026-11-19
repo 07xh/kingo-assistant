@@ -17,15 +17,14 @@ class PageLayoutExtractionTests(TestCase):
         self.app.tab_manual = object()
         self.app.tab_tools = object()
 
-    def test_manual_page_is_only_navigation_and_owner_callbacks(self):
+    def test_api_page_has_only_internal_readiness_actions(self):
         with patch("windows_page_sections.ttk.Label") as label, \
              patch("windows_page_sections.ttk.Frame") as frame, \
              patch("windows_page_sections.ttk.LabelFrame") as group, \
              patch("windows_page_sections.ttk.Button") as button:
             build_manual_page(self.app)
         group.assert_called_once_with(
-            self.app.tab_manual, text="官网操作与按时提醒（不会自动提交）",
-            padding=12)
+            self.app.tab_manual, text="接口执行与验收状态", padding=12)
         self.assertIs(self.app.portal_panel, group.return_value)
         self.assertIs(self.app.session_check_button, button.return_value)
         calls = {
@@ -33,22 +32,20 @@ class PageLayoutExtractionTests(TestCase):
             for call in button.call_args_list
         }
         self.assertEqual(set(calls), {
-            "设置到点打开官网",
-            "现在打开华水官网",
-            "复制所选课程代码并打开官网",
-            "检查软件登录状态（只读）",
+            "核验软件登录会话（只读）",
+            "检查自动执行计划（离线）",
+            "查看接口验收详情",
         })
-        self.assertIs(calls["设置到点打开官网"], self.app.toggle_portal_appointment)
-        self.assertIs(calls["现在打开华水官网"], self.app.open_official_portal)
-        self.assertIs(calls["复制所选课程代码并打开官网"],
-                      self.app.prepare_selected_course)
-        self.assertIs(calls["检查软件登录状态（只读）"],
+        self.assertIs(calls["核验软件登录会话（只读）"],
                       self.app.check_script_session)
-        self.app.open_official_portal.assert_not_called()
-        self.app.check_script_session.assert_not_called()
+        self.assertIs(calls["检查自动执行计划（离线）"],
+                      self.app.inspect_scheduled_runner)
+        self.assertIs(calls["查看接口验收详情"],
+                      self.app.show_enrollment_gate_details)
+        for action in calls.values():
+            action.assert_not_called()
         self.assertTrue(any(
-            "登录、选课和提交都由你自己完成" in str(call)
-            for call in label.call_args_list
+            "不打开浏览器" in str(call) for call in label.call_args_list
         ))
 
     def test_tools_tab_keeps_all_live_fields_and_zero_automatic_calls(self):
