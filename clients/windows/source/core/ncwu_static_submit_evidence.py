@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from html.parser import HTMLParser
-from pathlib import Path
 from typing import Sequence
 from urllib.parse import urlsplit
 
@@ -49,9 +48,11 @@ class _SubmitFormParser(HTMLParser):
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         values = dict(attrs)
         if tag.lower() == "form":
+            method = values.get("method") or "get"
+            action = values.get("action") or ""
             self.in_target_form = (
-                values.get("method", "get").strip().lower() == "post"
-                and _is_target_action(values.get("action", ""))
+                method.strip().lower() == "post"
+                and _is_target_action(action)
             )
             if self.in_target_form:
                 self.target_form_count += 1
