@@ -26,7 +26,7 @@ The application intentionally initializes `_engine_factory=None` and disables th
 - A user cancel action signals an event inside the worker's loop; pre-start and wait-for-window phases stop without submitting.
 - If an official write/readback is in flight, a stop request does not cancel it, because the result may be indeterminate and an interrupted readback can lead to unsafe duplicate submission later.
 - A scheduled task uses the same process as the Windows EXE. Closing the window preserves the thread in tray; explicit tray exit requests cancellation and waits for the worker's completion event.
-- Any legacy manual-browser appointment is outside the supported execution architecture and must be removed from runtime UI/callbacks. The scheduled HTTP worker must never depend on a browser for authentication, submission or fallback.
+- The obsolete browser-appointment UI/callbacks were removed from Windows runtime. Scheduled execution retains its in-process HTTP-only boundary and must not reintroduce browser dependency.
 - Runtime does not survive process exit, machine reboot or Windows sleep. Durable restart handoff remains an unimplemented requirement.
 
 ## Test matrix
