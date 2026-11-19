@@ -1,102 +1,20 @@
-"""Headless tests for the official-browser one-shot fallback in Windows GUI."""
-from datetime import datetime
-from pathlib import Path
-from types import SimpleNamespace
-from unittest.mock import Mock, patch
+"""Regression: legacy manual-browser fallback is absent from the API-only Windows app."""
 import unittest
 
-from core.official_portal_schedule import CHINA_TIMEZONE
+import windows_gui
 from windows_gui import Application
 
 
-class OfficialPortalGuiTest(unittest.TestCase):
-    def setUp(self):
-        self.now = datetime(2026, 11, 11, 16, 0, tzinfo=CHINA_TIMEZONE).timestamp()
-        self.plan_at = datetime(2026, 12, 21, 9, 0, tzinfo=CHINA_TIMEZONE).timestamp()
-        self.config = {
-            "strategy": {"target_time": "2026-12-21 09:00:00"},
-            "courses": [{"key": "A", "course_id": "SYNTHETIC-101"}],
-        }
-        self.app = SimpleNamespace(
-            _official_portal_appointment=None,
-            _portal_prelogin_opened=False,
-            _closing=False,
-            portal_appointment_button=Mock(),
-            portal_appointment_status=Mock(),
-            path=SimpleNamespace(get=lambda: str(Path("config.yaml"))),
-            log=Mock(),
-            open_official_portal=Mock(),
-            bell=Mock(),
-        )
-
-    def _schedule(self):
-        with patch("windows_gui.read_config", return_value=self.config), \
-             patch("windows_gui.time.time", return_value=self.now), \
-             patch("windows_gui.messagebox.askyesno", return_value=True) as confirmation:
-            Application.toggle_portal_appointment(self.app)
-        confirmation.assert_called_once()
-        self.assertIsNotNone(self.app._official_portal_appointment)
-        self.app.open_official_portal.assert_not_called()
-
-    def test_one_early_browser_login_and_one_scheduled_launch_never_submit(self):
-        self._schedule()
-        with patch("windows_gui.time.time", return_value=self.plan_at - 901):
-            Application._tick_portal_appointment(self.app)
-        self.app.open_official_portal.assert_not_called()
-        with patch("windows_gui.time.time", return_value=self.plan_at - 900):
-            Application._tick_portal_appointment(self.app)
-            Application._tick_portal_appointment(self.app)
-        self.app.open_official_portal.assert_called_once()
-        self.assertTrue(self.app._portal_prelogin_opened)
-        with patch("windows_gui.time.time", return_value=self.plan_at):
-            Application._tick_portal_appointment(self.app)
-            Application._tick_portal_appointment(self.app)
-        self.assertIsNone(self.app._official_portal_appointment)
-        self.assertEqual(self.app.open_official_portal.call_count, 2)
-        self.app.bell.assert_called_once()
-
-    def test_appointment_started_within_prelogin_window_opens_early_only_once(self):
-        self._schedule()
-        with patch("windows_gui.time.time", return_value=self.plan_at - 10):
-            Application._tick_portal_appointment(self.app)
-            Application._tick_portal_appointment(self.app)
-        self.app.open_official_portal.assert_called_once()
-        Application.toggle_portal_appointment(self.app)
-        self.assertFalse(self.app._portal_prelogin_opened)
-        with patch("windows_gui.time.time", return_value=self.plan_at):
-            Application._tick_portal_appointment(self.app)
-        self.app.open_official_portal.assert_called_once()
-
-    def test_cancel_prevents_opening_at_target_time(self):
-        self._schedule()
-        Application.toggle_portal_appointment(self.app)
-        self.assertIsNone(self.app._official_portal_appointment)
-        with patch("windows_gui.time.time", return_value=self.plan_at + 1):
-            Application._tick_portal_appointment(self.app)
-        self.app.open_official_portal.assert_not_called()
-
-    def test_without_user_confirmation_never_schedules(self):
-        with patch("windows_gui.read_config", return_value=self.config), \
-             patch("windows_gui.time.time", return_value=self.now), \
-             patch("windows_gui.messagebox.askyesno", return_value=False):
-            Application.toggle_portal_appointment(self.app)
-        self.assertIsNone(self.app._official_portal_appointment)
-
-    def test_template_course_is_blocked_before_any_launch(self):
-        config = {**self.config, "courses": [{"key": "A", "course_id": "SECOND_OPTION_ID"}]}
-        with patch("windows_gui.read_config", return_value=config), \
-             patch("windows_gui.time.time", return_value=self.now), \
-             patch("windows_gui.messagebox.showwarning") as warning:
-            Application.toggle_portal_appointment(self.app)
-        warning.assert_called_once()
-        self.assertIsNone(self.app._official_portal_appointment)
-
-    def test_when_gui_is_closing_no_launch_occurs(self):
-        self._schedule()
-        self.app._closing = True
-        with patch("windows_gui.time.time", return_value=self.plan_at):
-            Application._tick_portal_appointment(self.app)
-        self.app.open_official_portal.assert_not_called()
+class APIOnlyClientTests(unittest.TestCase):
+    def test_no_browser_module_or_manual_launch_callbacks(self):
+        self.assertFalse(hasattr(windows_gui, "webbrowser"))
+        self.assertFalse(hasattr(windows_gui, "OFFICIAL_PORTAL"))
+        for name in (
+            "toggle_portal_appointment", "_tick_portal_appointment",
+            "open_official_portal", "prepare_selected_course",
+        ):
+            with self.subTest(name=name):
+                self.assertFalse(hasattr(Application, name))
 
 
 if __name__ == "__main__":
