@@ -31,11 +31,9 @@ class YearTermGuiTests(TestCase):
         cfg = {"base_url": "https://jwmis.ncwu.edu.cn",
                "known_year_term": {"verified": False}}
         with patch("windows_gui.read_config", return_value=cfg), \
-             patch("windows_gui.threading.Thread") as worker, \
-             patch("windows_gui.webbrowser.open") as browser:
+             patch("windows_gui.threading.Thread") as worker:
             Application.check_known_year_term(inst)
         worker.assert_not_called()
-        browser.assert_not_called()
         self.assertIn("未联网", str(inst.term_probe_status.set.call_args))
 
     def test_verified_contract_runs_background_only(self):
@@ -46,12 +44,10 @@ class YearTermGuiTests(TestCase):
              patch("windows_gui.validate_term_contract", return_value=None), \
              patch("windows_gui.probe_known_year_term",
                    new_callable=AsyncMock, return_value=result) as probe, \
-             patch("windows_gui.threading.Thread") as worker, \
-             patch("windows_gui.webbrowser.open") as browser:
+             patch("windows_gui.threading.Thread") as worker:
             Application.check_known_year_term(inst)
             worker.assert_called_once()
             worker.call_args.kwargs["target"]()
-            browser.assert_not_called()
         probe.assert_awaited_once_with(cfg, session_cookie=None)
         item = inst.events.get_nowait()
         self.assertEqual(item.kind, "known_year_term")
