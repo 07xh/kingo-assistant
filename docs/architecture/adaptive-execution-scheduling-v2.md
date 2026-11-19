@@ -10,7 +10,8 @@
 - `core/scheduler.py`：继续每轮读取一次课程目录，不按课程数量放大请求；仅这里接入自适应间隔。
 - `core/enrollment_schedule.py`：继续通过本地定时 + 正式窗口检查协调，60–3600 秒的窗口轮询下限保持不变。
 - `core/enrollment_flow.py`：维持一次写意图、串行提交和官方记录回读；UNKNOWN 停止，不盲目重试。
-- `core/date_flip_sync.py` 与 `core/time_sync.py`：已有校时与本地倒计时逻辑保持不变，不通过增加学校请求换取所谓精度。
+- `core/date_flip_sync.py` 与 `core/time_sync.py`：已有校时逻辑保持不变。
+- `core/enrollment_schedule.py`：本地倒计时最后 1 秒改为最多每 50 毫秒检查一次（尽力而为，受操作系统调度影响），这不增加任何服务器探测次数。
 
 ## 第一阶段：实时只读压力感知
 
