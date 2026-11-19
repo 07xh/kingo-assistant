@@ -71,7 +71,7 @@ from core.official_entries import OFFICIAL_ENTRIES, probe_official_login_surface
 from core.scheduled_ui_bridge import prepare_scheduled_plan
 from core.attestation import AttestationError, AttestationRegistry, resolve_registry
 from core.ncwu_gate_details import format_ncwu_gate_details
-from core.latency import DEFAULT_LATENCY_FILE, summarize_file
+from core.latency import DEFAULT_LATENCY_FILE, LatencyRecorder, summarize_file
 from core.enrollment_schedule import ScheduledRunReport
 from main import _read_local_html, validate
 
@@ -461,7 +461,7 @@ class Application(tk.Tk):
         report = summarize_file(app_dir() / DEFAULT_LATENCY_FILE)
         if not report.get("samples"):
             return "\n\n（暂无时延采样；本次运行没有完成任何课程读取。）\n"
-        lines = ["", "", "时延采样（毫秒，本机统计，不含课程或账号信息）：",
+        lines = ["", "", "时延采样（毫秒，本机统计，不含课程或账号信息；S202 样本仅统计 HTTP 传输和预算等待）：",
                  f"  样本数：{report['samples']}"]
         for name, stats in report["phases"].items():
             lines.append(f"  {name}: p50={stats['p50']} p95={stats['p95']} "
@@ -984,7 +984,10 @@ class Application(tk.Tk):
             return
         _start_ncwu_read_worker(
             self, config=config, cookie=scoped_native_cookie(self, config),
-            read_call=live_s202_snapshot, fallback_factory=LiveElectiveSnapshot,
+            read_call=lambda cfg, *, session_cookie: live_s202_snapshot(
+                cfg, session_cookie=session_cookie,
+                latency_recorder=LatencyRecorder(app_dir() / DEFAULT_LATENCY_FILE)),
+            fallback_factory=LiveElectiveSnapshot,
             flag="_live_catalog_in_progress", button=self.live_catalog_button,
             status_var=self.live_catalog_status,
             running_message="正在从官网读取当前正选表单、时间窗及课程列表（只读）",

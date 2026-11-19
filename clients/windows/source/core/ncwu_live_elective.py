@@ -21,6 +21,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from core.client import encode_gbk_form, html_encoding
+from core.latency import LatencyRecorder, LatencySample
 from core.ncwu_elective_table import EXPECTED_HEADINGS
 from core.request_budget import build_verified_budget
 from core.ncwu_read_support import (
@@ -335,6 +336,7 @@ async def live_s202_snapshot(
     http_factory: Callable[[], httpx.AsyncClient] | None = None,
     budget_factory: Callable = build_verified_budget,
     enforce_manual_cooldown: bool = True,
+    latency_recorder: LatencyRecorder | None = None,
 ) -> LiveElectiveSnapshot:
     """One manual, bounded real HTTP snapshot, never a background loop."""
     global _NEXT_MANUAL_AT
@@ -357,31 +359,55 @@ async def live_s202_snapshot(
         async with http_factory() as client:
             set_scoped_cookie(client, session_cookie)
             async def request(method: str, path: str, *, form=None):
-                async with _budget_slot(budget):
-                    headers = {
-                        "Referer": REFERER,
-                        "Accept": "text/html,application/json,text/plain",
-                    }
-                    request_opts = {}
-                    if form is not None:
-                        # The first-party DataTable.jsp expects GBK-encoded
-                        # x-www-form-urlencoded bytes. httpx's automatic
-                        # dict encoding would use UTF-8 for Chinese values,
-                        # producing an apparently valid but empty catalog.
-                        headers["Content-Type"] = (
-                            "application/x-www-form-urlencoded; charset=GBK")
-                        request_opts["content"] = encode_gbk_form(list(form.items()))
-                    response = await client.request(
-                        method, ORIGIN + path, headers=headers,
-                        follow_redirects=False, **request_opts,
-                    )
-                error = await classify_read_response(
-                    response, budget, max_bytes=MAX_BODY)
-                if error in ("expired", "restricted"):
-                    raise PermissionError(error)
-                if error:
-                    raise ValueError("unexpected response")
-                return response
+                """Measure bounded S202 HTTP transport without recording identities."""
+                started = time.perf_counter()
+                network_started = None
+                network_finished = None
+                response = None
+                try:
+                    async with _budget_slot(budget):
+                        headers = {
+                            "Referer": REFERER,
+                            "Accept": "text/html,application/json,text/plain",
+                        }
+                        request_opts = {}
+                        if form is not None:
+                            # Preserve the first-party GBK form body verbatim.
+                            headers["Content-Type"] = (
+                                "application/x-www-form-urlencoded; charset=GBK")
+                            request_opts["content"] = encode_gbk_form(list(form.items()))
+                        network_started = time.perf_counter()
+                        response = await client.request(
+                            method, ORIGIN + path, headers=headers,
+                            follow_redirects=False, **request_opts,
+                        )
+                        network_finished = time.perf_counter()
+                    error = await classify_read_response(
+                        response, budget, max_bytes=MAX_BODY)
+                    if error in ("expired", "restricted"):
+                        raise PermissionError(error)
+                    if error:
+                        raise ValueError("unexpected response")
+                    return response
+                finally:
+                    if latency_recorder is not None:
+                        finished = time.perf_counter()
+                        wait_end = network_started if network_started is not None else finished
+                        http_end = network_finished if network_finished is not None else finished
+                        try:
+                            latency_recorder.record(LatencySample(
+                                kind=f"s202_{stage}",
+                                status=response.status_code if response is not None else None,
+                                budget_wait_ms=(wait_end - started) * 1000,
+                                request_ms=((http_end - network_started) * 1000
+                                            if network_started is not None else 0.0),
+                                total_ms=(finished - started) * 1000,
+                                bytes_read=(len(response.content) if response is not None else 0),
+                                note="http_transport_only",
+                            ))
+                        except (ValueError, TypeError, OSError):
+                            # Diagnostics must never change request outcomes.
+                            pass
             page_resp = await request("GET", S202_PAGE)
             page = _decode_html(page_resp)
             if any(marker in page for marker in _LOGIN_MARKERS):
