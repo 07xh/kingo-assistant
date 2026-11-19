@@ -6,6 +6,9 @@ KingoAssistant is an independent personal course-selection assistant for the NCW
 
 ## Current status
 
+- **Attested single-shot S202 write transport (2026-11-18):** `core/ncwu_submission_transport.py` accepts only an externally verified first-party form (`PreparedNCWUSubmission`), enforces the four V5.1 attestations, re-checks session / term / round, requires an exact internal teaching-class binding and a hash-matched item evidence file, then issues **at most one** POST with no retry and no redirect. A `200` response still yields `SubmitReceipt(None)`: success is decided only by the engine's official course+class readback. No adapter that *builds* the form is shipped, so the submit button stays disabled.
+- **Poll dispatch table (2026-11-19):** the Windows event pump no longer contains a 250-line `if/elif event.kind` chain. `Application.poll` drains the queue and dispatches through the module-level `_POLL_HANDLERS` table to one `_on_<kind>(app, event)` handler per worker message; a handler returns `_STOP_POLL` only on explicit quit or window teardown. `tests/test_poll_dispatch_table.py` locks the table, the handler signatures and the terminal handlers so the chain cannot grow back.
+- **Code gate:** `clients/windows/source/pyproject.toml` defines the ruff rule set (E, F, W, I, UP, B, S110) and `python -m ruff check .` is clean. The `lint` job in `windows-build.yml` runs it on Linux before the Windows build; mypy runs there as advisory output only.
 - **Windows:** Three-page navigation (选课首页 / 手动官网备用 / 工具与日志), desktop course plans, read-only monitoring, native tray minimization, an offline automatic-enrollment plan preflight, and a separately tested enrollment state machine. The home page now distinguishes locally usable features, real official-interface gates, and disabled live enrollment. Closing the window keeps the current task; explicit tray quit stops it. [Beginner UI guide](docs/architecture/windows-simple-navigation-20261116.md).
 - **Windows verification:** Verify the latest Windows Actions CI for the current commit; independently passing PRs do not prove their combined GUI works. The packaged smoke test now verifies scheduled-plan preflight remains mounted after merging UI changes.
 - **Write gates are now evidence-backed (V5.1):** a gateway capability flag is no longer sufficient. Each of the four gates needs a hash-verified, unexpired local attestation pointing at the document that proved it; editing that document disarms the gate. `python main.py --attest status|issue|revoke` manages the registry offline. Currently **0/4 registered**, so the write path is blocked by missing evidence rather than by missing code. See [attestation design](docs/architecture/attestation.md).
@@ -147,6 +150,17 @@ and any actual enrollment POST are **not enabled**. See
 ## Engineering audit
 
 The [2026-11-11 Windows integration audit](docs/acceptance/windows-integration-audit-2026-11-11.md) separates fixed UI integration defects from remaining NCWU live-enrollment requirements. **Offline scheduling is not proof of an approved submission capability.**
+
+Static checks are intentionally narrow rather than aspirational: every rule in `select` is clean for the whole tree today, and rules that still carry debt (`UP035` typing generics, `UP042` `StrEnum`, `B905` `zip(strict=)`) are listed in `ignore` with the reason. `S110` is on, so a new `try/except/pass` fails the build instead of hiding a cleanup or parse error.
+
+Local equivalent of the blocking gate:
+
+```powershell
+cd clients/windows/source
+python -m pip install "ruff==0.17.5"
+python -m ruff check .
+python -m unittest discover -s tests -q
+```
 
 ## Windows build
 
