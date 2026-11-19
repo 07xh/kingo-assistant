@@ -47,12 +47,22 @@ class CandidateSelectedCourse:
 
 
 @dataclass(frozen=True)
+class S202DisplayCourse:
+    """Visible-only page data: NO course code and NO internal class ID."""
+    course_name: str
+    teacher: str
+    display_class: str
+    display_class_name: str = ""
+
+
+@dataclass(frozen=True)
 class S202ReadbackResult:
     code: str
     table_count: int = 0
     recognized_tables: int = 0
     candidates: tuple[CandidateSelectedCourse, ...] = ()
     display_only_tables: int = 0
+    display_courses: tuple[S202DisplayCourse, ...] = ()
 
     @property
     def message(self) -> str:
@@ -61,7 +71,8 @@ class S202ReadbackResult:
                 f"已读取官网 S202 已选结果页面；发现 {self.table_count} 张表，"
                 f"{self.recognized_tables} 张含明确课程/班级字段，"
                 f"提取 {len(self.candidates)} 条候选记录。"
-                f"另发现 {self.display_only_tables} 张仅含展示列的课程表；"
+                f"另发现 {self.display_only_tables} 张仅含展示列的课程表，"
+                f"可显示 {len(self.display_courses)} 条课程信息；"
                 "这种表有课程名称、显示班级等信息，但不含可核实的课程代码"
                 "与内部教学班 ID。未识别出候选不等于未选课，"
                 "字段未经现场逐行验收，不能据此认定最终选课成功。"
@@ -106,20 +117,44 @@ def parse_s202_readback(html: str) -> S202ReadbackResult:
     records: list[CandidateSelectedCourse] = []
     recognized = 0
     display_only = 0
+    display_courses: list[S202DisplayCourse] = []
     for table in tables:
         # Do not recursively inspect outer navigation tables containing nested
         # results tables; only a directly owned THEAD can describe this table.
         theads = table.find_all("thead", recursive=False)
         if len(theads) == 1:
-            headings = [
+            header_rows = theads[0].find_all("tr", recursive=False)
+            headings = ([
                 cell.get_text(" ", strip=True).replace(" ", "")
-                for tr in theads[0].find_all("tr")
-                for cell in tr.find_all(("td", "th"), recursive=False)
-            ]
-            if (_DISPLAY_COURSE in headings
-                    and any(label in headings for label in _DISPLAY_CLASS)
+                for cell in header_rows[0].find_all(("td", "th"), recursive=False)
+            ] if header_rows else [])
+            course_col = _find_header_index(headings, frozenset((_DISPLAY_COURSE,)))
+            visible_col = _find_header_index(headings, _DISPLAY_CLASS)
+            if (course_col is not None and visible_col is not None
                     and _find_header_index(headings, _CODE_HEADERS) is None):
                 display_only += 1
+                teacher_col = _find_header_index(headings, _TEACHER_HEADERS)
+                class_name_col = _find_header_index(
+                    headings, frozenset(("上课班级名称",)))
+                body = table.find("tbody", recursive=False)
+                if body is not None:
+                    for row in body.find_all("tr", recursive=False):
+                        cells = row.find_all("td", recursive=False)
+                        if len(cells) <= max(course_col, visible_col):
+                            continue
+                        def cell_at(index: int | None) -> str:
+                            if index is None or index >= len(cells):
+                                return ""
+                            return cells[index].get_text(" ", strip=True)[:180]
+                        name, visible_class = cell_at(course_col), cell_at(visible_col)
+                        if not name or not visible_class:
+                            continue
+                        display_courses.append(S202DisplayCourse(
+                            name, cell_at(teacher_col), visible_class,
+                            cell_at(class_name_col),
+                        ))
+                        if len(display_courses) >= 200:
+                            break
         headers = table.find_all("th")
         if not headers or len(headers) > 40:
             continue
@@ -152,7 +187,8 @@ def parse_s202_readback(html: str) -> S202ReadbackResult:
             break
     return S202ReadbackResult(
         "page_observed", len(tables), recognized, tuple(records),
-        display_only_tables=display_only)
+        display_only_tables=display_only,
+        display_courses=tuple(display_courses))
 
 
 async def read_s202_selected_results(

@@ -88,6 +88,9 @@ class S202ResultTests(TestCase):
         self.assertEqual(result.display_only_tables, 1)
         self.assertEqual(result.candidates, ())
         self.assertEqual(result.recognized_tables, 0)
+        self.assertEqual(len(result.display_courses), 1)
+        self.assertEqual(result.display_courses[0].course_name, "虚构课程")
+        self.assertEqual(result.display_courses[0].display_class, "展示班号")
         self.assertIn("未识别出候选不等于未选课", result.message)
         self.assertNotIn("虚构课程", result.message)
 

@@ -64,3 +64,22 @@ class CandidateReviewGuiTests(TestCase):
         popup.assert_not_called()
         self.assertIn("未识别出候选不等于未选课",
                       str(notice.call_args))
+
+    def test_display_only_courses_are_viewed_without_success_or_internal_id(self):
+        from core.ncwu_s202_readback import S202DisplayCourse
+        result = S202ReadbackResult(
+            "page_observed", 2, 0, (), display_only_tables=1,
+            display_courses=(S202DisplayCourse(
+                "虚构课程", "虚构教师", "VISIBLE-CLASS", "显示班名"),),
+        )
+        with patch("windows_gui._open_readonly_popup") as popup, \
+             patch("windows_gui._create_readonly_tree") as table, \
+             patch("windows_gui.messagebox.showinfo") as notice:
+            Application.show_s202_candidate_results(self.app, result)
+        popup.assert_called_once()
+        notice.assert_not_called()
+        self.assertEqual(table.return_value.insert.call_count, 1)
+        row = table.return_value.insert.call_args.kwargs["values"]
+        self.assertIn("VISIBLE-CLASS", row)
+        self.assertNotIn("INTERNAL_SKBJDM", str(row))
+        self.assertNotIn("已确认", str(row))

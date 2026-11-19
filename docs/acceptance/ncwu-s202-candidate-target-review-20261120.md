@@ -37,3 +37,17 @@ no trustworthy candidate rows, the Windows UI explains the schema gap instead
 of implying there are no selected courses. No display-only table is converted
 into `EnrollmentEngine.read_enrollments()` records, and no private HAR data
 is committed. Synthetic HTML fixtures reproduce the table structure only.
+
+## Display-only course viewer
+
+Historical evidence also contains nonempty rows in the S202 results table,
+with `课程`, `任课教师`, and `上课班级` display columns. The
+readback parser now returns these rows as `S202DisplayCourse` objects:
+course name, teacher, displayed class and optional displayed class name only.
+Windows renders the rows in a separate clearly labelled **display-only**
+view when no trustworthy course-code/class-number candidates exist.
+
+This preserves the user's ability to inspect their own course data without
+claiming an internal class identifier, verified semester, successful submit
+or enrollment completion. The engine still rejects these display records as
+authoritative readback, and no private HAR response is committed.

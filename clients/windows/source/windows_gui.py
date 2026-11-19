@@ -952,7 +952,23 @@ class Application(tk.Tk):
     def show_s202_candidate_results(self, result: S202ReadbackResult) -> None:
         """Compare candidate display rows to local preferences, never mark success."""
         if not result.candidates:
-            if result.display_only_tables:
+            if result.display_courses:
+                popup = _open_readonly_popup(
+                    self, title="S202 已选结果展示信息 · 不能确认班级身份",
+                    size="900x460", message=result.message, wraplength=850,
+                )
+                fields = ("course", "teacher", "visible_class", "class_name")
+                titles = ("课程名称（展示）", "任课教师", "上课班级（显示值）", "班级名称")
+                view = _create_readonly_tree(
+                    popup, columns=fields, titles=titles,
+                    widths=(240, 140, 230, 240), minwidth=105,
+                )
+                for item in result.display_courses:
+                    view.insert("", "end", values=(
+                        item.course_name, item.teacher,
+                        item.display_class, item.display_class_name))
+                view.pack(fill="both", expand=True, padx=12, pady=(0, 14))
+            elif result.display_only_tables:
                 messagebox.showinfo(
                     "S202 结果页发现展示表，但没有可靠班级身份",
                     result.message + "\n\n请核对官方选课结果。"
