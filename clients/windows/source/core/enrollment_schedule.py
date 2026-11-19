@@ -116,6 +116,7 @@ class ScheduledEnrollmentRunner:
         target_time: str,
         *,
         stop_event: asyncio.Event | None = None,
+        defer_readback: bool = False,
     ) -> ScheduledRunReport:
         ordered = list(targets)
         _validate_targets(ordered)
@@ -129,6 +130,8 @@ class ScheduledEnrollmentRunner:
             raise ValueError("自动选课计划时间必须是有限时间")
 
         started = self.monotonic()
+        prepared_schedule = None
+        preparation_attempted = False
         while self.clock.now() < target_epoch:
             if stop_event is not None and stop_event.is_set():
                 return ScheduledRunReport(
@@ -137,6 +140,18 @@ class ScheduledEnrollmentRunner:
                     0, max(0.0, self.monotonic() - started),
                 )
             remaining = target_epoch - self.clock.now()
+            # Do one optional read-only timetable prefetch near the target.
+            # An unverified source cannot opt in. Failures fall back to the
+            # usual fresh in-window read; no stale snapshot authorizes a write.
+            if remaining <= 30 and not preparation_attempted:
+                preparation_attempted = True
+                try:
+                    from core.prepared_preflight import prepare_schedule
+                    prepared_schedule = await prepare_schedule(self.engine, ordered)
+                except Exception:
+                    prepared_schedule = None
+                # Recalculate after real network time spent preparing.
+                remaining = max(0.0, target_epoch - self.clock.now())
             # Avoid waking the local event loop twice per second for days.
             # Coarse waits are cancellation-aware; use subsecond precision
             # only in the final 10 seconds before the confirmed start time.
@@ -165,7 +180,10 @@ class ScheduledEnrollmentRunner:
             if not isinstance(state, WindowState):
                 state = WindowState.UNKNOWN
             if state is WindowState.OPEN:
-                result = await self.engine.run(ordered)
+                result = await self.engine.run(
+                    ordered, prepared_schedule=prepared_schedule,
+                    defer_readback=defer_readback,
+                )
                 reason = "engine_halted" if result.halted else "engine_completed"
                 return ScheduledRunReport(
                     reason, result, checks, max(0.0, self.monotonic() - started)
