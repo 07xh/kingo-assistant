@@ -234,7 +234,7 @@ class ScheduledEnrollmentTest(unittest.TestCase):
         self.assertEqual(report.reason, "engine_completed")
         self.assertTrue(any(0 < seconds <= 0.05 for seconds in pauses))
         self.assertEqual(report.window_checks, 1)
-        self.assertEqual(self.gateway.window_calls, 2)  # runner + engine
+        self.assertEqual(self.gateway.window_calls, 3)  # scheduled check + two engine checks
         self.assertEqual(len(self.gateway.writes), 1)
 
     def test_poll_interval_and_timeout_bounds(self):
