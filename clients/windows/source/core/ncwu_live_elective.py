@@ -45,6 +45,10 @@ _MANUAL_LOCK = threading.Lock()
 _NEXT_MANUAL_AT = 0.0
 
 
+class _ReadResponseUnavailable(RuntimeError):
+    """HTTP transport/server rejection, not an official form-shape change."""
+
+
 @dataclass(frozen=True)
 class LiveElectiveCourse:
     course_name: str
@@ -345,10 +349,8 @@ async def live_s202_snapshot(
     if not _MANUAL_LOCK.acquire(blocking=False):
         return LiveElectiveSnapshot("busy")
     try:
-        if enforce_manual_cooldown:
-            if time.monotonic() < _NEXT_MANUAL_AT:
-                return LiveElectiveSnapshot("cooldown")
-            _NEXT_MANUAL_AT = time.monotonic() + 60.0
+        if enforce_manual_cooldown and time.monotonic() < _NEXT_MANUAL_AT:
+            return LiveElectiveSnapshot("cooldown")
         try:
             budget = get_optional_verified_budget(config, budget_factory)
         except Exception:
@@ -360,6 +362,7 @@ async def live_s202_snapshot(
             set_scoped_cookie(client, session_cookie)
             async def request(method: str, path: str, *, form=None):
                 """Measure bounded S202 HTTP transport without recording identities."""
+                global _NEXT_MANUAL_AT
                 started = time.perf_counter()
                 budget_started = started
                 budget_ready = None
@@ -380,7 +383,12 @@ async def live_s202_snapshot(
                     budget_started = time.perf_counter()
                     async with _budget_slot(budget):
                         budget_ready = time.perf_counter()
-                        network_started = budget_ready
+                        # Only a request that is actually about to start consumes
+                        # the local cooldown. Invalid policy / failed setup do not.
+                        # The outer _MANUAL_LOCK serializes this decision.
+                        if enforce_manual_cooldown and stage == "page":
+                            _NEXT_MANUAL_AT = time.monotonic() + 60.0
+                        network_started = time.perf_counter()
                         response = await client.request(
                             method, ORIGIN + path, headers=headers,
                             follow_redirects=False, **request_opts,
@@ -391,7 +399,7 @@ async def live_s202_snapshot(
                     if error in ("expired", "restricted"):
                         raise PermissionError(error)
                     if error:
-                        raise ValueError("unexpected response")
+                        raise _ReadResponseUnavailable("unavailable")
                     return response
                 finally:
                     if latency_recorder is not None:
@@ -409,7 +417,7 @@ async def live_s202_snapshot(
                                 bytes_read=(len(response.content) if response is not None else 0),
                                 note="http_transport_only",
                             ))
-                        except (ValueError, TypeError, OSError):
+                        except Exception:
                             # Diagnostics must never change request outcomes.
                             pass
             page_resp = await request("GET", S202_PAGE)
@@ -464,7 +472,10 @@ async def live_s202_snapshot(
     except PermissionError as exc:
         return LiveElectiveSnapshot(
             "restricted" if str(exc) == "restricted" else "expired")
-    except (httpx.HTTPError, UnicodeError, ValueError, KeyError, TypeError):
+    except (httpx.HTTPError, _ReadResponseUnavailable):
+        # A server failure or network error is not evidence of a changed form.
+        return LiveElectiveSnapshot("unavailable", stage)
+    except (UnicodeError, ValueError, KeyError, TypeError):
         return LiveElectiveSnapshot("protocol_changed" if stage == "page" else "unavailable", stage)
     except Exception:
         return LiveElectiveSnapshot("unavailable")
