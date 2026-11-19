@@ -61,6 +61,7 @@ from core.ncwu_elective_table import inspect_elective_table
 from core.ncwu_live_elective import LiveElectiveSnapshot, live_s202_snapshot
 from core.ncwu_live_target_review import compare_live_targets
 from core.ncwu_s202_readback import S202ReadbackResult, read_s202_selected_results
+from core.ncwu_s202_candidate_review import compare_s202_candidate_targets
 from core.ncwu_s202_round import S202RoundStatus, probe_s202_round
 from core.ncwu_s202_score import PersonalScoreCount, read_personal_s202_score
 from core.ncwu_course_plan import PlanSnapshot, read_current_course_plan
@@ -949,23 +950,46 @@ class Application(tk.Tk):
         )
 
     def show_s202_candidate_results(self, result: S202ReadbackResult) -> None:
-        """Memory-only candidates; a table cannot certify enrollment success."""
+        """Compare candidate display rows to local preferences, never mark success."""
         if not result.candidates:
             return
         popup = _open_readonly_popup(
             self, title="S202 已选结果候选记录 · 待官网核对",
-            size="760x400", message=result.message, wraplength=720,
+            size="960x470", message=result.message, wraplength=910,
         )
-        columns = ("name", "code", "class_number", "teacher")
-        titles = ("课程名", "课程代码", "教学班号", "教师")
+        comparison = None
+        try:
+            config = read_config(Path(self.path.get()), offline=True)
+            comparison = compare_s202_candidate_targets(result, config)
+            summary = comparison.message.splitlines()[0]
+        except (OSError, ValueError, TypeError, KeyError):
+            summary = "无法读取本地志愿；官网候选数据仍可查看，但不能据此推定已选成功。"
+        self._s202_candidate_report = comparison
+        row = ttk.Frame(popup, padding=(12, 0, 12, 8))
+        row.pack(fill="x")
+        ttk.Label(
+            row, text=summary, foreground="#41566c", wraplength=690,
+        ).pack(side="left", fill="x", expand=True)
+        if comparison is not None and comparison.targets:
+            ttk.Button(
+                row, text="查看逐项候选核对",
+                command=lambda report=comparison: messagebox.showinfo(
+                    "S202 候选记录 × 本地志愿（不能判成功）",
+                    report.message, parent=popup),
+            ).pack(side="right", padx=(8, 0))
+        columns = ("name", "code", "class_number", "teacher", "candidate")
+        titles = ("课程名", "课程代码", "显示教学班号", "教师", "本地志愿（仅课程候选）")
         table = _create_readonly_tree(
             popup, columns=columns, titles=titles,
-            widths=(180,) * len(columns), minwidth=110,
+            widths=(170, 140, 140, 135, 270), minwidth=95,
         )
-        for item in result.candidates:
+        for index, item in enumerate(result.candidates):
+            marks = comparison.row_marks[index] if comparison is not None else ()
             table.insert("", "end", values=(
                 item.course_name, item.course_code,
-                item.class_number, item.teacher))
+                item.class_number, item.teacher,
+                "、".join(marks) if marks else "未建立候选关联",
+            ))
         table.pack(fill="both", expand=True, padx=12, pady=(0, 14))
 
     def check_live_catalog(self) -> None:
