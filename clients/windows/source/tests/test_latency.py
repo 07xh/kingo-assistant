@@ -116,6 +116,33 @@ class RecorderTests(unittest.TestCase):
         for key in ("file", "enabled", "last_error", "overall", "by_kind"):
             self.assertIn(key, report)
 
+    def test_summarize_file_keeps_s202_phases_separate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / DEFAULT_LATENCY_FILE
+            rows = [
+                LatencySample(kind="s202_page", request_ms=50, total_ms=55),
+                LatencySample(kind="s202_page", request_ms=150, total_ms=155),
+                LatencySample(kind="s202_window", request_ms=400, total_ms=405),
+                LatencySample(kind="catalog", request_ms=800, total_ms=825),
+            ]
+            path.write_text(
+                "".join(json.dumps(r.to_mapping()) + "\n" for r in rows),
+                encoding="utf-8",
+            )
+            report = summarize_file(path)
+            self.assertEqual(report["samples"], 4)
+            self.assertEqual(report["by_kind"]["s202_page"]["samples"], 2)
+            self.assertEqual(report["by_kind"]["s202_window"]["samples"], 1)
+            self.assertEqual(
+                report["by_kind"]["s202_page"]["phases"]["request_ms"]["p95"],
+                150.0,
+            )
+            self.assertEqual(
+                report["by_kind"]["s202_window"]["phases"]["request_ms"]["p50"],
+                400.0,
+            )
+            self.assertEqual(report["by_kind"]["catalog"]["samples"], 1)
+
     def test_summarize_file_ignores_corrupt_lines(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / DEFAULT_LATENCY_FILE

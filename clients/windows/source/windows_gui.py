@@ -464,9 +464,33 @@ class Application(tk.Tk):
             return "\n\n（暂无时延采样；本次运行没有完成任何课程读取。）\n"
         lines = ["", "", "时延采样（毫秒，本机统计，不含课程或账号信息；S202 样本仅统计 HTTP 传输和预算等待）：",
                  f"  样本数：{report['samples']}"]
+        lines.append("  总体统计混合不同请求类型，不能直接比较单次查询完整耗时。")
         for name, stats in report["phases"].items():
             lines.append(f"  {name}: p50={stats['p50']} p95={stats['p95']} "
                          f"max={stats['max']}")
+        labels = (
+            ("s202_page", "S202 页面"),
+            ("s202_window", "S202 时间窗"),
+            ("s202_catalog", "S202 课程列表"),
+        )
+        parts = report.get("by_kind", {})
+        if any(kind in parts for kind, _ in labels):
+            lines.append("S202 各段独立统计（仅含请求准备、配额等待、HTTP 与响应分类）：")
+            for kind, label in labels:
+                part = parts.get(kind)
+                if not part:
+                    continue
+                phases = part["phases"]
+                budget = phases["budget_wait_ms"]
+                request = phases["request_ms"]
+                total = phases["total_ms"]
+                lines.append(
+                    f"  {label}（{part['samples']}次）："
+                    f"等待 p50/p95={budget['p50']}/{budget['p95']} ms，"
+                    f"HTTP p50/p95={request['p50']}/{request['p95']} ms，"
+                    f"阶段合计 p95={total['p95']} ms"
+                )
+            lines.append("  注意：S202 解码/解析尚未单独计时，不能将 0 ms 当成实测。")
         return "\n".join(lines) + "\n"
 
     def pick_config(self) -> None:

@@ -188,17 +188,29 @@ def summarize_file(path: Path | str, *, kind: str | None = None) -> dict:
                 if isinstance(row, dict) and (kind is None or row.get("kind") == kind):
                     records.append(row)
     except OSError:
-        return {"samples": 0, "kinds": {}, "phases": {}}
-    phases = {
-        name: percentiles([row.get(name, 0) for row in records
-                           if isinstance(row.get(name, 0), (int, float))])
-        for name in PHASES
-    }
-    kinds: dict[str, int] = {}
+        return {"samples": 0, "kinds": {}, "phases": {}, "by_kind": {}}
+
+    def phases_for(rows: list[dict]) -> dict:
+        return {
+            name: percentiles([row.get(name, 0) for row in rows
+                               if isinstance(row.get(name, 0), (int, float))])
+            for name in PHASES
+        }
+
+    groups: dict[str, list[dict]] = {}
     for row in records:
         key = str(row.get("kind", "?"))
-        kinds[key] = kinds.get(key, 0) + 1
-    return {"samples": len(records), "kinds": kinds, "phases": phases}
+        groups.setdefault(key, []).append(row)
+    by_kind = {
+        key: {"samples": len(rows), "phases": phases_for(rows)}
+        for key, rows in groups.items()
+    }
+    return {
+        "samples": len(records),
+        "kinds": {key: len(rows) for key, rows in groups.items()},
+        "phases": phases_for(records),
+        "by_kind": by_kind,
+    }
 
 
 @dataclass(frozen=True, slots=True)
