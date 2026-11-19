@@ -361,22 +361,26 @@ async def live_s202_snapshot(
             async def request(method: str, path: str, *, form=None):
                 """Measure bounded S202 HTTP transport without recording identities."""
                 started = time.perf_counter()
+                budget_started = started
+                budget_ready = None
                 network_started = None
                 network_finished = None
                 response = None
                 try:
+                    headers = {
+                        "Referer": REFERER,
+                        "Accept": "text/html,application/json,text/plain",
+                    }
+                    request_opts = {}
+                    if form is not None:
+                        # Preserve the first-party GBK form body verbatim.
+                        headers["Content-Type"] = (
+                            "application/x-www-form-urlencoded; charset=GBK")
+                        request_opts["content"] = encode_gbk_form(list(form.items()))
+                    budget_started = time.perf_counter()
                     async with _budget_slot(budget):
-                        headers = {
-                            "Referer": REFERER,
-                            "Accept": "text/html,application/json,text/plain",
-                        }
-                        request_opts = {}
-                        if form is not None:
-                            # Preserve the first-party GBK form body verbatim.
-                            headers["Content-Type"] = (
-                                "application/x-www-form-urlencoded; charset=GBK")
-                            request_opts["content"] = encode_gbk_form(list(form.items()))
-                        network_started = time.perf_counter()
+                        budget_ready = time.perf_counter()
+                        network_started = budget_ready
                         response = await client.request(
                             method, ORIGIN + path, headers=headers,
                             follow_redirects=False, **request_opts,
@@ -392,13 +396,13 @@ async def live_s202_snapshot(
                 finally:
                     if latency_recorder is not None:
                         finished = time.perf_counter()
-                        wait_end = network_started if network_started is not None else finished
+                        wait_end = budget_ready if budget_ready is not None else finished
                         http_end = network_finished if network_finished is not None else finished
                         try:
                             latency_recorder.record(LatencySample(
                                 kind=f"s202_{stage}",
                                 status=response.status_code if response is not None else None,
-                                budget_wait_ms=(wait_end - started) * 1000,
+                                budget_wait_ms=(wait_end - budget_started) * 1000,
                                 request_ms=((http_end - network_started) * 1000
                                             if network_started is not None else 0.0),
                                 total_ms=(finished - started) * 1000,

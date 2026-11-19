@@ -144,3 +144,25 @@ summary in the GUI.
 Available but not yet wired: `ClockSync`, `Prewarmer`, `FailoverPlanner` still
 need a native transport pool and a write adapter to attach to. They are exported
 and tested so attaching them later is a wiring change, not a rewrite.
+
+## Native Windows S202 read-only timing (2026-11-20)
+
+The Windows S202 manually triggered course snapshot also emits `s202_page`,
+`s202_window`, and `s202_catalog` records into the existing local JSONL
+file. It shares the per-origin request budget and the existing cooldown; no
+new polling, write operation, retries, or background traffic are introduced.
+The native read worker creates a best-effort `LatencyRecorder` per run.
+
+- `budget_wait_ms`: time spent acquiring the optional verified budget slot;
+  it excludes GBK form preparation and is zero/near-zero when no budget exists.
+- `request_ms`: time spent in the underlying HTTPS request.
+- `total_ms`: transport helper duration including form preparation,
+  budget acquisition, HTTPS request, and response classification.
+- `decode_ms` and `parse_ms` remain zero for these `s202_*` samples. They
+  are **not** measured by this instrumentation; `note=http_transport_only`
+  prevents interpreting the zeros as successful decode/parse benchmarks.
+
+Records contain only fixed operation names, HTTP status, timings, and byte
+counts. They omit URLs, account/course/class identifiers, cookies, and bodies.
+A local record is not proof of a live official enrollment, and simulated
+HTTP tests do not establish network performance on campus.
