@@ -26,6 +26,13 @@ class HistoricalClassCandidate:
     course_code: str
     internal_class_id: str
     displayed_status: str = ""
+    status_code: str = ""
+
+    @property
+    def observed_selected_pair(self) -> bool:
+        # Only the {display=选中, code=03} pair appeared in the 2026-11-03
+        # capture. It is not a validated success or selection-round status.
+        return self.displayed_status == "选中" and self.status_code == "03"
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,12 +97,15 @@ def inspect_known_result_candidates(html: str) -> HistoricalClassInspection:
             if len(candidates) >= _MAX_CANDIDATES:
                 break
             cells = row.find_all("td", recursive=False)
-            named: dict[str, list] = {"kcdm": [], "skbjdm": []}
+            named: dict[str, list] = {
+                "kcdm": [], "skbjdm": [], "xk_status_m": [],
+            }
             for cell in cells:
                 key = str(cell.get("name", "")).lower().strip()
                 if key in named:
                     named[key].append(cell)
-            if len(named["kcdm"]) != 1 or len(named["skbjdm"]) != 1:
+            if (len(named["kcdm"]) != 1 or len(named["skbjdm"]) != 1
+                    or len(named["xk_status_m"]) > 1):
                 ignored += 1
                 continue
             code = named["kcdm"][0].get_text(" ", strip=True)
@@ -110,5 +120,11 @@ def inspect_known_result_candidates(html: str) -> HistoricalClassInspection:
             status = ""
             if status_column < len(cells):
                 status = cells[status_column].get_text(" ", strip=True)[:100]
-            candidates.append(HistoricalClassCandidate(code, internal, status))
+            status_code = ""
+            if named["xk_status_m"]:
+                raw_code = named["xk_status_m"][0].get_text(" ", strip=True)
+                if re.fullmatch(r"[A-Za-z0-9_-]{1,16}", raw_code):
+                    status_code = raw_code
+            candidates.append(
+                HistoricalClassCandidate(code, internal, status, status_code))
     return HistoricalClassInspection(recognized, tuple(candidates), ignored)
