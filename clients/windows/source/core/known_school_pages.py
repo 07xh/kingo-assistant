@@ -23,6 +23,7 @@ from core.ncwu_known_result_candidates import (
 from core.request_budget import build_verified_budget
 from core.ncwu_legacy_result_query import (
     CurrentResultQueryError, build_current_result_params, valid_current_account,
+    valid_first_semester,
 )
 from core.ncwu_term_probe import PATH as YEAR_TERM_PATH, validate_term_contract
 
@@ -44,6 +45,7 @@ class KnownSchoolPageResult:
     candidates: tuple[HistoricalClassCandidate, ...] = ()
     recognized_identity_tables: int = 0
     account_bound_query: bool = False
+    semester_bound_query: bool = False
 
     @property
     def message(self) -> str:
@@ -54,8 +56,8 @@ class KnownSchoolPageResult:
                 f"{self.row_count} 条表格行。"
                 f"其中 {self.recognized_identity_tables} 张表有内部教学班字段，"
                 f"可查看 {len(self.candidates)} 条 kcdm/skbjdm 候选记录。"
-                + ("本次查询参数与当前学期接口返回的本人账号一致。"
-                   if self.account_bound_query else "")
+                + ("本次查询账号和学期已与官网本次接口返回值对照。"
+                   if self.account_bound_query and self.semester_bound_query else "")
                 + "不能据此认定选课成功、提交许可或仍有名额。"
             )
         return {
@@ -63,6 +65,8 @@ class KnownSchoolPageResult:
             "query_unverified": "结果页查询参数契约未完成核验；没有联网",
             "identity_unverified": "请先在 EXE 完成本人账号和会话身份核验；没有联网",
             "identity_mismatch": "当前官方学期接口账号与 EXE 登录身份不一致；已停止结果读取",
+            "semester_unverified": "本机目标学期的官方编码映射未核验，不执行结果页查询",
+            "semester_mismatch": "官方当前学期与本机课程方案学期不符，未发送结果页查询",
             "invalid_contract": "读取配置与已知华水只读页面不一致；未联网",
             "missing_session": "EXE 缺少本人教务登录会话；浏览器已登录不代表软件已登录",
             "policy_unverified": "没有经过核实的学校请求配额；未访问教务",
@@ -102,6 +106,8 @@ def validate_known_page_contract(config: Mapping, page_kind: str) -> str | None:
     mode = target.get("query_mode")
     if page_kind == "selected_results" and mode == "current_yearterm_base64":
         if target.get("query_fields") != {"params": "current_yearterm_base64"}:
+            return "query_unverified"
+        if not valid_first_semester(config.get("xnxq")):
             return "query_unverified"
         yearterm = config.get("known_year_term")
         if (not isinstance(yearterm, dict)
@@ -232,7 +238,8 @@ async def read_known_school_page(
                     return KnownSchoolPageResult("invalid_response", page_kind)
                 try:
                     token = build_current_result_params(
-                        term.content, verified_user_code=expected_user_code)
+                        term.content, verified_user_code=expected_user_code,
+                        expected_semester=config["xnxq"])
                 except CurrentResultQueryError as exc:
                     return KnownSchoolPageResult(exc.code, page_kind)
                 query = {"params": token}
@@ -287,6 +294,7 @@ async def read_known_school_page(
                 recognized_identity_tables=(
                     inspected.recognized_tables if inspected is not None else 0),
                 account_bound_query=dynamic,
+                semester_bound_query=dynamic,
             )
     except Exception:
         return KnownSchoolPageResult("unavailable", page_kind)
