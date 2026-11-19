@@ -50,7 +50,7 @@ def build_home_page(app) -> None:
     )
     app.edit_button.pack(side="left", fill="x", expand=True, padx=(0, 3))
     app.plans_button = ttk.Button(
-        setup_actions, text="课程方案", command=app.manage_plans,
+        setup_actions, text="方案", command=app.manage_plans,
     )
     app.plans_button.pack(side="left", fill="x", expand=True, padx=(3, 0))
     ttk.Label(
@@ -126,7 +126,7 @@ def build_home_page(app) -> None:
     )
     app.start_button.pack(side="left", padx=(0, 3), fill="x", expand=True)
     app.stop_button = ttk.Button(
-        app.action_panel, text="停止监测", command=app.stop_monitor,
+        app.action_panel, text="停止", command=app.stop_monitor,
         state="disabled",
     )
     app.stop_button.pack(side="left", padx=(3, 0), fill="x", expand=True)
@@ -147,7 +147,7 @@ def build_home_page(app) -> None:
     )
     app.scheduled_start_button.pack(side="left", padx=(0, 3), fill="x", expand=True)
     app.scheduled_stop_button = ttk.Button(
-        enrollment_actions, text="取消计划",
+        enrollment_actions, text="取消",
         command=app.stop_scheduled_enrollment, state="disabled",
     )
     app.scheduled_stop_button.pack(side="left", padx=(3, 0), fill="x", expand=True)
