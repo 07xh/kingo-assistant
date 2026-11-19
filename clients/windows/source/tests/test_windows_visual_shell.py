@@ -65,7 +65,7 @@ class ThemeConfigurationTests(TestCase):
                 getattr(owner, target))
         # A navigation button never opens the browser or calls school APIs.
         owner.start_native_login.assert_not_called()
-        owner.open_official_portal.assert_not_called()
+        owner.check_script_session.assert_not_called()
 
     def test_sidebar_highlight_tracks_programmatic_tab_navigation(self):
         owner = SimpleNamespace(
