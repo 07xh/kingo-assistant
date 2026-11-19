@@ -54,6 +54,7 @@ from core.native_preparation import NativePreparationResult, prepare_native_api
 from core.native_timetable import TimetableReadResult, read_known_timetable
 from core.ncwu_lesson_detail import LessonDetailResult, read_lesson_detail
 from core.known_school_pages import KnownSchoolPageResult, read_known_school_page, validate_known_page_contract
+from core.ncwu_selected_target_review import compare_result_targets
 from core.ncwu_term_probe import TermProbeResult, probe_known_year_term, validate_term_contract
 from core.native_login import NativeLoginResult
 from core.ncwu_signed_login import login_ncwusigned, validate_ncwulogin_entry
@@ -786,23 +787,47 @@ class Application(tk.Tk):
         )
 
     def show_known_result_candidates(self, result: KnownSchoolPageResult) -> None:
-        """Display historical kcdm/skbjdm candidates; never certify success."""
+        """Compare exact class candidates with preferences; never mark success."""
         if not result.candidates:
             return
+        try:
+            config = read_config(Path(self.path.get()), offline=True)
+            review = compare_result_targets(
+                result.candidates, config,
+                account_bound=result.account_bound_query,
+                semester_bound=result.semester_bound_query,
+            )
+        except (OSError, ValueError, TypeError, KeyError, AttributeError):
+            review = None
+        heading = (
+            result.message + "\n" + review.message.splitlines()[0]
+            if review is not None else result.message
+        )
         popup = _open_readonly_popup(
-            self, title="青果本人选课结果 · 内部教学班候选（尚未独立验收）",
-            size="880x480", message=result.message, wraplength=830,
+            self, title="青果已选结果 · 当前账号/学期/教学班候选核对",
+            size="1110x500", message=heading, wraplength=1060,
         )
         table = _create_readonly_tree(
-            popup, columns=("code", "internal", "state"),
-            titles=("课程代码 kcdm", "内部教学班 skbjdm（候选）", "官网展示状态"),
-            widths=(240, 300, 240), minwidth=105, height=15,
+            popup, columns=("code", "internal", "state", "state_code", "plan"),
+            titles=("课程代码 kcdm", "内部班 skbjdm（候选）", "展示状态",
+                    "状态码（历史03）", "本地志愿匹配"),
+            widths=(190, 240, 135, 140, 280), minwidth=100, height=15,
         )
-        for item in result.candidates:
+        for index, item in enumerate(result.candidates):
+            marks = review.row_marks[index] if review is not None else ()
             table.insert("", "end", values=(
-                item.course_code, item.internal_class_id, item.displayed_status,
+                item.course_code, item.internal_class_id,
+                item.displayed_status, item.status_code,
+                "、".join(marks) if marks else "未建立精确志愿关联",
             ))
-        table.pack(fill="both", expand=True, padx=12, pady=(0, 14))
+        table.pack(fill="both", expand=True, padx=12, pady=(0, 12))
+        if review is not None and review.targets:
+            ttk.Button(
+                popup, text="逐项核对本地志愿（均不是选课成功证明）",
+                command=lambda report=review: messagebox.showinfo(
+                    "选课结果候选 × 本地志愿",
+                    report.message, parent=popup),
+            ).pack(pady=(0, 10))
 
     def check_course_plan(self) -> None:
         """One snapshot of historical NCWU 5327042 course-plan rows."""
