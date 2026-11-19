@@ -16,7 +16,6 @@ def stub():
         scheduled_worker=None,
         _engine_factory=None,
         _closing=False,
-        _tick_portal_appointment=Mock(),
         path=SimpleNamespace(get=lambda: str(Path("config.yaml"))),
         status=Mock(),
         log=Mock(),
@@ -39,8 +38,6 @@ class ScheduledGuiTests(unittest.TestCase):
         app = stub()
         with patch("windows_gui.read_config",
                    side_effect=AssertionError("config not needed")), \
-             patch("windows_gui.webbrowser.open",
-                   side_effect=AssertionError("browser not allowed")), \
              patch("windows_gui.DesktopScheduledWorker",
                    side_effect=AssertionError("no adapter")):
             Application.start_scheduled_enrollment(app)
@@ -80,8 +77,6 @@ class ScheduledGuiTests(unittest.TestCase):
         with patch("windows_gui.read_config", return_value={}), \
              patch("windows_gui.prepare_scheduled_plan", return_value=fake_plan), \
              patch("windows_gui.messagebox.askyesno", return_value=True), \
-             patch("windows_gui.webbrowser.open",
-                   side_effect=AssertionError("unexpected browser launch")), \
              patch("windows_gui.DesktopScheduledWorker") as scheduled:
             Application.start_scheduled_enrollment(app)
         scheduled.assert_called_once()
@@ -109,22 +104,11 @@ class ScheduledGuiTests(unittest.TestCase):
             Application.check_script_session(app)
         thread.assert_not_called()
 
-    def test_verified_execution_cancels_existing_browser_fallback(self):
-        app = stub()
-        app._engine_factory = Mock()
-        app._official_portal_appointment = object()
-        app.portal_appointment_button = Mock()
-        app.portal_appointment_status = Mock()
-        plan = SimpleNamespace(
-            target_time="2026-12-21 09:00:00", targets=[object()]
-        )
-        with patch("windows_gui.read_config", return_value={}), \
-             patch("windows_gui.prepare_scheduled_plan", return_value=plan), \
-             patch("windows_gui.messagebox.askyesno", return_value=True), \
-             patch("windows_gui.DesktopScheduledWorker"):
-            Application.start_scheduled_enrollment(app)
-        self.assertIsNone(app._official_portal_appointment)
-        self.assertIn("已取消", str(app.portal_appointment_status.set.call_args))
+    def test_browser_fallback_is_not_exposed(self):
+        for method in ("toggle_portal_appointment", "_tick_portal_appointment",
+                       "open_official_portal", "prepare_selected_course"):
+            with self.subTest(method=method):
+                self.assertFalse(hasattr(Application, method))
 
     def test_cleanup_warning_does_not_replace_official_result(self):
         app = stub()
