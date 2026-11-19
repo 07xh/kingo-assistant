@@ -93,7 +93,7 @@ class HomePageViewTests(TestCase):
             "登录教务账号": "start_native_login",
             "核验登录与数据": "check_native_preparation",
             "清除登录": "clear_native_session",
-            "读取本人课表": "check_known_timetable",
+            "读取本人课表（既有接口）": "check_known_timetable",
             "读取 S202 目录": "check_live_catalog",
             "自动刷新": "toggle_live_polling",
             "开始只读监测": "start_monitor",
