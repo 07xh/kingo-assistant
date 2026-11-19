@@ -91,7 +91,7 @@ def build_home_page(app) -> None:
     data_actions = ttk.Frame(auth_panel)
     data_actions.pack(fill="x", pady=(7, 0))
     app.timetable_read_button = ttk.Button(
-        data_actions, text="读取本人课表", command=app.check_known_timetable,
+        data_actions, text="读取本人课表（既有接口）", command=app.check_known_timetable,
     )
     app.timetable_read_button.pack(side="left", padx=(0, 5), fill="x", expand=True)
     app.live_catalog_button = ttk.Button(
