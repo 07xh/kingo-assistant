@@ -1,8 +1,9 @@
-"""Capture actual running Tk windows at a screen-fitting size.
+"""Capture actual Tk windows at a screen-fitting size.
 
-Screenshots use a temporary local template only; do not log into the school
-or issue HTTP requests. The CI desktop may be unavailable, so this remains
-an optional artifact rather than a release gate.
+The home workbench is a fixed viewport with its own course-table scrollbar;
+only the developer tools page uses a scroll canvas. Screenshots use a
+temporary local template only and never contact the university. The CI
+desktop may be unavailable, so preview capture remains optional.
 """
 from __future__ import annotations
 
@@ -53,15 +54,10 @@ def main() -> None:
                 app.lift()
 
                 app.notebook.select(app.tab_home)
-                app.home_scroll_canvas.yview_moveto(0)
                 save_view(app, output)
 
-                app.home_scroll_canvas.yview_moveto(1)
-                save_view(app, output.with_name(
-                    "KingoAssistant-Home-bottom-preview.png"))
-
                 app.notebook.select(app.tab_tools)
-                app.tools_scroll_canvas.yview_moveto(1)
+                app.tools_scroll_canvas.yview_moveto(0)
                 save_view(app, output.with_name(
                     "KingoAssistant-Tools-preview.png"))
             finally:
