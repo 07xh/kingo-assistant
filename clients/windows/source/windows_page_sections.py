@@ -121,6 +121,11 @@ def build_home_page(app) -> None:
         foreground="#666",
     ).pack(anchor="w", pady=(6, 0))
 
+    ttk.Label(
+        monitor_panel, textvariable=app.monitor_cadence_status,
+        foreground="#416075",
+    ).pack(anchor="w", pady=(3, 0))
+
     enrollment = ttk.Frame(home_root, padding=(12, 3))
     enrollment.pack(fill="x")
     app.enrollment_gate_status = tk.StringVar(value=app.enrollment_gate_label())
