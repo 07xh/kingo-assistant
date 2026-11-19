@@ -142,6 +142,51 @@ class SchoolResultsGuiTests(TestCase):
                       tree.return_value.insert.call_args.kwargs["values"])
         self.assertIn("不能据此认定选课成功、提交许可", result.message)
 
+    def test_scoped_exact_target_and_status_visible_without_success(self):
+        from core.ncwu_known_result_candidates import HistoricalClassCandidate
+        current = app()
+        result = KnownSchoolPageResult(
+            "shape_observed", "selected_results", 1, 2,
+            candidates=(HistoricalClassCandidate(
+                "COURSE1", "CLASS1", "选中", "03"),),
+            recognized_identity_tables=1,
+            account_bound_query=True,
+            semester_bound_query=True,
+        )
+        cfg = {"courses": [
+            {"key": "A", "course_id": "COURSE1", "class_id": "CLASS1"}]}
+        with patch("windows_gui.read_config", return_value=cfg), \
+             patch("windows_gui._open_readonly_popup") as popup, \
+             patch("windows_gui._create_readonly_tree") as tree, \
+             patch("windows_gui.ttk.Button") as button:
+            Application.show_known_result_candidates(current, result)
+        self.assertEqual(tree.return_value.insert.call_count, 1)
+        cells = tree.return_value.insert.call_args.kwargs["values"]
+        self.assertIn("03", cells)
+        self.assertIn("志愿 A：精确候选", cells)
+        self.assertIn("state_code", tree.call_args.kwargs["columns"])
+        self.assertIn("志愿 1 条", str(popup.call_args))
+        button.assert_called_once()
+        self.assertIn("均不是选课成功证明",
+                      button.call_args.kwargs["text"])
+
+    def test_config_failure_still_displays_unverified_candidates(self):
+        from core.ncwu_known_result_candidates import HistoricalClassCandidate
+        current = app()
+        result = KnownSchoolPageResult(
+            "shape_observed", "selected_results", 1, 2,
+            candidates=(HistoricalClassCandidate(
+                "COURSE1", "CLASS1", "选中", "03"),),
+        )
+        with patch("windows_gui.read_config", side_effect=ValueError), \
+             patch("windows_gui._open_readonly_popup"), \
+             patch("windows_gui._create_readonly_tree") as tree, \
+             patch("windows_gui.ttk.Button") as button:
+            Application.show_known_result_candidates(current, result)
+        self.assertIn("未建立精确志愿关联",
+                      tree.return_value.insert.call_args.kwargs["values"])
+        button.assert_not_called()
+
     def test_blocked_when_timetable_active(self):
         current = app()
         current._timetable_read_in_progress = True

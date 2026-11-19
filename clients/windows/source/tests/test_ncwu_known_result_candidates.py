@@ -58,6 +58,40 @@ class HistoricalSelectedTests(TestCase):
             with self.subTest(kind=len(bad)):
                 self.assertEqual(inspect_known_result_candidates(bad).candidate_rows, ())
 
+    def test_historical_03_selected_pair_is_only_a_candidate(self):
+        html = document(rows=(
+            '<tr><td>虚构课程</td><td>班级</td><td>选中</td>'
+            '<td name="kcdm">COURSE1</td>'
+            '<td name="skbjdm">CLASS1</td>'
+            '<td name="xk_status_m">03</td></tr>'
+        ))
+        parsed = inspect_known_result_candidates(html)
+        self.assertEqual(len(parsed.candidate_rows), 1)
+        self.assertEqual(parsed.candidate_rows[0].status_code, "03")
+        self.assertTrue(parsed.candidate_rows[0].observed_selected_pair)
+        self.assertIn("不能用于自动提交或确认选课成功", parsed.message)
+
+    def test_duplicate_status_field_rejected_and_unknown_code_not_trusted(self):
+        duplicates = document(rows=(
+            '<tr><td>课程</td><td>班级</td><td>选中</td>'
+            '<td name="kcdm">COURSE1</td>'
+            '<td name="skbjdm">CLASS1</td>'
+            '<td name="xk_status_m">03</td>'
+            '<td name="xk_status_m">XX</td></tr>'
+        ))
+        parsed = inspect_known_result_candidates(duplicates)
+        self.assertEqual(parsed.candidate_rows, ())
+        self.assertEqual(parsed.ignored_rows, 1)
+        unsupported = document(rows=(
+            '<tr><td>课程</td><td>班级</td><td>选中</td>'
+            '<td name="kcdm">COURSE1</td>'
+            '<td name="skbjdm">CLASS1</td>'
+            '<td name="xk_status_m">unknown-code</td></tr>'
+        ))
+        other = inspect_known_result_candidates(unsupported)
+        self.assertEqual(len(other.candidate_rows), 1)
+        self.assertFalse(other.candidate_rows[0].observed_selected_pair)
+
     def test_duplicate_rows_do_not_create_fake_multiple_selection(self):
         row = ('<tr><td>课程</td><td>班级</td><td>状态</td>'
                '<td name="kcdm">C101</td><td name="skbjdm">INTERNAL</td></tr>')
