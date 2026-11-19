@@ -236,6 +236,11 @@ async def login_ncwusigned(
             timeout=httpx.Timeout(connect=5, read=10, write=10, pool=5),
             limits=httpx.Limits(max_connections=1, max_keepalive_connections=1),
         )
+    stage = "login_page"
+
+    def outcome(code: str) -> NativeLoginResult:
+        return NativeLoginResult(code, stage=stage)
+
     try:
         async with http_factory() as client:
             async def fetch(path, *, params=None):
@@ -250,48 +255,55 @@ async def login_ncwusigned(
             bootstrap = await fetch(_LOGIN_PAGE)
             page = _content(bootstrap, max_bytes=512_000, mime=("text/html",))
             session_id, signed_session = _form_bootstrap(page)
+            stage = "signing_script"
             enc = await fetch(_SETTINGS)
             script = _content(
                 enc, max_bytes=50_000, mime=("text/javascript", "application/javascript"))
             found = _DESKEY_RE.search(script)
             if found is None:
-                return NativeLoginResult("protocol_changed")
+                return outcome("protocol_changed")
             deskey = found.group(1)
+            stage = "temporary_key"
             key_resp = await fetch(_TEMP, params={"method": "getTempDeskey"})
+            stage = "server_timestamp"
             time_resp = await fetch(_TEMP, params={"method": "getTempNowtime"})
             tmp_key = _content(key_resp, max_bytes=100, mime=("text/plain",)).strip()
             timestamp = _content(time_resp, max_bytes=100, mime=("text/plain",)).strip()
+            stage = "signing"
             payload = _sign_login_form(
                 username, password, session_id, signed_session,
                 deskey, tmp_key, timestamp)
+            stage = "submit_login"
             login_response = await client.post(
                 _ROOT + _POST, data=payload, follow_redirects=False,
                 headers={"Accept": "text/plain,application/json"},
             )
             result = _school_response(login_response)
             if result != "ok":
-                return NativeLoginResult(result)
+                return outcome(result)
             # The same httpx client and cookie jar carry the authenticated
             # server session. No browser cookies and no token replay.
+            stage = "identity_readback"
             term_resp = await client.post(
                 _ROOT + _YEAR_TERM, follow_redirects=False,
                 headers={"Accept": "text/plain,application/json"},
             )
             proof = _validated_yearterm(term_resp, username)
             if proof != "verified":
-                return NativeLoginResult(proof)
+                return outcome(proof)
+            stage = "session_binding"
             cookie = _same_origin_cookies(client, _HOST)
             if not cookie:
-                return NativeLoginResult("unavailable")
-            return NativeLoginResult("verified", cookie, _HOST)
+                return outcome("unavailable")
+            return NativeLoginResult("verified", cookie, _HOST, stage="complete")
     except PermissionError as e:
         # Includes CAPTCHA requirements from the page; do not switch to
         # unprotected login methods or retry with different credentials.
-        return NativeLoginResult(
+        return outcome(
             "challenge_required" if "verification required" in str(e)
             else "restricted")
     except (ValueError, UnicodeError):
-        return NativeLoginResult("protocol_changed")
+        return outcome("protocol_changed")
     except Exception:
         # No exception can echo a password, session ID, dynamic key or HTTP body.
-        return NativeLoginResult("unavailable")
+        return outcome("unavailable")
