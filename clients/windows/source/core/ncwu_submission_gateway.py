@@ -105,22 +105,39 @@ class NCWUEvidenceBoundGateway:
                 raise EnrollmentNotReady("四项接口验收证据缺失")
             self.attestations.require(name)
 
+    async def _scoped_read(self, method: str, capability: str):
+        """Validate identity and evidence on both sides of an awaited read."""
+        before = self._identity_snapshot()
+        if not self._read_identity_ok():
+            raise EnrollmentNotReady("官网账号、学期或会话与本机记录不匹配")
+        if getattr(self, capability) is not True:
+            raise EnrollmentNotReady(f"{capability} 尚未通过官网验收")
+        if self.attestations is None:
+            raise EnrollmentNotReady("官方读取接口的验收证据缺失")
+        self.attestations.require(capability)
+        result = await getattr(self.source, method)()
+        if self._identity_snapshot() != before or not self._read_identity_ok():
+            raise EnrollmentNotReady("读取期间官网账号、学期或选课轮次已变化")
+        if getattr(self, capability) is not True:
+            raise EnrollmentNotReady("读取期间官网接口验收状态已撤销")
+        self.attestations.require(capability)
+        return result
+
     async def selection_window(self):
-        return await self.source.selection_window()
+        return await self._scoped_read("selection_window", "official_window_verified")
 
     async def list_offerings(self):
-        return await self.source.list_offerings()
+        return await self._scoped_read("list_offerings", "official_catalog_verified")
 
     async def read_schedule(self):
-        return await self.source.read_schedule()
+        # The source must additionally return a semester-bound verified
+        # ScheduleSnapshot; catalog data is not proof of timetable validity.
+        return await self._scoped_read("read_schedule", "official_catalog_verified")
 
     async def read_enrollments(self):
-        if not self._read_identity_ok() or not self.official_enrollment_verified:
-            raise EnrollmentNotReady("已选结果页和本人账号尚未关联")
-        records = await self.source.read_enrollments()
-        if not self._read_identity_ok():
-            raise EnrollmentNotReady("结果回读期间官方账号已切换")
-        return records
+        # The candidate-only S202 result parser is not an authoritative reader.
+        return await self._scoped_read(
+            "read_enrollments", "official_enrollment_verified")
 
     async def submit_once(self, target: CourseTarget) -> SubmitReceipt:
         self._assert_ready()

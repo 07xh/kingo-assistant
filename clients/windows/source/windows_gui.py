@@ -69,6 +69,7 @@ from core.ncwu_contract_capture import inspect_two_endpoint_contracts
 from core.official_entries import OFFICIAL_ENTRIES, probe_official_login_surfaces
 from core.scheduled_ui_bridge import prepare_scheduled_plan
 from core.attestation import AttestationError, AttestationRegistry, resolve_registry
+from core.ncwu_gate_details import format_ncwu_gate_details
 from core.latency import DEFAULT_LATENCY_FILE, summarize_file
 from core.enrollment_schedule import ScheduledRunReport
 from main import _read_local_html, validate
@@ -402,6 +403,16 @@ class Application(tk.Tk):
         except AttestationError:
             return "自动选课：未接入提交适配器（验收登记表无效）"
         return f"自动选课：未接入提交适配器（验收证据 {report['valid']}/{report['total']}）"
+
+    def show_enrollment_gate_details(self) -> None:
+        """Display independent evidence status, without any school request."""
+        messagebox.showinfo(
+            "自动选课接口验收状态（只读）",
+            format_ncwu_gate_details(
+                getattr(self, "attestations", None),
+                adapter_installed=getattr(self, "_engine_factory", None) is not None,
+            ),
+        )
 
     def log(self, message: str) -> None:
         self.log_box.configure(state="normal")

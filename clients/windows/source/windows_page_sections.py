@@ -128,6 +128,10 @@ def build_home_page(app) -> None:
         enrollment, textvariable=app.enrollment_gate_status,
         foreground="#965b16",
     ).pack(side="left")
+    app.enrollment_detail_button = ttk.Button(
+        enrollment, text="验收详情", command=app.show_enrollment_gate_details,
+    )
+    app.enrollment_detail_button.pack(side="left", padx=(8, 0))
     app.scheduled_start_button = ttk.Button(
         enrollment, text="自动提交（暂不可用）",
         command=app.start_scheduled_enrollment, state="disabled",

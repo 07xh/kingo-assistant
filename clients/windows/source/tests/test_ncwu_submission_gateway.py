@@ -164,3 +164,70 @@ class GatewayTests(IsolatedAsyncioTestCase):
             await self.bridge().submit_once(self.target)
         self.assertEqual(self.preparer_called, 0)
         self.assertEqual(self.sent, [])
+
+    async def test_all_read_paths_fail_closed_without_corresponding_gate(self):
+        for method, capability in (
+            ("selection_window", "official_window_verified"),
+            ("list_offerings", "official_catalog_verified"),
+            ("read_schedule", "official_catalog_verified"),
+            ("read_enrollments", "official_enrollment_verified"),
+        ):
+            with self.subTest(method=method):
+                source = FakeSource()
+                calls = []
+
+                async def observed():
+                    calls.append(True)
+                    return set()
+
+                setattr(source, method, observed)
+                setattr(source, capability, False)
+                with self.assertRaises(EnrollmentNotReady):
+                    await getattr(self.bridge(source=source), method)()
+                self.assertEqual(calls, [])
+
+    async def test_all_read_paths_reject_session_rotation_during_await(self):
+        for method in ("selection_window", "list_offerings",
+                       "read_schedule", "read_enrollments"):
+            with self.subTest(method=method):
+                source = FakeSource()
+
+                async def switched():
+                    source.current_round_id = "NEW-ROUND"
+                    return set()
+
+                setattr(source, method, switched)
+                with self.assertRaises(EnrollmentNotReady):
+                    await getattr(self.bridge(source=source), method)()
+                self.assertEqual(self.sent, [])
+
+    async def test_readback_revoked_attestation_during_await(self):
+        source = FakeSource()
+
+        class Revocable:
+            accepted = True
+
+            def require(self, _):
+                if not self.accepted:
+                    raise EnrollmentNotReady("evidence withdrawn")
+
+        registry = Revocable()
+
+        async def revoked():
+            registry.accepted = False
+            return {("COURSE-ID", "INTERNAL-CLASS")}
+
+        source.read_enrollments = revoked
+        with self.assertRaises(EnrollmentNotReady):
+            await self.bridge(source=source, attestations=registry).read_enrollments()
+
+    async def test_verified_read_returns_source_records_unchanged(self):
+        source = FakeSource()
+        records = {("COURSE-ID", "INTERNAL-CLASS")}
+
+        async def read():
+            return records
+
+        source.read_enrollments = read
+        self.assertIs(await self.bridge(source=source).read_enrollments(), records)
+        self.assertEqual(self.sent, [])
