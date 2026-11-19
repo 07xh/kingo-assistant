@@ -117,7 +117,7 @@ class HomePageViewTests(TestCase):
         self.assertIs(self.app.native_login_button, self.buttons["登录教务账号"][0])
         self.assertIs(self.app.native_prepare_button, self.buttons["核验登录与数据"][0])
         self.assertIs(self.app.native_clear_button, self.buttons["清除登录"][0])
-        self.assertIs(self.app.timetable_read_button, self.buttons["读取本人课表"][0])
+        self.assertIs(self.app.timetable_read_button, self.buttons["读取本人课表（既有接口）"][0])
         self.assertIs(self.app.live_catalog_button, self.buttons["读取 S202 目录"][0])
         self.assertIs(self.app.live_poll_button, self.buttons["自动刷新"][0])
         self.assertIs(self.app.start_button, self.buttons["开始只读监测"][0])
