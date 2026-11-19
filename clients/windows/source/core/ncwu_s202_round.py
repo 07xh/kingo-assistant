@@ -9,7 +9,9 @@ encrypted values or other session scope leaks into logs.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hmac
 import json
+import re
 import threading
 import time
 from typing import Callable, Mapping
@@ -20,6 +22,7 @@ from core.ncwu_live_elective import (
     HOST, ORIGIN, REFERER, WINDOW_PATH, _validate_origin,
 )
 from core.request_budget import build_verified_budget
+from core.ncwu_legacy_result_query import valid_current_account, valid_first_semester
 from core.ncwu_read_support import (
     default_read_client, set_scoped_cookie,
     get_optional_verified_budget, classify_read_response,
@@ -41,6 +44,8 @@ class S202RoundStatus:
     term_label: str = ""
     start_label: str = ""
     end_label: str = ""
+    session_scope_checked: bool = False
+    round_id_observed: bool = False
 
     @property
     def message(self) -> str:
@@ -58,7 +63,13 @@ class S202RoundStatus:
                 f"起止：{self.start_label or '未提供'} / "
                 f"{self.end_label or '未提供'}；"
                 f"本次会话上下文字段 {self.field_count}/6。"
-                "不表示可选课程或自动提交已可用。"
+                + ("官方轮次账号和学期已与本次 EXE 登录及志愿核对；"
+                   if self.session_scope_checked else
+                   "轮次字段尚未与 EXE 登录账号、目标学期独立核对；")
+                + ("本次查询检测到轮次标识，但该标识不在结果课程行中；"
+                   if self.round_id_observed else
+                   "未获得已绑定的轮次标识；")
+                + "不能据此确认当前轮次已选教学班或自动提交可用。"
             )
         return {
             "missing_session": "请先使用 EXE 自身登录本人账号",
@@ -66,6 +77,11 @@ class S202RoundStatus:
             "busy": "已有 S202 轮次查询正在执行",
             "cooldown": "轮次查询间隔至少 60 秒，请勿重复点击",
             "policy_unverified": "请求预算配置无效，未访问学校",
+            "identity_unverified": "请先完成 EXE 本人账号独立核验；未访问轮次接口",
+            "semester_unverified": "本地志愿学期尚无已验收的官方编码映射；未访问轮次接口",
+            "identity_mismatch": "轮次接口返回账号不属于当前 EXE 登录身份；已拒绝轮次核验",
+            "semester_mismatch": "轮次接口返回学期与本机志愿不一致；不能继续确认选课",
+            "round_unavailable": "轮次接口缺少可核验的本次轮次标识或账号范围",
             "expired": "教务会话失效，需重新登录",
             "restricted": "学校拒绝或限制本次查询，已停止",
             "invalid_response": "轮次接口返回格式无法识别，不推测开放状态",
@@ -80,7 +96,24 @@ def _short(value) -> str:
     return " ".join(value.split())[:90]
 
 
-def parse_s202_round(raw: bytes) -> S202RoundStatus:
+def parse_s202_round(
+    raw: bytes, *,
+    expected_user_code: str | None = None,
+    expected_semester: str | None = None,
+) -> S202RoundStatus:
+    """Parse official window metadata; optionally bind to EXE identity.
+
+    A bound round scope is diagnostic only. The selected-course HTML table
+    does not carry an independent matching lcid, so this is NOT an
+    authoritative exact selected-class readback.
+    """
+    binding_requested = (
+        expected_user_code is not None or expected_semester is not None)
+    if binding_requested:
+        if not valid_current_account(expected_user_code):
+            return S202RoundStatus("identity_unverified")
+        if not valid_first_semester(expected_semester):
+            return S202RoundStatus("semester_unverified")
     if not isinstance(raw, bytes) or not raw or len(raw) > 16384:
         return S202RoundStatus("invalid_response")
     try:
@@ -99,6 +132,30 @@ def parse_s202_round(raw: bytes) -> S202RoundStatus:
             return S202RoundStatus("invalid_response")
         if context.get("lx") not in (None, "2", 2):
             return S202RoundStatus("invalid_response")
+        round_observed = False
+        if binding_requested:
+            # The capture has all these fields even when status=400 (closed).
+            # Do not treat a full set of fields as current account identity.
+            required = ("xh", "xn", "xqM", "xqName", "lcid")
+            if any(
+                not isinstance(context.get(k), str)
+                or not context[k] or len(context[k]) > 128
+                or context[k] != context[k].strip()
+                for k in required
+            ):
+                return S202RoundStatus("round_unavailable")
+            if not hmac.compare_digest(
+                context["xh"].encode("utf-8"),
+                expected_user_code.encode("utf-8"),
+            ):
+                return S202RoundStatus("identity_mismatch")
+            expected_year = expected_semester.split("-", 1)[0]
+            if (context["xn"] != expected_year or context["xqM"] != "0"
+                    or context["xqName"] != "第一学期"):
+                return S202RoundStatus("semester_mismatch")
+            if re.fullmatch(r"[0-9A-Za-z_.-]{1,100}", context["lcid"]) is None:
+                return S202RoundStatus("round_unavailable")
+            round_observed = True
         available = sum(
             isinstance(context.get(k), str) and bool(context[k].strip())
             and len(context[k]) <= 512 for k in _FIELDS
@@ -117,6 +174,8 @@ def parse_s202_round(raw: bytes) -> S202RoundStatus:
             term_label=_short(context.get("xnxqDesc") or context.get("xqName")),
             start_label=_short(context.get("qssj")),
             end_label=_short(context.get("jssj")),
+            session_scope_checked=binding_requested and round_observed,
+            round_id_observed=round_observed,
         )
     except (UnicodeError, ValueError, TypeError, RecursionError):
         return S202RoundStatus("invalid_response")
@@ -127,9 +186,17 @@ async def probe_s202_round(
     http_factory: Callable[[], httpx.AsyncClient] | None = None,
     budget_factory: Callable = build_verified_budget,
     enforce_manual_cooldown: bool = True,
+    expected_user_code: str | None = None,
+    expected_semester: str | None = None,
 ) -> S202RoundStatus:
     """One direct first-party POST. No enrollment, cancellation or polling."""
     global _NEXT_ALLOWED_AT
+    if expected_user_code is not None or expected_semester is not None:
+        # Never spend server quota if this account or semester is not proven.
+        if not valid_current_account(expected_user_code):
+            return S202RoundStatus("identity_unverified")
+        if not valid_first_semester(expected_semester):
+            return S202RoundStatus("semester_unverified")
     if not _validate_origin(config, session_cookie):
         return S202RoundStatus(
             "missing_session" if not session_cookie else "invalid_contract")
@@ -164,7 +231,10 @@ async def probe_s202_round(
             error = await classify_read_response(response, budget)
             if error:
                 return S202RoundStatus(error)
-            return parse_s202_round(response.content)
+            return parse_s202_round(
+                response.content, expected_user_code=expected_user_code,
+                expected_semester=expected_semester,
+            )
     except (httpx.HTTPError, ValueError, TypeError, KeyError):
         return S202RoundStatus("unavailable")
     except Exception:

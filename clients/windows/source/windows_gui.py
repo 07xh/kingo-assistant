@@ -63,6 +63,7 @@ from core.ncwu_live_target_review import compare_live_targets
 from core.ncwu_s202_readback import S202ReadbackResult, read_s202_selected_results
 from core.ncwu_s202_candidate_review import compare_s202_candidate_targets
 from core.ncwu_s202_round import S202RoundStatus, probe_s202_round
+from core.ncwu_legacy_result_query import valid_current_account, valid_first_semester
 from core.ncwu_s202_score import PersonalScoreCount, read_personal_s202_score
 from core.ncwu_course_plan import PlanSnapshot, read_current_course_plan
 from core.ncwu_plan_alignment import compare_plan_targets
@@ -221,8 +222,11 @@ def _finish_ncwu_read_event(
     status_var.set(result.message)
     app.status.set(result.message)
     app.log(log_message)
-    if result.code == "expired":
-        _invalidate_native_session(app, expired_message)
+    if result.code in ("expired", "identity_mismatch"):
+        _invalidate_native_session(
+            app, expired_message if result.code == "expired" else
+            "S202 官方轮次账号与 EXE 登录身份不一致；已清除会话",
+        )
 
 
 class Application(tk.Tk):
@@ -977,24 +981,40 @@ class Application(tk.Tk):
         )
 
     def check_s202_round(self) -> None:
-        """Fetch only official, non-sensitive S202 round/window metadata."""
+        """One S202 round read, bounded to the EXE's verified own identity."""
         if _ncwu_read_busy(self):
             return
         if (self._native_session_cookie is None
                 or self._native_session_origin != "jwmis.ncwu.edu.cn"):
             self.s202_round_status.set("请先在 EXE 内登录本人教务账号")
             return
+        # The account is captured on Tk's UI thread; only the EXE login
+        # callback can populate it after independent official validation.
+        verified_account = self.__dict__.get("_native_verified_user_code")
+        if not valid_current_account(verified_account):
+            self.s202_round_status.set(
+                "先用 EXE 完成本人账号独立核验；未发送轮次请求")
+            return
         try:
             config = read_config(Path(self.path.get()), offline=True)
         except (OSError, ValueError, TypeError, KeyError):
             self.s202_round_status.set("配置无法读取，未查询学校")
             return
+        semester = config.get("xnxq")
+        if not valid_first_semester(semester):
+            self.s202_round_status.set(
+                "目标学期的官方编码尚未验收；没有访问 S202")
+            return
         _start_ncwu_read_worker(
             self, config=config, cookie=scoped_native_cookie(self, config),
-            read_call=probe_s202_round, fallback_factory=S202RoundStatus,
+            read_call=lambda cfg, *, session_cookie: probe_s202_round(
+                cfg, session_cookie=session_cookie,
+                expected_user_code=verified_account,
+                expected_semester=semester),
+            fallback_factory=S202RoundStatus,
             flag="_s202_round_probe_in_progress", button=self.s202_round_button,
             status_var=self.s202_round_status,
-            running_message="正在读取学校官方 S202 轮次与时间窗（只读）",
+            running_message="正在核验本人账号、目标学期与官网 S202 轮次（只读）",
             failure_message="轮次查询线程未启动；未访问学校",
             event_kind="ncwu_s202_round", thread_name="KingoS202RoundProbe",
         )
