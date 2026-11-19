@@ -82,6 +82,16 @@ class MonitorGuiLifecycleTests(TestCase):
         self.app.events.put(MonitorEvent("finished", outcome))
         Application.poll(self.app)
 
+    def test_cadence_event_does_not_change_enrollment_status(self):
+        self.app.monitor_cadence_status = Mock()
+        self.report("completed", MonitorEvent("cadence", {
+            "enabled": True, "slowdown_multiplier": 2.0,
+            "slow_samples": 1, "healthy_samples": 0,
+        }))
+        self.app.monitor_cadence_status.set.assert_called_once()
+        self.assertIn("放缓 2×", self.app.monitor_cadence_status.set.call_args.args[0])
+        self.app.status.set.assert_called_with("已完成｜本次只读监测已结束")
+
     def test_natural_end_restores_controls_and_final_status(self):
         self.report("completed")
         self.app.status.set.assert_called_with("已完成｜本次只读监测已结束")
