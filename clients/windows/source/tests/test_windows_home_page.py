@@ -89,7 +89,7 @@ class HomePageViewTests(TestCase):
         self._render()
         bindings = {
             "编辑目标课程": "edit_settings",
-            "课程方案": "manage_plans",
+            "方案": "manage_plans",
             "登录教务账号": "start_native_login",
             "核验登录与数据": "check_native_preparation",
             "清除登录": "clear_native_session",
@@ -97,10 +97,10 @@ class HomePageViewTests(TestCase):
             "读取 S202 目录": "check_live_catalog",
             "自动刷新": "toggle_live_polling",
             "开始只读监测": "start_monitor",
-            "停止监测": "stop_monitor",
+            "停止": "stop_monitor",
             "离线预检": "preflight",
             "提交未接入": "start_scheduled_enrollment",
-            "取消计划": "stop_scheduled_enrollment",
+            "取消": "stop_scheduled_enrollment",
         }
         self.assertEqual(set(self.buttons), set(bindings))
         for text, name in bindings.items():
@@ -109,11 +109,11 @@ class HomePageViewTests(TestCase):
                 self.assertIs(kwargs["command"], getattr(self.app, name))
                 getattr(self.app, name).assert_not_called()
                 widget.pack.assert_called()
-        for name in ("提交未接入", "取消计划", "停止监测"):
+        for name in ("提交未接入", "取消", "停止"):
             self.assertEqual(self.buttons[name][1]["state"], "disabled")
 
         self.assertIs(self.app.edit_button, self.buttons["编辑目标课程"][0])
-        self.assertIs(self.app.plans_button, self.buttons["课程方案"][0])
+        self.assertIs(self.app.plans_button, self.buttons["方案"][0])
         self.assertIs(self.app.native_login_button, self.buttons["登录教务账号"][0])
         self.assertIs(self.app.native_prepare_button, self.buttons["核验登录与数据"][0])
         self.assertIs(self.app.native_clear_button, self.buttons["清除登录"][0])
@@ -121,9 +121,9 @@ class HomePageViewTests(TestCase):
         self.assertIs(self.app.live_catalog_button, self.buttons["读取 S202 目录"][0])
         self.assertIs(self.app.live_poll_button, self.buttons["自动刷新"][0])
         self.assertIs(self.app.start_button, self.buttons["开始只读监测"][0])
-        self.assertIs(self.app.stop_button, self.buttons["停止监测"][0])
+        self.assertIs(self.app.stop_button, self.buttons["停止"][0])
         self.assertIs(self.app.scheduled_start_button, self.buttons["提交未接入"][0])
-        self.assertIs(self.app.scheduled_stop_button, self.buttons["取消计划"][0])
+        self.assertIs(self.app.scheduled_stop_button, self.buttons["取消"][0])
 
     def test_statuses_and_copy_shortcuts_keep_existing_variables_and_behavior(self):
         _, label, tree, _, _ = self._render()
