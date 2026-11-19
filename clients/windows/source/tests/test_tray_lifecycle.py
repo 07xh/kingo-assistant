@@ -14,12 +14,10 @@ class TrayLifecycleTests(TestCase):
         tray = Mock()
         tray.start.return_value = tray_ready
         worker = Mock() if has_worker else None
-        appointment = object()
         return SimpleNamespace(
             _closing=False,
             _tray=tray,
             worker=worker,
-            _official_portal_appointment=appointment,
             withdraw=Mock(),
             iconify=Mock(),
             deiconify=Mock(),
@@ -28,14 +26,12 @@ class TrayLifecycleTests(TestCase):
             status=Mock(),
         )
 
-    def test_close_to_tray_preserves_worker_and_appointment(self):
+    def test_close_to_tray_preserves_active_worker(self):
         app = self.app(tray_ready=True)
-        original = app._official_portal_appointment
         Application.close(app)
         app.withdraw.assert_called_once()
         app.iconify.assert_not_called()
         app.worker.stop.assert_not_called()
-        self.assertIs(app._official_portal_appointment, original)
         self.assertFalse(app._closing)
 
     def test_tray_unavailable_keeps_window_in_taskbar(self):
@@ -45,11 +41,10 @@ class TrayLifecycleTests(TestCase):
         app.withdraw.assert_not_called()
         app.worker.stop.assert_not_called()
 
-    def test_explicit_quit_stops_worker_and_clears_appointment(self):
+    def test_explicit_quit_stops_worker(self):
         app = self.app(tray_ready=True)
         Application.quit_application(app)
         self.assertTrue(app._closing)
-        self.assertIsNone(app._official_portal_appointment)
         app._tray.stop.assert_called_once()
         app.worker.stop.assert_called_once()
         app.destroy.assert_not_called()
