@@ -1,8 +1,10 @@
-"""Compact LightC-style visual shell for the existing Tk application.
+"""Dense Win32/WinForms-style visual shell for the existing Tk application.
 
-No network, configuration, background work, or course state lives here.
-The original ttk.Notebook and its three tabs remain the navigation source of
-truth; sidebar highlights only mirror the currently selected tab.
+The layout language deliberately mirrors a classic Windows desktop client:
+a flat command strip, a real tab control, 1px group boxes, compact 9pt text,
+a zebra-free white data grid and a sunken status bar. Nothing here touches
+the network, configuration, sessions or course state; the three original
+``ttk.Notebook`` pages remain the only navigation source of truth.
 """
 from __future__ import annotations
 
@@ -10,197 +12,288 @@ import tkinter as tk
 from tkinter import ttk
 
 PALETTE = {
-    "background": "#F3F6FB",
+    "background": "#F0F0F0",
     "surface": "#FFFFFF",
-    "surface_alt": "#F0F4FA",
-    "ink": "#17233A",
-    "muted": "#64748B",
-    "stroke": "#DFE7F0",
-    "sidebar": "#151D32",
-    "sidebar_hover": "#25314D",
-    "sidebar_muted": "#B5C2D8",
-    "accent": "#4869E8",
-    "accent_hover": "#3859D6",
-    "selected": "#DDE7FF",
+    "panel": "#F0F0F0",
+    "panel_alt": "#E9E9E9",
+    "header": "#E4ECF7",
+    "ink": "#101010",
+    "muted": "#5B5B5B",
+    "stroke": "#A0A0A0",
+    "stroke_soft": "#C8C8C8",
+    "accent": "#0F6CBD",
+    "accent_hover": "#0C5896",
+    "accent_soft": "#DCEBFA",
+    "selected": "#CCE4FF",
+    "ok": "#0B6A0B",
+    "warn": "#8A5300",
+    "danger": "#A4262C",
+    "grid_header": "#E8EEF7",
 }
 
-NAV_SECTIONS = (
-    ("home", "⌂", "首页", "tab_home"),
-    ("manual", "↗", "官网", "tab_manual"),
-    ("tools", "☷", "工具", "tab_tools"),
+# Point sizes, not pixels: the desktop client this layout mirrors is a
+# 9pt-at-96dpi Win32 application, and Tk applies the display scale factor
+# itself. Fixed pixel sizes would look cramped on a scaled display.
+FONT_UI = ("Microsoft YaHei UI", 9)
+FONT_BOLD = ("Microsoft YaHei UI", 9, "bold")
+FONT_TITLE = ("Microsoft YaHei UI", 11, "bold")
+FONT_SMALL = ("Microsoft YaHei UI", 8)
+FONT_MONO = ("Consolas", 9)
+
+# (notebook attribute, tab caption). Kept here so the shell owns the strip
+# captions and the dispatcher can build the same three tabs from one table.
+TABS = (
+    ("tab_home", "① 选课首页"),
+    ("tab_manual", "② 手动官网备用"),
+    ("tab_tools", "③ 工具与日志"),
 )
+
+TOOLBAR_HEIGHT = 34
 
 
 def apply_light_theme(owner) -> None:
-    """Configure one stable light theme without importing third-party UI kits."""
+    """Install the dense desktop theme once; callers never re-run it."""
     p = PALETTE
     owner.configure(bg=p["background"])
     style = ttk.Style(owner)
     if "clam" in style.theme_names():
         style.theme_use("clam")
+
+    # --- containers -------------------------------------------------
+    style.configure("TFrame", background=p["background"])
+    style.configure("Shell.TFrame", background=p["background"])
+    style.configure("Surface.TFrame", background=p["surface"])
+    style.configure("Panel.TFrame", background=p["panel"])
+    style.configure("Card.TFrame", background=p["surface"])
+
+    # --- text -------------------------------------------------------
     style.configure(
-        "TFrame", background=p["surface"])
+        "TLabel", background=p["background"], foreground=p["ink"],
+        font=FONT_UI)
     style.configure(
-        "TLabel", background=p["surface"], foreground=p["ink"],
-        font=("Microsoft YaHei UI", 9))
+        "Surface.TLabel", background=p["surface"],
+        foreground=p["ink"], font=FONT_UI)
     style.configure(
-        "TLabelframe", background=p["surface"],
-        bordercolor=p["stroke"], lightcolor=p["stroke"],
-        darkcolor=p["stroke"], borderwidth=1, relief="solid")
+        "Muted.TLabel", background=p["background"],
+        foreground=p["muted"], font=FONT_SMALL)
     style.configure(
-        "TLabelframe.Label", background=p["surface"], foreground=p["ink"],
-        font=("Microsoft YaHei UI", 10, "bold"))
+        "SurfaceMuted.TLabel", background=p["surface"],
+        foreground=p["muted"], font=FONT_SMALL)
     style.configure(
-        "KingoStep.TLabelframe", background=p["surface"],
+        "Hint.TLabel", background=p["background"],
+        foreground=p["warn"], font=FONT_SMALL)
+    style.configure(
+        "SurfaceHint.TLabel", background=p["surface"],
+        foreground=p["warn"], font=FONT_SMALL)
+    style.configure(
+        "KingoTitle.TLabel", background=p["background"],
+        foreground=p["ink"], font=FONT_TITLE)
+    style.configure(
+        "KingoSubtitle.TLabel", background=p["background"],
+        foreground=p["muted"], font=FONT_SMALL)
+    style.configure(
+        "KingoStatus.TLabel", background=p["panel_alt"],
+        foreground=p["ink"], font=FONT_SMALL)
+    style.configure(
+        "StatusCell.TLabel", background=p["panel_alt"],
+        foreground=p["muted"], font=FONT_SMALL)
+
+    # --- group boxes (WinForms GroupBox) ----------------------------
+    for name, fill in (("TLabelframe", p["background"]),
+                       ("Card.TLabelframe", p["surface"])):
+        style.configure(
+            name, background=fill, bordercolor=p["stroke"],
+            lightcolor=p["stroke"], darkcolor=p["stroke"],
+            borderwidth=1, relief="solid", padding=2)
+        style.configure(
+            f"{name}.Label", background=fill, foreground=p["ink"],
+            font=FONT_BOLD, padding=(2, 0))
+    style.configure(
+        "KingoStep.TLabelframe", background=p["background"],
         bordercolor=p["stroke"], borderwidth=1, relief="solid")
     style.configure(
-        "KingoStep.TLabelframe.Label", background=p["surface"],
-        foreground=p["ink"], font=("Microsoft YaHei UI", 10, "bold"))
+        "KingoStep.TLabelframe.Label", background=p["background"],
+        foreground=p["ink"], font=FONT_BOLD)
+
+    # --- buttons ----------------------------------------------------
     style.configure(
-        "KingoTitle.TLabel", background=p["surface"],
-        foreground=p["ink"], font=("Microsoft YaHei UI", 18, "bold"))
-    style.configure(
-        "KingoSubtitle.TLabel", background=p["surface"],
-        foreground=p["muted"], font=("Microsoft YaHei UI", 9))
-    style.configure(
-        "KingoStatus.TLabel", background=p["surface_alt"],
-        foreground=p["muted"], font=("Microsoft YaHei UI", 9))
-    style.configure(
-        "TButton", padding=(12, 8),
-        font=("Microsoft YaHei UI", 9), background=p["surface_alt"],
-        foreground=p["ink"], bordercolor=p["stroke"], relief="flat",
-        borderwidth=1, focuscolor=p["surface_alt"])
+        "TButton", padding=(10, 4), font=FONT_UI,
+        background=p["panel_alt"], foreground=p["ink"],
+        bordercolor=p["stroke"], borderwidth=1, relief="solid",
+        focuscolor=p["accent_soft"], anchor="center")
     style.map(
-        "TButton", background=[
-            ("pressed", p["selected"]), ("active", p["selected"])])
+        "TButton",
+        background=[("disabled", p["panel"]), ("pressed", p["accent_soft"]),
+                    ("active", p["accent_soft"])],
+        foreground=[("disabled", p["muted"])],
+        bordercolor=[("active", p["accent"])])
     style.configure(
-        "KingoPrimary.TButton", padding=(14, 9),
-        font=("Microsoft YaHei UI", 9, "bold"),
+        "KingoBar.TButton", padding=(7, 3), font=FONT_UI,
+        background=p["panel"], foreground=p["ink"],
+        bordercolor=p["panel"], borderwidth=1, relief="flat")
+    style.map(
+        "KingoBar.TButton",
+        background=[("active", p["accent_soft"]),
+                    ("pressed", p["selected"])],
+        bordercolor=[("active", p["stroke_soft"])])
+    # The single wide call-to-action on the home page.
+    style.configure(
+        "KingoPrimary.TButton", padding=(26, 12), font=FONT_TITLE,
         background=p["accent"], foreground=p["surface"],
-        bordercolor=p["accent"], borderwidth=1, relief="flat")
+        bordercolor=p["accent"], borderwidth=1, relief="solid")
     style.map(
         "KingoPrimary.TButton",
-        background=[("disabled", p["stroke"]),
+        background=[("disabled", p["stroke_soft"]),
                     ("pressed", p["accent_hover"]),
                     ("active", p["accent_hover"])],
         foreground=[("disabled", p["muted"])])
     style.configure(
-        "KingoQuiet.TButton", padding=(10, 7),
-        background=p["surface"], foreground=p["muted"],
-        bordercolor=p["stroke"])
-    style.configure(
-        "Treeview", rowheight=32, background=p["surface"],
-        fieldbackground=p["surface"], foreground=p["ink"],
-        borderwidth=0, font=("Microsoft YaHei UI", 9))
+        "KingoQuiet.TButton", padding=(8, 3), font=FONT_UI,
+        background=p["panel"], foreground=p["muted"],
+        bordercolor=p["panel"], borderwidth=1, relief="flat")
     style.map(
-        "Treeview", background=[("selected", p["selected"])],
+        "KingoQuiet.TButton",
+        background=[("active", p["accent_soft"])])
+
+    # --- inputs -----------------------------------------------------
+    style.configure(
+        "TEntry", fieldbackground=p["surface"], foreground=p["ink"],
+        bordercolor=p["stroke"], lightcolor=p["stroke"],
+        darkcolor=p["stroke"], borderwidth=1, padding=(4, 3),
+        insertcolor=p["ink"])
+    style.configure(
+        "TCombobox", fieldbackground=p["surface"], background=p["panel_alt"],
+        foreground=p["ink"], arrowcolor=p["ink"], padding=(4, 2),
+        bordercolor=p["stroke"], borderwidth=1)
+    style.map(
+        "TCombobox",
+        fieldbackground=[("readonly", p["surface"])],
+        selectbackground=[("readonly", p["surface"])],
+        selectforeground=[("readonly", p["ink"])])
+    style.configure(
+        "TSpinbox", fieldbackground=p["surface"], foreground=p["ink"],
+        arrowcolor=p["ink"], bordercolor=p["stroke"], borderwidth=1,
+        padding=(3, 2))
+    style.configure(
+        "TCheckbutton", background=p["background"], foreground=p["ink"],
+        font=FONT_UI, focuscolor=p["background"], padding=(0, 2))
+    style.map("TCheckbutton", background=[("active", p["background"])])
+    style.configure(
+        "Surface.TCheckbutton", background=p["surface"],
+        foreground=p["ink"], font=FONT_UI)
+    style.map(
+        "Surface.TCheckbutton", background=[("active", p["surface"])])
+    style.configure(
+        "TRadiobutton", background=p["background"], foreground=p["ink"],
+        font=FONT_UI, focuscolor=p["background"])
+    style.map("TRadiobutton", background=[("active", p["background"])])
+    style.configure(
+        "TScrollbar", background=p["panel_alt"], troughcolor=p["background"],
+        bordercolor=p["stroke_soft"], arrowcolor=p["muted"],
+        borderwidth=1, arrowsize=12)
+
+    # --- data grid --------------------------------------------------
+    style.configure(
+        "Treeview", rowheight=23, background=p["surface"],
+        fieldbackground=p["surface"], foreground=p["ink"],
+        borderwidth=1, relief="solid", font=FONT_UI)
+    style.map(
+        "Treeview",
+        background=[("selected", p["selected"])],
         foreground=[("selected", p["ink"])])
     style.configure(
-        "Treeview.Heading", background=p["surface_alt"],
-        foreground=p["muted"], padding=(8, 8),
-        font=("Microsoft YaHei UI", 9, "bold"),
-        relief="flat", borderwidth=0)
+        "Treeview.Heading", background=p["grid_header"],
+        foreground=p["ink"], padding=(6, 4), font=FONT_BOLD,
+        relief="raised", borderwidth=1)
+    style.map(
+        "Treeview.Heading", background=[("active", p["accent_soft"])])
+
+    # --- tab control ------------------------------------------------
+    # The strip stays visible: this build navigates with real Win32-style
+    # tabs, so no ``style.layout(..., [])`` may hide the notebook again.
     style.configure(
-        "Kingo.Content.TNotebook", background=p["surface"],
-        borderwidth=0, tabmargins=0, padding=0)
-    # Tabs remain live and programmatically selectable, but the sidebar is
-    # their sole visual navigation. This keeps old Notebook-based callbacks.
-    style.layout("Kingo.Content.TNotebook.Tab", [])
+        "Kingo.Content.TNotebook", background=p["background"],
+        borderwidth=1, tabmargins=(4, 4, 4, 0), padding=0)
+    # clam only paints a raised tab when the light/dark/border colours are
+    # set explicitly; background alone leaves every tab flat white.
+    style.configure(
+        "Kingo.Content.TNotebook.Tab", background=p["panel_alt"],
+        foreground=p["ink"], font=FONT_UI, padding=(14, 5),
+        lightcolor="#FFFFFF", darkcolor=p["stroke_soft"],
+        bordercolor=p["stroke"], borderwidth=1)
+    style.map(
+        "Kingo.Content.TNotebook.Tab",
+        background=[("selected", p["surface"]),
+                    ("active", p["accent_soft"])],
+        lightcolor=[("selected", "#FFFFFF")],
+        foreground=[("selected", p["ink"])],
+        expand=[("selected", (0, 0, 0, 0))])
 
 
 def make_visual_shell(owner) -> ttk.Frame:
-    """Install a narrow dark rail and the light content surface."""
+    """Build command strip + status bar and return the page host frame."""
     p = PALETTE
     shell = tk.Frame(owner, bg=p["background"])
     shell.pack(fill="both", expand=True)
     owner.visual_shell = shell
 
-    sidebar = tk.Frame(shell, bg=p["sidebar"], width=98)
-    sidebar.pack(side="left", fill="y", padx=(10, 0), pady=10)
-    sidebar.pack_propagate(False)
-    owner.sidebar = sidebar
+    strip = tk.Frame(shell, bg=p["panel"], height=TOOLBAR_HEIGHT)
+    strip.pack(side="top", fill="x")
+    strip.pack_propagate(False)
+    owner.toolbar = strip
 
-    brand = tk.Frame(sidebar, bg=p["sidebar"])
-    brand.pack(fill="x", pady=(19, 21))
+    brand = tk.Label(
+        strip, text="KingoAssistant", bg=p["panel"], fg=p["accent"],
+        font=("Microsoft YaHei UI", 10, "bold"))
+    brand.pack(side="left", padx=(10, 8), pady=6)
     tk.Label(
-        brand, text="K", bg=p["accent"], fg=p["surface"],
-        font=("Segoe UI", 18, "bold"), width=3, height=2,
-    ).pack()
-    tk.Label(
-        brand, text="KINGO", bg=p["sidebar"], fg=p["surface"],
-        font=("Segoe UI", 9, "bold"),
-    ).pack(pady=(9, 0))
-    tk.Label(
-        brand, text="ASSISTANT", bg=p["sidebar"], fg=p["sidebar_muted"],
-        font=("Segoe UI", 7),
-    ).pack(pady=(2, 0))
+        strip, text="华水选课助手 · 只读监测", bg=p["panel"], fg=p["muted"],
+        font=FONT_SMALL).pack(side="left", pady=8)
+    tk.Frame(strip, bg=p["stroke_soft"], width=1).pack(
+        side="left", fill="y", padx=8, pady=7)
+    # Right-aligned extras collapse first on a narrow window.
+    owner.toolbar_extras = tk.Frame(strip, bg=p["panel"])
+    owner.toolbar_extras.pack(side="right", padx=(0, 6))
 
-    owner.sidebar_buttons = {}
-    for key, glyph, title, target in NAV_SECTIONS:
-        button = tk.Button(
-            sidebar,
-            text=f"{glyph}\n{title}", justify="center",
-            font=("Microsoft YaHei UI", 10),
-            bg=p["sidebar"], fg=p["sidebar_muted"],
-            activebackground=p["sidebar_hover"],
-            activeforeground=p["surface"], borderwidth=0,
-            relief="flat", highlightthickness=0, cursor="hand2",
-            padx=4, pady=10, takefocus=True,
-            command=lambda attr=target: owner.notebook.select(
-                getattr(owner, attr)),
-        )
-        button.pack(fill="x", padx=9, pady=(0, 7))
-        button.bind(
-            "<Return>", lambda event, control=button: control.invoke())
-        owner.sidebar_buttons[key] = button
+    tk.Frame(shell, bg=p["stroke"], height=1).pack(side="top", fill="x")
 
-    tk.Label(
-        sidebar, text="只读 · 安全",
-        bg=p["sidebar"], fg=p["sidebar_muted"],
-        font=("Microsoft YaHei UI", 8),
-    ).pack(side="bottom", pady=(0, 17))
-    content = ttk.Frame(shell)
-    content.pack(side="left", fill="both", expand=True,
-                 padx=(10, 10), pady=10)
-    owner.visual_content = content
-    return content
+    status_strip = tk.Frame(shell, bg=p["panel_alt"], height=24)
+    status_strip.pack(side="bottom", fill="x")
+    status_strip.pack_propagate(False)
+    tk.Frame(status_strip, bg=p["stroke_soft"], height=1).place(
+        x=0, y=0, relwidth=1)
+    owner.status_bar = ttk.Label(
+        status_strip, textvariable=owner.status, style="KingoStatus.TLabel",
+        anchor="w", padding=(8, 0))
+    owner.status_bar.pack(side="left", fill="x", expand=True)
+    owner.status_gate = ttk.Label(
+        status_strip, text="自动提交：未接入", style="StatusCell.TLabel",
+        padding=(10, 0))
+    owner.status_gate.pack(side="right")
+    ttk.Label(
+        status_strip, text="S202 只读", style="StatusCell.TLabel",
+        padding=(10, 0)).pack(side="right")
+    tk.Frame(status_strip, bg=p["stroke_soft"], width=1).pack(
+        side="right", fill="y", pady=4)
 
-
-def sync_sidebar(owner, _event=None) -> None:
-    """Mirror the real Notebook selection, including programmatic navigation."""
-    if not getattr(owner, "sidebar_buttons", None):
-        return
-    selected = str(owner.notebook.select())
-    p = PALETTE
-    for key, _glyph, _title, target in NAV_SECTIONS:
-        button = owner.sidebar_buttons[key]
-        active = selected == str(getattr(owner, target))
-        button.configure(
-            bg=p["accent"] if active else p["sidebar"],
-            fg=p["surface"] if active else p["sidebar_muted"],
-            activebackground=p["accent_hover"] if active else p["sidebar_hover"],
-        )
-
-
-def connect_sidebar(owner) -> None:
-    """Initial selection and future tab changes share one source of truth."""
-    owner.notebook.bind(
-        "<<NotebookTabChanged>>", lambda event: sync_sidebar(owner), add="+")
-    sync_sidebar(owner)
+    body = ttk.Frame(shell, style="Shell.TFrame")
+    body.pack(side="top", fill="both", expand=True, padx=6, pady=4)
+    owner.visual_content = body
+    return body
 
 
 def make_scrollable_content(parent):
-    """Return a full-width scrollable content frame for dense Home/Tools pages.
+    """Return a full-width scrollable host for a dense page body.
 
-    The Notebook page remains the real navigation target, with a canvas
-    hosting only the view widgets. No school state or callbacks are moved.
+    The Notebook page stays the navigation target; the canvas only hosts the
+    view widgets. No school state or callback is moved.
     """
     p = PALETTE
     viewport = ttk.Frame(parent)
     viewport.pack(fill="both", expand=True)
     scrollbar = ttk.Scrollbar(viewport, orient="vertical")
     canvas = tk.Canvas(
-        viewport, bg=p["surface"], borderwidth=0,
+        viewport, bg=p["background"], borderwidth=0,
         highlightthickness=0, relief="flat",
         yscrollcommand=scrollbar.set,
     )
@@ -229,7 +322,7 @@ def make_scrollable_content(parent):
 
 
 def bind_page_wheel(canvas, content) -> None:
-    """Scroll the outer page on passive controls; preserve Treeview/Text wheels."""
+    """Scroll the outer page on passive controls; keep grid/log wheels."""
     def on_wheel(event):
         if getattr(event, "num", None) == 4:
             canvas.yview_scroll(-3, "units")
@@ -241,11 +334,10 @@ def bind_page_wheel(canvas, content) -> None:
             canvas.yview_scroll(-steps if delta > 0 else steps, "units")
 
     def attach(widget):
-        # Widgets with their own scrolling must keep that behavior.
         if widget.winfo_class() not in (
             "Treeview", "Text", "TScrollbar", "Scrollbar",
             "TEntry", "Entry", "Spinbox", "TSpinbox",
-            "Listbox", "Canvas",
+            "Listbox", "Canvas", "TCombobox",
         ):
             for event_name in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
                 widget.bind(event_name, on_wheel, add="+")
@@ -256,57 +348,55 @@ def bind_page_wheel(canvas, content) -> None:
 
 
 def update_responsive_shell(owner, _event=None) -> None:
-    """Adapt the visible chrome to narrower Windows without affecting state."""
+    """Adapt chrome to narrow or short windows without touching state."""
     if _event is not None and _event.widget is not owner:
         return
     width = owner.winfo_width()
     height = owner.winfo_height()
-    compact = width < 1120
-    sidebar_width = 80 if compact else 98
-    owner.sidebar.configure(width=sidebar_width)
 
-    desired = "compact" if compact else "regular"
-    if getattr(owner, "_shell_size_mode", None) != desired:
-        owner._shell_size_mode = desired
-        owner.shell_subtitle.configure(
-            text=(
-                "S202 只读已接入 · 待账号验收  |  自动提交不可用"
-                if compact else
-                "原生登录与 S202 只读查询已实现 · 待本人账号验收  |  自动提交未接通"
-            ),
-        )
+    # Compact strip: the secondary shortcuts go away before anything is
+    # clipped, so the primary command row keeps its full labels.
+    compact = width < 1020
+    extras = getattr(owner, "toolbar_extras", None)
+    if extras is not None:
+        managed = bool(extras.winfo_manager())
+        if compact and managed:
+            extras.pack_forget()
+        elif not compact and not managed:
+            extras.pack(side="right", padx=(0, 6))
 
-    # Keep the compact status footer inside the remaining content width.
-    usable = max(360, width - sidebar_width - 100)
-    owner.status_bar.configure(wraplength=usable)
+    usable = max(320, width - 260)
+    status_bar = getattr(owner, "status_bar", None)
+    if status_bar is not None:
+        status_bar.configure(wraplength=usable)
 
-    # A low-height desktop should spend its space on actions, not boilerplate.
-    short = height < 660
-    if short and owner.shell_subtitle.winfo_manager():
-        owner.shell_subtitle.pack_forget()
-    elif not short and not owner.shell_subtitle.winfo_manager():
-        owner.shell_subtitle.pack(anchor="w", pady=(6, 0))
+    # Long help labels were authored with a fixed wraplength; clip them to
+    # the real client width instead of letting them push the grid sideways.
+    if getattr(owner, "_shell_width", None) != width:
+        owner._shell_width = width
+        for attr in ("tab_home", "tab_manual", "tab_tools"):
+            root = getattr(owner, attr, None)
+            if root is None:
+                continue
+            pending = [root]
+            while pending:
+                widget = pending.pop()
+                if isinstance(widget, ttk.Label):
+                    try:
+                        current = int(widget.cget("wraplength"))
+                    except (ValueError, tk.TclError):
+                        current = 0
+                    original = getattr(widget, "_kingo_original_wrap", None)
+                    if original is None:
+                        original = current
+                        widget._kingo_original_wrap = original
+                    if original >= 480:
+                        desired = min(original, max(280, width - 90))
+                        if current != desired:
+                            widget.configure(wraplength=desired)
+                pending.extend(widget.winfo_children())
 
-    # The original ttk Labels used a fixed 920/670px wraplength; at small
-    # widths this could clip current status messages instead of wrapping.
-    for root in (owner.tab_home, owner.tab_manual, owner.tab_tools):
-        pending = [root]
-        while pending:
-            widget = pending.pop()
-            if isinstance(widget, ttk.Label):
-                try:
-                    current = int(widget.cget("wraplength"))
-                except (ValueError, tk.TclError):
-                    current = 0
-                original = getattr(widget, "_kingo_original_wrap", None)
-                if original is None:
-                    original = current
-                    widget._kingo_original_wrap = original
-                if original >= 600:
-                    desired_wrap = min(original, usable)
-                    if current != desired_wrap:
-                        widget.configure(wraplength=desired_wrap)
-            pending.extend(widget.winfo_children())
+    owner._shell_height_mode = "short" if height < 640 else "regular"
 
 
 def bind_responsive_shell(owner) -> None:

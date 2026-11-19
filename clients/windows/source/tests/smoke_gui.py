@@ -16,30 +16,36 @@ def main():
             app = Application()
             app.withdraw()
             app.update()
-            # Assert independently extracted Manual and Tools layouts are still
-            # attached to the same Tk Application and live StringVars.
+            # The dense shell replaces the dark sidebar with a command strip
+            # and a visible tab control; both must exist in a real Tk window.
             assert tuple(app.notebook.tab(tab, 'text') for tab in app.notebook.tabs()) == (
                 '① 选课首页', '② 手动官网备用', '③ 工具与日志')
-            assert app.sidebar.winfo_exists()
+            assert app.notebook.cget('style') == 'Kingo.Content.TNotebook'
+            assert app.toolbar.winfo_exists()
             assert app.visual_content.winfo_exists()
-            assert app.minsize() == (880, 560)
-            for viewport, body, bar in (
-                (app.home_scroll_canvas, app._home_content, app.home_scrollbar),
-                (app.tools_scroll_canvas, app._tools_content, app.tools_scrollbar),
-            ):
-                assert viewport.winfo_exists()
-                assert body.winfo_exists()
-                assert bar.winfo_exists()
-                assert viewport.cget('yscrollcommand')
-                assert len(viewport.find_all()) == 1
+            assert app.status_bar.winfo_exists()
+            assert app.status_gate.cget('text') == '自动提交：未接入'
+            assert app.minsize() == (960, 640)
+            # Only the long tool/log page scrolls now.
+            viewport, body, bar = (
+                app.tools_scroll_canvas, app._tools_content, app.tools_scrollbar)
+            assert viewport.winfo_exists()
+            assert body.winfo_exists()
+            assert bar.winfo_exists()
+            assert viewport.cget('yscrollcommand')
+
             app.notebook.select(app.tab_home)
             app.update_idletasks()
-            assert app.home_scroll_canvas.bbox('all') is not None
-            app.home_scroll_canvas.yview_moveto(1)
-            app.update_idletasks()
-            assert app.home_scroll_canvas.yview()[0] > 0, 'Home course table must be scroll-reachable'
-            assert app.table.winfo_exists()
-            app.home_scroll_canvas.yview_moveto(0)
+            # The home page is a fixed layout: the grid expands, the submit
+            # gate keeps its slot, and the primary action stays mapped.
+            assert app.course_frame.winfo_manager() == 'pack'
+            assert app.table.winfo_manager() == 'pack'
+            assert app.scheduled_start_button.winfo_manager() == 'pack'
+            assert app.start_button.cget('style') == 'KingoPrimary.TButton'
+            # A withdrawn window has no mapped geometry; request size still
+            # proves the grid asks for several dense rows.
+            assert app.table.winfo_reqheight() > 80
+
             app.notebook.select(app.tab_tools)
             app.update_idletasks()
             assert app.tools_scroll_canvas.bbox('all') is not None
@@ -48,26 +54,15 @@ def main():
             assert app.tools_scroll_canvas.yview()[0] > 0, 'Tool/log bottom must be scroll-reachable'
             assert app.log_box.winfo_exists()
             app.tools_scroll_canvas.yview_moveto(0)
-            app.notebook.select(app.tab_home)
-            app.update_idletasks()
-            assert set(app.sidebar_buttons) == {'home', 'manual', 'tools'}
-            assert app.notebook.cget('style') == 'Kingo.Content.TNotebook'
-            assert app.sidebar.winfo_width() <= 110
-            assert app.sidebar_buttons['home'].cget('bg') == '#4869E8'
-            app.sidebar_buttons['manual'].invoke()
+
+            app.notebook.select(app.tab_manual)
             app.update()
             assert app.notebook.select() == str(app.tab_manual)
-            assert app.sidebar_buttons['manual'].cget('bg') == '#4869E8'
-            app.sidebar_buttons['tools'].invoke()
-            app.update()
-            assert app.notebook.select() == str(app.tab_tools)
-            assert app.sidebar_buttons['tools'].cget('bg') == '#4869E8'
+            assert app.portal_panel.winfo_manager() == 'pack'
             app.notebook.select(app.tab_home)
             app.update()
-            assert app.sidebar_buttons['home'].cget('bg') == '#4869E8'
-            assert app.edit_button.cget('style') == 'KingoPrimary.TButton'
-            assert app.native_login_button.cget('style') == 'KingoPrimary.TButton'
-            assert app.start_button.cget('style') == 'KingoPrimary.TButton'
+            assert app.notebook.select() == str(app.tab_home)
+            assert app.native_login_button.cget('style') != 'KingoPrimary.TButton'
             for widget in (
                 app.portal_panel, app.portal_appointment_button,
                 app.session_check_button, app.tools_operations,
@@ -174,7 +169,7 @@ def main():
                 browser.assert_called_once_with('https://jwmis.ncwu.edu.cn')
             assert app.clipboard_get() == 'LOCAL_TEST_101'
             app.close()
-            print('PASS: Tk init + 3-step offline fictional demo + user config restore + school browser link + editor + atomic save + close')
+            print('PASS: Tk init + dense shell + 3-step offline fictional demo + user config restore + school browser link + editor + atomic save + close')
 
 
 if __name__ == '__main__':

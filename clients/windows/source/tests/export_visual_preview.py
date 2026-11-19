@@ -52,13 +52,14 @@ def main() -> None:
                 app.deiconify()
                 app.lift()
 
+                # The home page is a fixed dense layout now, so one capture
+                # shows the whole workflow: commands, grid and submit gate.
                 app.notebook.select(app.tab_home)
-                app.home_scroll_canvas.yview_moveto(0)
                 save_view(app, output)
 
-                app.home_scroll_canvas.yview_moveto(1)
+                app.notebook.select(app.tab_manual)
                 save_view(app, output.with_name(
-                    "KingoAssistant-Home-bottom-preview.png"))
+                    "KingoAssistant-Manual-preview.png"))
 
                 app.notebook.select(app.tab_tools)
                 app.tools_scroll_canvas.yview_moveto(1)

@@ -78,15 +78,15 @@ from windows_monitor_runtime import MonitorEvent, MonitorWorker
 from windows_page_sections import build_home_page, build_manual_page, build_tools_page
 from windows_readonly_widgets import _create_readonly_tree, _open_readonly_popup
 from windows_visual_shell import (
+    TABS,
     apply_light_theme,
     bind_page_wheel,
     bind_responsive_shell,
-    connect_sidebar,
     make_scrollable_content,
     make_visual_shell,
 )
 
-APP_TITLE = "KingoAssistant · Windows（只读监测｜自动提交尚未接入）"
+APP_TITLE = "KingoAssistant · 华水选课助手（只读监测｜自动提交未接入）"
 OFFICIAL_PORTAL = "https://jwmis.ncwu.edu.cn"  # Confirmed by school notices; NOT an API endpoint.
 
 # Returned by a poll event handler when the pump must stop re-arming itself.
@@ -241,8 +241,8 @@ class Application(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title(APP_TITLE)
-        self.geometry("1100x740")
-        self.minsize(880, 560)
+        self.geometry("1180x790")
+        self.minsize(960, 640)
         self.events: queue.Queue[MonitorEvent] = queue.Queue()
         self._tray = TrayController(lambda kind: self.events.put(MonitorEvent(kind)))
         self.worker: MonitorWorker | None = None
@@ -317,64 +317,65 @@ class Application(tk.Tk):
         self.check_config()
 
     def _build(self) -> None:
-        """LightC-inspired compact shell around the unchanged business views."""
+        """Dense desktop shell: command strip, real tab control, status bar.
+
+        The three ``ttk.Notebook`` pages stay the single navigation source of
+        truth, so every existing callback, menu entry and test that selects a
+        tab keeps working. Only the chrome around them changed.
+        """
         apply_light_theme(self)
         main = make_visual_shell(self)
+        self._build_command_strip()
 
-        header = ttk.Frame(main, padding=(18, 16, 18, 12))
-        header.pack(fill="x")
-        ttk.Button(
-            header, text="使用说明", command=self.show_function_guide,
-            style="KingoQuiet.TButton",
-        ).pack(side="right", padx=(10, 0), pady=(5, 0))
-        ttk.Label(
-            header, text="工作台  /  课程管理",
-            style="KingoSubtitle.TLabel",
-        ).pack(anchor="w")
-        ttk.Label(
-            header, text="KingoAssistant",
-            style="KingoTitle.TLabel",
-        ).pack(anchor="w", pady=(3, 0))
-        self.shell_subtitle = ttk.Label(
-            header,
-            text="原生登录与 S202 只读查询已实现 · 待本人账号验收  |  自动提交未接通",
-            style="KingoSubtitle.TLabel",
-        )
-        self.shell_subtitle.pack(anchor="w", pady=(6, 0))
-
-        # Stable footer is allocated before the expanding content; status
-        # remains the original Application StringVar, never copied to the shell.
-        self.status_bar = ttk.Label(
-            main, textvariable=self.status, style="KingoStatus.TLabel",
-            padding=(18, 11), wraplength=940,
-        )
-        self.status_bar.pack(side="bottom", fill="x", padx=13, pady=(5, 9))
-
-        # Keep Notebook and original page attributes for all callbacks/tests.
-        # Only the old tab strip is hidden; navigation lives in the sidebar.
         self.notebook = ttk.Notebook(main, style="Kingo.Content.TNotebook")
         self.tab_home = ttk.Frame(self.notebook)
         self.tab_manual = ttk.Frame(self.notebook)
         self.tab_tools = ttk.Frame(self.notebook)
-        self.notebook.add(self.tab_home, text="① 选课首页")
-        self.notebook.add(self.tab_manual, text="② 手动官网备用")
-        self.notebook.add(self.tab_tools, text="③ 工具与日志")
-        self.notebook.pack(
-            fill="both", expand=True, padx=(11, 12), pady=(0, 4),
-        )
-        # Each long page scrolls independently. The Notebook pages remain
-        # original navigation targets for sidebar, menus and all callbacks.
-        self._home_content, self.home_scroll_canvas, self.home_scrollbar = (
-            make_scrollable_content(self.tab_home))
+        for attribute, caption in TABS:
+            self.notebook.add(getattr(self, attribute), text=caption)
+        self.notebook.pack(fill="both", expand=True, padx=(4, 4), pady=(2, 2))
+
+        # The home page is a fixed dense layout: command rows on top, a grid
+        # that absorbs the remaining height, the submit gate pinned to the
+        # bottom. Only the long tool/log page scrolls, so the everyday view
+        # never hides its primary action behind a scrollbar.
+        self._home_content = self.tab_home
         self._tools_content, self.tools_scroll_canvas, self.tools_scrollbar = (
             make_scrollable_content(self.tab_tools))
         build_home_page(self)
         build_manual_page(self)
         build_tools_page(self)
-        bind_page_wheel(self.home_scroll_canvas, self._home_content)
         bind_page_wheel(self.tools_scroll_canvas, self._tools_content)
-        connect_sidebar(self)
         bind_responsive_shell(self)
+
+    def _build_command_strip(self) -> None:
+        """Flat command row; dense labels, no oversized primary buttons."""
+        from windows_visual_shell import PALETTE
+
+        primary = (
+            ("使用说明", self.show_function_guide),
+            ("检查本机配置", self.check_config),
+            ("填写目标课程", self.edit_settings),
+            ("打开官网", self.open_official_portal),
+            ("工具与日志", lambda: self.notebook.select(self.tab_tools)),
+        )
+        for index, (label, callback) in enumerate(primary):
+            if index:
+                tk.Frame(self.toolbar, bg=PALETTE["stroke_soft"], width=1).pack(
+                    side="left", fill="y", pady=8)
+            ttk.Button(
+                self.toolbar, text=label, command=callback,
+                style="KingoBar.TButton",
+            ).pack(side="left", padx=1, pady=5)
+
+        ttk.Button(
+            self.toolbar_extras, text="高级配置",
+            command=self.toggle_advanced_panel, style="KingoBar.TButton",
+        ).pack(side="right", padx=1, pady=5)
+        ttk.Button(
+            self.toolbar_extras, text="最小化到托盘", command=self.close,
+            style="KingoBar.TButton",
+        ).pack(side="right", padx=1, pady=5)
 
     def toggle_advanced_panel(self) -> None:
         self.notebook.select(self.tab_tools)
@@ -2057,6 +2058,11 @@ def run_packaged_gui_smoke() -> None:
     with TemporaryDirectory(prefix="kingo-gui-smoke-") as directory:
         with patch.object(sys.modules[__name__], "app_dir", return_value=Path(directory)):
             app = Application()
+
+            def mounted(widget) -> bool:
+                """pack and grid both mean "mounted"; the tools page uses grid rows."""
+                return widget.winfo_manager() in ("pack", "grid")
+
             try:
                 app.withdraw()  # No visible desktop interference in CI.
                 app.update()
@@ -2067,62 +2073,58 @@ def run_packaged_gui_smoke() -> None:
                         raise AssertionError("Official entry inventory missing mobile app")
                 if len(app.table.get_children()) != 2:
                     raise AssertionError("Expected two placeholder courses in packaged template")
-                if not app.sidebar.winfo_exists():
-                    raise AssertionError("Compact visual sidebar missing")
-                if app.minsize() != (880, 560):
-                    raise AssertionError("Compact window minimum size regressed")
-                for canvas, content in (
-                    (app.home_scroll_canvas, app._home_content),
-                    (app.tools_scroll_canvas, app._tools_content),
-                ):
-                    if not canvas.winfo_exists() or not content.winfo_exists():
-                        raise AssertionError("Scrollable page missing in frozen Tk GUI")
-                    if not str(canvas.cget("yscrollcommand")):
-                        raise AssertionError("Scrollable page has no linked scrollbar")
-                if not app.table.winfo_exists() or not app.log_box.winfo_exists():
-                    raise AssertionError("Scrollable pages lost their original controls")
-                if set(app.sidebar_buttons) != {"home", "manual", "tools"}:
-                    raise AssertionError("Three native sidebar destinations required")
+                if not app.toolbar.winfo_exists():
+                    raise AssertionError("Command strip missing from the desktop shell")
+                if not app.status_bar.winfo_exists():
+                    raise AssertionError("Status bar missing from the desktop shell")
+                if app.minsize() != (960, 640):
+                    raise AssertionError("Dense window minimum size regressed")
                 if app.notebook.cget("style") != "Kingo.Content.TNotebook":
-                    raise AssertionError("Old top-tab layout still active")
-                if app.sidebar_buttons["home"].cget("bg") != "#4869E8":
-                    raise AssertionError("Home navigation should start selected")
-                app.sidebar_buttons["tools"].invoke()
+                    raise AssertionError("Dense tab control style not applied")
+                if len(app.notebook.tabs()) != 3:
+                    raise AssertionError("Three navigation tabs required")
+                if not str(app.tools_scroll_canvas.cget("yscrollcommand")):
+                    raise AssertionError("Tools page has no linked scrollbar")
+                if not app.table.winfo_exists() or not app.log_box.winfo_exists():
+                    raise AssertionError("Dense pages lost their original controls")
+                if app.course_frame.winfo_manager() != "pack":
+                    raise AssertionError("Home grid group must stay mounted")
+                if app.scheduled_start_button.winfo_manager() != "pack":
+                    raise AssertionError("Submit gate must stay visible on the home page")
+                app.notebook.select(app.tab_tools)
                 app.update()
                 if app.notebook.select() != str(app.tab_tools):
-                    raise AssertionError("Tools sidebar failed to navigate")
-                if app.sidebar_buttons["tools"].cget("bg") != "#4869E8":
-                    raise AssertionError("Tools active navigation highlight missing")
+                    raise AssertionError("Tab control failed to navigate")
                 app.notebook.select(app.tab_home)
                 app.update()
-                if app.sidebar_buttons["home"].cget("bg") != "#4869E8":
-                    raise AssertionError("Sidebar must sync with existing Notebook changes")
+                if app.notebook.select() != str(app.tab_home):
+                    raise AssertionError("Tab control failed to restore home")
                 if app.scheduled_start_button.cget("style") == "KingoPrimary.TButton":
                     raise AssertionError("Unverified submit must not appear as primary action")
                 # Regression for PR #19/#20 GUI composition: main previously
                 # referenced a deleted 'portal_row' frame and could not open.
-                if app.scheduled_preflight_button.winfo_manager() != "pack":
+                if not mounted(app.scheduled_preflight_button):
                     raise AssertionError("Typed plan preflight entry not mounted in main UI")
                 if str(app.scheduled_start_button.cget("state")) != "disabled":
                     raise AssertionError("Unverified live enrollment must never be enabled")
-                if app.native_login_button.winfo_manager() != "pack":
+                if not mounted(app.native_login_button):
                     raise AssertionError("In-EXE login button missing from primary Windows UI")
-                if app.native_prepare_button.winfo_manager() != "pack":
+                if not mounted(app.native_prepare_button):
                     raise AssertionError("Native identity/catalog API check not mounted")
-                if app.timetable_read_button.winfo_manager() != "pack":
+                if not mounted(app.timetable_read_button):
                     raise AssertionError("Previously captured native timetable action missing")
                 if "既有接口" not in str(app.timetable_read_button.cget("text")):
                     raise AssertionError("Known timetable API must be distinguished from elective catalog")
-                if app.lesson_detail_button.winfo_manager() != "pack":
+                if not mounted(app.lesson_detail_button):
                     raise AssertionError("Owner-session AJAX timetable action must be mounted under tools")
                 with patch("core.ncwu_lesson_detail.httpx.AsyncClient",
                            side_effect=AssertionError("missing session attempted network")):
                     app.check_lesson_detail()
                 if "请先在 EXE 内登录" not in app.lesson_detail_status.get():
                     raise AssertionError("Personal timetable must require a native session")
-                if app.school_page_button.winfo_manager() != "pack":
+                if not mounted(app.school_page_button):
                     raise AssertionError("Observed school results readback must be mounted under tools")
-                if app.term_probe_button.winfo_manager() != "pack":
+                if not mounted(app.term_probe_button):
                     raise AssertionError("Observed no-body YearTerm EXE probe missing")
                 # Canvas child windows remain 'mapped' even when their
                 # Notebook tab is hidden. Validate true view ancestry instead
@@ -2130,7 +2132,7 @@ def run_packaged_gui_smoke() -> None:
                 if not str(app.school_page_button).startswith(str(app.tab_tools) + "."):
                     raise AssertionError("Readback action must belong to Tools page only")
                 if app.notebook.select() != str(app.tab_home):
-                    raise AssertionError("Home must remain active after sidebar regression")
+                    raise AssertionError("Home tab must stay active after the layout smoke")
                 with patch("core.known_school_pages.httpx.AsyncClient",
                            side_effect=AssertionError("unverified result-page query attempted network")):
                     app.check_known_school_results()
@@ -2152,7 +2154,7 @@ def run_packaged_gui_smoke() -> None:
                     raise AssertionError("Unverified login must not produce a session")
                 if app.notebook.index("current") != 0:
                     raise AssertionError("The first tab must be the selection homepage")
-                if app.portal_panel.winfo_manager() != "pack":
+                if not mounted(app.portal_panel):
                     raise AssertionError("Manual backup must exist in its own tab")
                 # Canvas-embedded widgets may remain Tk-mapped inside a
                 # hidden Notebook tab. Their widget ancestry and the current
