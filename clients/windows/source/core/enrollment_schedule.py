@@ -191,6 +191,7 @@ class ScheduledEnrollmentRunner:
                 result = await self.engine.run(
                     ordered, prepared_schedule=prepared_schedule,
                     defer_readback=defer_readback,
+                    scheduler_window_open=True,
                 )
                 reason = "engine_halted" if result.halted else "engine_completed"
                 return ScheduledRunReport(
