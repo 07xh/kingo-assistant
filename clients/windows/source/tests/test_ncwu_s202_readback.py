@@ -69,6 +69,44 @@ class S202ResultTests(TestCase):
         self.assertEqual(result.candidates, ())
         self.assertNotIn("未选中", result.message)
 
+    def test_display_only_table_from_firsthand_har_shape_is_not_an_id_match(self):
+        html = (
+            "<html><body><h2>选课结果</h2>"
+            "<table><tbody><tr><td>导航</td></tr></tbody></table>"
+            "<table><thead><tr>"
+            "<td>选定</td><td>课程</td><td>学分</td>"
+            "<td>课程类别</td><td>任课教师</td><td>上课班级</td>"
+            "<td>上课班级名称</td><td>人数</td>"
+            "</tr></thead><tbody>"
+            "<tr><td></td><td>虚构课程</td><td>2</td>"
+            "<td>选修</td><td>虚构老师</td><td>展示班号</td>"
+            "<td>测试班</td><td>50</td></tr>"
+            "</tbody></table></body></html>"
+        )
+        result = parse_s202_readback(html)
+        self.assertEqual(result.code, "page_observed")
+        self.assertEqual(result.display_only_tables, 1)
+        self.assertEqual(result.candidates, ())
+        self.assertEqual(result.recognized_tables, 0)
+        self.assertEqual(len(result.display_courses), 1)
+        self.assertEqual(result.display_courses[0].course_name, "虚构课程")
+        self.assertEqual(result.display_courses[0].display_class, "展示班号")
+        self.assertIn("未识别出候选不等于未选课", result.message)
+        self.assertNotIn("虚构课程", result.message)
+
+    def test_nested_navigation_table_does_not_double_count_display_tables(self):
+        html = ("<html><body><h2>选课结果</h2><table><tr><td>"
+                "<table><thead><tr><td>课程</td><td>上课班级</td>"
+                "</tr></thead></table></td></tr></table></body></html>")
+        result = parse_s202_readback(html)
+        self.assertEqual(result.display_only_tables, 1)
+
+    def test_unrelated_table_is_not_marked_as_course_display(self):
+        html = ("<html><body><h2>选课结果</h2><table><thead><tr>"
+                "<td>课程</td><td>状态</td></tr></thead></table></body></html>")
+        result = parse_s202_readback(html)
+        self.assertEqual(result.display_only_tables, 0)
+
     def test_expired_200_is_rejected(self):
         result, requests = call(lambda req: httpx.Response(
             200, content="凭证已失效".encode("gbk"),
