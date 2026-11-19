@@ -7,7 +7,8 @@ from unittest.mock import patch
 import yaml
 
 from core.offline_selftest import run_selftest
-from windows_gui import bundled_config, OFFICIAL_PORTAL, main
+import windows_gui
+from windows_gui import bundled_config, main
 
 
 class OfflineSelfTest(unittest.TestCase):
@@ -34,8 +35,8 @@ class OfflineSelfTest(unittest.TestCase):
             with patch('windows_gui.Application', side_effect=AssertionError('GUI forbidden')):
                 self.assertEqual(main(), 0)
 
-    def test_official_site_is_school_domain(self):
-        self.assertEqual(OFFICIAL_PORTAL, 'https://jwmis.ncwu.edu.cn')
+    def test_no_browser_navigation_constant(self):
+        self.assertFalse(hasattr(windows_gui, 'OFFICIAL_PORTAL'))
 
 
 if __name__ == '__main__':
