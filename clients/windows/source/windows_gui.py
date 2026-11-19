@@ -68,6 +68,7 @@ from core.ncwu_course_plan import PlanSnapshot, read_current_course_plan
 from core.ncwu_plan_alignment import compare_plan_targets
 from core.ncwu_contract_capture import inspect_two_endpoint_contracts
 from core.ncwu_submit_evidence import inspect_s202_submit_har
+from core.ncwu_static_submit_evidence import inspect_static_submit_sources
 from core.official_entries import OFFICIAL_ENTRIES, probe_official_login_surfaces
 from core.scheduled_ui_bridge import prepare_scheduled_plan
 from core.attestation import AttestationError, AttestationRegistry, resolve_registry
@@ -879,6 +880,44 @@ class Application(tk.Tk):
             report.message if report.code == "parsed" else None)
         self.log("已离线分析 S202 提交字段结构；未保存原始 HAR、提交选课或启用写入。")
         messagebox.showinfo("S202 提交契约（仅供人工核验）", report.message)
+
+    def inspect_ncwu_static_submit_files(self) -> None:
+        """Inspect explicitly selected saved HTML/JS only; never call NCWU."""
+        filenames = filedialog.askopenfilenames(
+            title="选择本人保存的选课页面或脚本（仅本地分析）",
+            filetypes=[
+                ("网页与 JavaScript", "*.html *.htm *.js"),
+            ],
+        )
+        if not filenames:
+            return
+        try:
+            if len(filenames) > 12:
+                raise ValueError("too many source files")
+            sources = []
+            total_size = 0
+            for filename in filenames:
+                path = Path(filename)
+                if path.is_symlink() or not path.is_file():
+                    raise ValueError("invalid source path")
+                size = path.stat().st_size
+                if size > 2 * 1024 * 1024:
+                    raise ValueError("source too large")
+                total_size += size
+                if total_size > 16 * 1024 * 1024:
+                    raise ValueError("batch too large")
+                sources.append((path.suffix.lower(), path.read_bytes()))
+            report = inspect_static_submit_sources(sources)
+        except (OSError, ValueError, TypeError):
+            self._last_ncwu_contract_report = None
+            messagebox.showwarning(
+                "提交静态结构分析", "本地源文件无效或超限；没有访问学校。")
+            return
+        self._last_ncwu_contract_report = (
+            report.message if report.code == "parsed" else None)
+        self.log("已离线核对 S202 已知提交路径的 HTML/JS 静态证据；"
+                 "没有探测学校服务器、读取浏览器 Cookie 或创建写入模板。")
+        messagebox.showinfo("S202 静态证据（非接口核验）", report.message)
 
     def check_personal_s202_score(self) -> None:
         """Read own count using round fields from one current EXE session."""
