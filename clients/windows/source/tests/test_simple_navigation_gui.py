@@ -7,7 +7,7 @@ from windows_gui import Application
 
 
 class SimpleNavigationTests(TestCase):
-    def test_manual_backup_is_a_separate_tab(self):
+    def test_api_execution_is_a_separate_tab(self):
         manual = object()
         notebook = Mock()
         app = SimpleNamespace(notebook=notebook, tab_manual=manual)
@@ -34,7 +34,7 @@ class SimpleNavigationTests(TestCase):
         self.assertIn("自动提交", displayed)
         self.assertIn("禁用", displayed)
         self.assertIn("只读取", displayed)
-        self.assertIn("手动官网备用", displayed)
+        self.assertIn("接口执行", displayed)
         self.assertIn("接口", displayed)
 
     def test_template_course_is_marked_as_example_not_online_result(self):
