@@ -23,4 +23,4 @@ The operation is performed off the Tk event loop. It does not open any browser, 
 - Implement a separately reviewed `EnrollmentEngine` gateway that reads official enrollment records and selection-window state, uses permitted serial writes, and confirms results from official readback.
 - Test actual end-to-end integration on Windows. Synthetic HTTP fixtures and a CI packaging pass are not proof of real campus enrollment.
 
-Manual official browser actions remain in **手动辅助** as fallback; they are neither the primary API operation nor an alternative path that could automatically enable the submission button.
+**2026-11-20 architecture update:** The manual/browser fallback is retired from the product plan. The only permitted target workflow is independently verified in-process HTTP authentication, read-only API preparation, authorized HTTP enrollment submission and official readback. Existing legacy UI is pending source cleanup, not a supported fallback. See [sole active design](pure-api-execution.md).
