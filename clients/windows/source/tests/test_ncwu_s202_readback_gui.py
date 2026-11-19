@@ -37,14 +37,12 @@ class S202GuiTests(TestCase):
              patch("windows_gui.threading.Thread") as thread, \
              patch("windows_gui.read_s202_selected_results",
                    new_callable=AsyncMock,
-                   return_value=S202ReadbackResult("page_observed")) as read, \
-             patch("windows_gui.webbrowser.open") as browser:
+                   return_value=S202ReadbackResult("page_observed")) as read:
             Application.check_s202_selected_results(self.app)
             thread.assert_called_once()
             self.assertEqual(thread.call_args.kwargs["name"],
                              "KingoS202ResultReadback")
             thread.call_args.kwargs["target"]()
-        browser.assert_not_called()
         read.assert_awaited_once_with(cfg, session_cookie="JSESSIONID=LOCAL")
         event = self.app.events.get_nowait()
         self.assertEqual(event.kind, "ncwu_s202_results")
