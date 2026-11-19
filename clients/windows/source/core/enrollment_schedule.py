@@ -143,14 +143,22 @@ class ScheduledEnrollmentRunner:
             # Do one optional read-only timetable prefetch near the target.
             # An unverified source cannot opt in. Failures fall back to the
             # usual fresh in-window read; no stale snapshot authorizes a write.
-            if remaining <= 30 and not preparation_attempted:
+            if 15 <= remaining <= 30 and not preparation_attempted:
                 preparation_attempted = True
                 try:
                     from core.prepared_preflight import prepare_schedule
-                    prepared_schedule = await prepare_schedule(self.engine, ordered)
+                    # Preparation must not consume the opening-time deadline.
+                    # Stop a slow read while at least 10 seconds of local
+                    # scheduling margin remain; never postpone the first
+                    # official opening-window check for optional prefetch.
+                    timeout = min(5.0, remaining - 10.0)
+                    prepared_schedule = await asyncio.wait_for(
+                        prepare_schedule(self.engine, ordered),
+                        timeout=timeout,
+                    )
                 except Exception:
                     prepared_schedule = None
-                # Recalculate after real network time spent preparing.
+                # Recalculate after actual time spent, including timeout.
                 remaining = max(0.0, target_epoch - self.clock.now())
             # Avoid waking the local event loop twice per second for days.
             # Coarse waits are cancellation-aware; use subsecond precision
