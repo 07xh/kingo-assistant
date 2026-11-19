@@ -166,3 +166,18 @@ Records contain only fixed operation names, HTTP status, timings, and byte
 counts. They omit URLs, account/course/class identifiers, cookies, and bodies.
 A local record is not proof of a live official enrollment, and simulated
 HTTP tests do not establish network performance on campus.
+
+## S202 local cooldown and transient response classification (2026-11-20)
+
+A failed local request-budget validation no longer consumes the local 60-second
+cooldown. The timestamp is reserved immediately before the **first** network
+request, after the optional verified request budget has been acquired. Successful
+or failed attempts that start the actual network request still consume the
+cooldown, and the shared budget's limits remain unchanged. This is not a
+polling-rate increase or permission to ignore official limits.
+
+HTTP 5xx and connection errors during the initial page read now report
+`unavailable`, rather than a misleading `protocol_changed`. Structural errors
+in a received 200 page still report `protocol_changed`. Neither class triggers
+automatic retries or turns on an unverified submission adapter. A telemetry
+sink exception cannot alter the read result.
