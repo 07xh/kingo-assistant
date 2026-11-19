@@ -21,6 +21,10 @@ from core.ncwu_known_result_candidates import (
     HistoricalClassCandidate, inspect_known_result_candidates,
 )
 from core.request_budget import build_verified_budget
+from core.ncwu_legacy_result_query import (
+    CurrentResultQueryError, build_current_result_params, valid_current_account,
+)
+from core.ncwu_term_probe import PATH as YEAR_TERM_PATH, validate_term_contract
 
 HOST = "jwmis.ncwu.edu.cn"
 PAGES = {
@@ -39,6 +43,7 @@ class KnownSchoolPageResult:
     row_count: int = 0
     candidates: tuple[HistoricalClassCandidate, ...] = ()
     recognized_identity_tables: int = 0
+    account_bound_query: bool = False
 
     @property
     def message(self) -> str:
@@ -49,11 +54,15 @@ class KnownSchoolPageResult:
                 f"{self.row_count} 条表格行。"
                 f"其中 {self.recognized_identity_tables} 张表有内部教学班字段，"
                 f"可查看 {len(self.candidates)} 条 kcdm/skbjdm 候选记录。"
-                "不能据此认定身份已独立验证、选课成功或仍有名额。"
+                + ("本次查询参数与当前学期接口返回的本人账号一致。"
+                   if self.account_bound_query else "")
+                + "不能据此认定选课成功、提交许可或仍有名额。"
             )
         return {
             "route_unverified": "旧 HAR 已确认网页路径，但当前页面请求契约尚未核验；没有联网",
-            "query_unverified": "该网页在旧 HAR 中有 params 查询参数；取值已脱敏，不能猜测或复用，未联网",
+            "query_unverified": "结果页查询参数契约未完成核验；没有联网",
+            "identity_unverified": "请先在 EXE 完成本人账号和会话身份核验；没有联网",
+            "identity_mismatch": "当前官方学期接口账号与 EXE 登录身份不一致；已停止结果读取",
             "invalid_contract": "读取配置与已知华水只读页面不一致；未联网",
             "missing_session": "EXE 缺少本人教务登录会话；浏览器已登录不代表软件已登录",
             "policy_unverified": "没有经过核实的学校请求配额；未访问教务",
@@ -90,10 +99,18 @@ def validate_known_page_contract(config: Mapping, page_kind: str) -> str | None:
         return "query_unverified"
     if target.get("query_verified") is not True:
         return "route_unverified"
-    # The current reader supports *only* queryless requests that have been
-    # manually verified to be complete. Dynamic params require a separate
-    # permission-reviewed builder, never HAR token replay.
-    if target.get("query_mode") != "none" or target.get("query_fields") not in (None, {}):
+    mode = target.get("query_mode")
+    if page_kind == "selected_results" and mode == "current_yearterm_base64":
+        if target.get("query_fields") != {"params": "current_yearterm_base64"}:
+            return "query_unverified"
+        yearterm = config.get("known_year_term")
+        if (not isinstance(yearterm, dict)
+                or yearterm.get("identity_binding_verified") is not True
+                or validate_term_contract(config) is not None):
+            return "query_unverified"
+        return None
+    # A queryless request still requires a separately accepted contract.
+    if mode != "none" or target.get("query_fields") not in (None, {}):
         return "query_unverified"
     return None
 
@@ -151,10 +168,20 @@ async def read_known_school_page(
     environment: Mapping[str, str] | None = None,
     http_factory: Callable[[], httpx.AsyncClient] | None = None,
     budget_factory: Callable = build_verified_budget,
+    expected_user_code: str | None = None,
 ) -> KnownSchoolPageResult:
     error = validate_known_page_contract(config, page_kind)
     if error is not None:
         return KnownSchoolPageResult(error, page_kind)
+    pages = config.get("known_school_pages", {})
+    selected = pages.get(page_kind) if isinstance(pages, dict) else None
+    dynamic = (page_kind == "selected_results"
+               and isinstance(selected, dict)
+               and selected.get("query_mode") == "current_yearterm_base64")
+    if dynamic and (not session_cookie or not valid_current_account(expected_user_code)):
+        # A cookie from YAML or the OS environment cannot authorize this
+        # account-specific request; require EXE's verified login identity.
+        return KnownSchoolPageResult("identity_unverified", page_kind)
     cookie = _own_cookie(config, session_cookie, environment)
     if not cookie:
         return KnownSchoolPageResult("missing_session", page_kind)
@@ -177,9 +204,42 @@ async def read_known_school_page(
                 if (not key or not value or any(ch.isspace() for ch in key)):
                     return KnownSchoolPageResult("invalid_contract", page_kind)
                 client.cookies.set(key, value, domain=HOST, path="/")
+            query = None
+            if dynamic:
+                # Two separately budgeted reads, one scoped client, no replay
+                # of a historical HAR query or browser interaction.
+                async with budget.request():
+                    term = await client.post(
+                        "https://" + HOST + YEAR_TERM_PATH,
+                        follow_redirects=False,
+                        headers={"Accept": "text/plain,application/json"},
+                    )
+                    if term.status_code == 429:
+                        delay = KingoClient._retry_after_seconds(
+                            term.headers.get("Retry-After"))
+                        await budget.impose_retry_after(
+                            60.0 if delay is None else delay)
+                        return KnownSchoolPageResult("restricted", page_kind)
+                if term.status_code == 401 or 300 <= term.status_code < 400:
+                    return KnownSchoolPageResult("expired", page_kind)
+                if term.status_code == 403:
+                    return KnownSchoolPageResult("restricted", page_kind)
+                if term.status_code != 200:
+                    return KnownSchoolPageResult("unavailable", page_kind)
+                term_mime = term.headers.get(
+                    "content-type", "").split(";", 1)[0].lower().strip()
+                if term_mime not in ("text/plain", "application/json") and not term_mime.endswith("+json"):
+                    return KnownSchoolPageResult("invalid_response", page_kind)
+                try:
+                    token = build_current_result_params(
+                        term.content, verified_user_code=expected_user_code)
+                except CurrentResultQueryError as exc:
+                    return KnownSchoolPageResult(exc.code, page_kind)
+                query = {"params": token}
             async with budget.request():
                 response = await client.get(
                     "https://" + HOST + PAGES[page_kind],
+                    params=query,
                     follow_redirects=False, headers={"Accept": "text/html"},
                 )
                 if response.status_code == 429:
@@ -226,6 +286,7 @@ async def read_known_school_page(
                 candidates=inspected.candidate_rows if inspected is not None else (),
                 recognized_identity_tables=(
                     inspected.recognized_tables if inspected is not None else 0),
+                account_bound_query=dynamic,
             )
     except Exception:
         return KnownSchoolPageResult("unavailable", page_kind)
