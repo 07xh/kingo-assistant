@@ -1,26 +1,7 @@
-# Official-site appointment fallback (Windows V5.2)
+# 已废止：官方网页预约打开方案
 
-This is a reliable **manual selection fallback**, not a verified NCWU automatic enrollment adapter.
+> **2026-11-20 失效。** 本文档原先描述的“提前打开官网 / 到点打开浏览器 / 人工网页提交”不再属于 KingoAssistant 的正式执行方案。为避免误导，当前分支不再提供操作指南。历史版本仍可在 Git 提交记录中审计。
 
-### What works before the selection window
+**唯一有效方案：** [EXE 内 HTTP 登录、HTTP 课程查询、学校许可下的正式 HTTP 提交与官方结果回读](../architecture/pure-api-execution.md)。
 
-1. Open the existing Windows client.
-2. In **编辑课程和设置**, enter your actual course code or course name, teaching-class ID if known, and order your alternatives.
-3. Enter the *exact start time* from the school notice for your year, campus, and category, in **北京时间 YYYY-MM-DD HH:MM:SS**.
-4. Press **预约按时打开官网（辅助）** and explicitly confirm that you checked the official notice.
-5. Keep Windows awake and keep the client open. The GUI displays a countdown and attempts to open only the fixed official website `https://jwmis.ncwu.edu.cn` once at the specified moment.
-6. Complete login, teaching-class selection, submission, and final result confirmation on the official page, using the existing course-ID copy buttons.
-
-### Limits
-
-- Does not load signed Xiqueer API requests, scrape enrollment endpoints, supply authentication material, bypass CAPTCHA, or submit any enrollment.
-- Does not treat a school-wide date as the exact opening hour for a student.
-- Only works while the desktop application remains open and the computer is awake. If it was asleep, the next GUI tick may open the site late, not earlier.
-- Checks only the local clock; the institution's actual selection window and availability remain authoritative.
-- The template's example date/time is not confirmed for the student's next round. **Edit and re-confirm it.**
-- Can be canceled in one click and triggers at most one browser-opening attempt.
-- The independent scheduled enrollment engine remains unavailable for real submissions until a separately verified, authorized NCWU adapter exists.
-
-### Test acceptance
-
-Synthetic offline tests validate China-local time conversion, date formats, time horizon, required course preferences, opt-in confirmation, cancellation, one-shot launch, no launch during close, and invalid-template rejection. Native packaged GUI smoke tests verify the EXE starts.
+**当前真实状态：** 旧版 UI 中可能仍有网页预约入口，这属于待清理代码，不是新版保留的备选功能；学校正式选课提交适配器及真实结果回读尚未完成端到端验收，写入保持禁用。
