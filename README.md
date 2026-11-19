@@ -8,7 +8,7 @@ KingoAssistant is an independent personal course-selection assistant for the NCW
 
 > **正式执行方案已统一（2026-11-20）：纯接口登录 + 纯接口查询 + 经验证的纯接口提交 + 官方回读。** 浏览器登录混合模式、浏览器选课自动化、CDP/Playwright 和手动官网预约不再是正式备选路线。源码中的旧页面仍需后续清理。[唯一有效架构与验收标准](docs/architecture/pure-api-execution.md)。
 
-- **Windows:** native EXE with in-process HTTP login, read-only school APIs, course plans, tray lifecycle and tested offline enrollment FSM. Current builds can still contain a legacy manual-official-site tab scheduled for removal; it is not a supported login or submission path. Actual NCWU enrollment submission remains disabled pending verification.
+- **Windows:** native EXE with in-process HTTP login, school read-only APIs, local course plans, tray lifecycle and offline enrollment FSM. The legacy browser tab, appointments and automatic browser callbacks were removed from the Windows runtime; live NCWU submission remains disabled pending verification.
 - **Windows verification:** Verify the latest Windows Actions CI for the current commit; independently passing PRs do not prove their combined GUI works. The packaged smoke test now verifies scheduled-plan preflight remains mounted after merging UI changes.
 - **Write gates are now evidence-backed (V5.1):** a gateway capability flag is no longer sufficient. Each of the four gates needs a hash-verified, unexpired local attestation pointing at the document that proved it; editing that document disarms the gate. `python main.py --attest status|issue|revoke` manages the registry offline. Currently **0/4 registered**, so the write path is blocked by missing evidence rather than by missing code. See [attestation design](docs/architecture/attestation.md).
 - **Read-only polls are instrumented (V5.1):** per-phase latency samples (`budget_wait` / `request` / `decode` / `parse` / `total`) are written to a local JSONL file with no course identifiers or session data, and summarised into an exported log. The `tools/bench` matrix is why — discovery latency spans 100×, submission latency 2×, and every concurrency strategy measured strictly worse. See [latency instrumentation](docs/architecture/latency-instrumentation.md).
@@ -141,7 +141,7 @@ and any actual enrollment POST are **not enabled**. See
 
 - Closing the main window **minimizes to the Windows system tray** if supported. The in-process HTTP monitor retains its existing lifecycle; deprecated browser appointments are not a supported target workflow.
 - Use the tray menu **显示主窗口** to restore the UI and **完全退出** to stop tasks and exit. If the tray backend cannot initialize, the application minimizes to the normal taskbar instead of becoming invisible.
-- Current releases may still expose a legacy **手动官网备用** tab. This is a pending source-code cleanup item, not a recommended feature. The target UI should provide API login, course configuration, execution status, and tools/logs only. Submission remains disabled until official HTTP write/readback acceptance.
+- Windows navigation contains only **首页 / 工具与日志**; the obsolete manual-official-site tab, menu, appointment callback and auto-launch module were removed. API login, session verification, course configuration and diagnostics remain. Official write/readback acceptance is still required before enabling submission.
 - These UI improvements **do not enable automated school enrollment**. The NCWU live submission adapter is still unverified and disabled. Tray background operation also requires Windows to stay awake; it is not a background service or a reboot-persistent appointment.
 
 ## Engineering audit
