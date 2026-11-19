@@ -178,48 +178,41 @@ def build_home_page(app) -> None:
 
 
 def build_manual_page(app) -> None:
-    """Manual official-site fallback, deliberately separate from the EXE worker."""
-    # Manual route is deliberately isolated from both read-only queries
-    # and automatic enrollment. It may open the official browser.
+    """API-only execution and readiness view; no browser or manual submit fallback."""
     ttk.Label(
         app.tab_manual,
-        text="手动备用：只是打开华水官方网页，登录、选课和提交都由你自己完成。",
-        foreground="#965b16", wraplength=950, padding=(14, 14),
+        text="接口直连模式：登录、课程读取、计划调度及经授权的正式提交都在 EXE 内完成。",
+        foreground="#416075", wraplength=950, padding=(14, 14),
     ).pack(fill="x")
     app.portal_panel = ttk.LabelFrame(
-        app.tab_manual, text="官网操作与按时提醒（不会自动提交）",
-        padding=12,
+        app.tab_manual, text="接口执行与验收状态", padding=12,
     )
     app.portal_panel.pack(fill="x", padx=14, pady=(0, 10))
-    app.portal_appointment_button = ttk.Button(
-        app.portal_panel, text="设置到点打开官网",
-        command=app.toggle_portal_appointment,
-    )
-    app.portal_appointment_button.pack(anchor="w", pady=(0, 8))
-    manual_actions = ttk.Frame(app.portal_panel)
-    manual_actions.pack(fill="x")
-    ttk.Button(
-        manual_actions, text="现在打开华水官网",
-        command=app.open_official_portal,
-    ).pack(side="left", padx=(0, 8))
-    ttk.Button(
-        manual_actions, text="复制所选课程代码并打开官网",
-        command=app.prepare_selected_course,
-    ).pack(side="left", padx=(0, 8))
+    ttk.Label(
+        app.portal_panel, textvariable=app.enrollment_gate_status,
+        foreground="#965b16", wraplength=920,
+    ).pack(anchor="w", pady=(0, 10))
+    actions = ttk.Frame(app.portal_panel)
+    actions.pack(fill="x")
     app.session_check_button = ttk.Button(
-        manual_actions, text="检查软件登录状态（只读）",
+        actions, text="核验软件登录会话（只读）",
         command=app.check_script_session,
     )
-    app.session_check_button.pack(side="left")
-    ttk.Label(
-        app.portal_panel, textvariable=app.portal_appointment_status,
-        foreground="#666", wraplength=950,
-    ).pack(anchor="w", pady=(10, 0))
+    app.session_check_button.pack(side="left", padx=(0, 8))
+    ttk.Button(
+        actions, text="检查自动执行计划（离线）",
+        command=app.inspect_scheduled_runner,
+    ).pack(side="left", padx=(0, 8))
+    ttk.Button(
+        actions, text="查看接口验收详情",
+        command=app.show_enrollment_gate_details,
+    ).pack(side="left")
     ttk.Label(
         app.tab_manual,
-        text="说明：手动官网预约与“EXE 直接接口提交”不是同一功能。",
-        foreground="#666", padding=(14, 3),
+        text="当前真实提交适配器尚未完成验收；自动提交保持禁用。不打开浏览器，也不把人工网页选课当作自动提交。",
+        foreground="#666", wraplength=950, padding=(14, 3),
     ).pack(anchor="w")
+
 
 
 def build_tools_page(app) -> None:
