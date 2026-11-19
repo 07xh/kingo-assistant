@@ -1,5 +1,5 @@
 """Offline exact selected-class proof tests; no school HTTP."""
-from dataclasses import FrozenInstanceError
+from dataclasses import FrozenInstanceError, replace
 from hashlib import sha256
 import time
 import unittest
@@ -98,7 +98,10 @@ class ExactProofTests(unittest.TestCase):
             frozenset({("C101", "")}),
         ):
             with self.subTest(records=records), self.assertRaises(ValueError):
-                snapshot(records=records)
+                # Pass the *raw* malformed collection into dataclass validation;
+                # snapshot() intentionally converts ordinary test inputs to a
+                # frozenset to model a legitimate source.
+                replace(snapshot(), records=records)
         with self.assertRaises(ValueError):
             snapshot(records=frozenset({("C101", "X"*110)}))
 
