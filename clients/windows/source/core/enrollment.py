@@ -481,7 +481,8 @@ class EnrollmentEngine:
                 self._deferred_verifier = None
 
     async def run(self, targets: Sequence[Target], *, prepared_schedule=None,
-                  defer_readback: bool = False) -> RunReport:
+                  defer_readback: bool = False,
+                  scheduler_window_open: bool = False) -> RunReport:
         if self._deferred_verifier is not None:
             raise EnrollmentNotReady("存在独立结果核验任务，禁止并发提交")
         # Single engine entry point. Flow is split out for focused FSM testing;
