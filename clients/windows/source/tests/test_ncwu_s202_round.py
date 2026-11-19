@@ -13,11 +13,13 @@ PRIVATE_XH = "PRIVATE_STUDENT_FIELD"
 PRIVATE_LCID = "PRIVATE_ROUND_FIELD"
 
 
-def payload(status="400", valid="0"):
+def payload(status="400", valid="0", *, user=PRIVATE_XH,
+            year="2026", term="0", term_name="第一学期",
+            round_id=PRIVATE_LCID):
     fields = {
-        "lx": "2", "xh": PRIVATE_XH, "xn": "2026", "xqM": "0",
-        "lcid": PRIVATE_LCID, "nj": "2026", "zydm": "PRIVATE_MAJOR",
-        "lcmc": "体育选课测试轮次", "xqName": "第一学期",
+        "lx": "2", "xh": user, "xn": year, "xqM": term,
+        "lcid": round_id, "nj": "2026", "zydm": "PRIVATE_MAJOR",
+        "lcmc": "体育选课测试轮次", "xqName": term_name,
         "qssj": "2026-12-20 08:00", "jssj": "2026-12-21 20:00",
         "isValidTimerange": valid,
     }
@@ -29,7 +31,8 @@ def payload(status="400", valid="0"):
     }, ensure_ascii=False).encode("utf-8")
 
 
-def run(handler, *, cookie=COOKIE, config=None):
+def run(handler, *, cookie=COOKIE, config=None,
+        expected_user_code=None, expected_semester=None):
     calls = []
     def transport(request):
         calls.append(request)
@@ -40,6 +43,8 @@ def run(handler, *, cookie=COOKIE, config=None):
             transport=httpx.MockTransport(transport),
             follow_redirects=False),
         enforce_manual_cooldown=False,
+        expected_user_code=expected_user_code,
+        expected_semester=expected_semester,
     ))
     return result, calls
 
@@ -83,6 +88,76 @@ class S202RoundTest(TestCase):
         status, calls = run(handler)
         self.assertEqual(status.code, "observed")
         self.assertEqual(len(calls), 1)
+
+    def test_verified_own_account_and_round_even_when_window_is_closed(self):
+        value, calls = run(
+            lambda req: httpx.Response(
+                200, content=payload("400", "0"),
+                headers={"content-type": "application/json"}),
+            expected_user_code=PRIVATE_XH, expected_semester="2026-2027-1")
+        self.assertEqual(value.code, "observed")
+        self.assertEqual(value.window, "closed")
+        self.assertTrue(value.session_scope_checked)
+        self.assertTrue(value.round_id_observed)
+        self.assertFalse(value.current_context_complete)
+        self.assertEqual(len(calls), 1)
+        self.assertIn("账号和学期已与本次 EXE 登录及志愿核对", value.message)
+        self.assertIn("该标识不在结果课程行中", value.message)
+        self.assertNotIn(PRIVATE_LCID, str(value))
+        self.assertNotIn(PRIVATE_XH, str(value))
+
+    def test_different_user_cannot_be_mistaken_for_verified_round(self):
+        value, calls = run(
+            lambda req: httpx.Response(
+                200, content=payload(user="DIFFERENT_001")),
+            expected_user_code=PRIVATE_XH, expected_semester="2026-2027-1")
+        self.assertEqual(value.code, "identity_mismatch")
+        self.assertFalse(value.session_scope_checked)
+        self.assertEqual(len(calls), 1)
+        self.assertNotIn("DIFFERENT_001", value.message)
+
+    def test_wrong_semester_blocks_round_validation(self):
+        for source in (
+            payload(year="2025"),
+            payload(term="1", term_name="第二学期"),
+            payload(term_name="未知学期"),
+        ):
+            with self.subTest(source=source[:30]):
+                value = parse_s202_round(
+                    source, expected_user_code=PRIVATE_XH,
+                    expected_semester="2026-2027-1")
+                self.assertEqual(value.code, "semester_mismatch")
+                self.assertFalse(value.round_id_observed)
+
+    def test_missing_or_malformed_round_id_fails_closed(self):
+        for rid in ("", "HAS?URL", "X" * 128):
+            with self.subTest(length=len(rid)):
+                value = parse_s202_round(
+                    payload(round_id=rid), expected_user_code=PRIVATE_XH,
+                    expected_semester="2026-2027-1")
+                self.assertEqual(value.code, "round_unavailable")
+                self.assertFalse(value.session_scope_checked)
+
+    def test_unverified_account_or_second_term_never_contacts_school(self):
+        for account, semester, expected in (
+            (None, "2026-2027-1", "identity_unverified"),
+            ("INVALID ACCOUNT", "2026-2027-1", "identity_unverified"),
+            (PRIVATE_XH, None, "semester_unverified"),
+            (PRIVATE_XH, "2026-2027-2", "semester_unverified"),
+        ):
+            with self.subTest(semester=semester, account=account):
+                value, calls = run(
+                    lambda req: self.fail("Unexpected school request"),
+                    expected_user_code=account, expected_semester=semester)
+                self.assertEqual(value.code, expected)
+                self.assertEqual(calls, [])
+
+    def test_legacy_unbound_probe_reports_metadata_not_identity_proof(self):
+        value = parse_s202_round(payload("200", "1"))
+        self.assertTrue(value.current_context_complete)
+        self.assertFalse(value.session_scope_checked)
+        self.assertFalse(value.round_id_observed)
+        self.assertIn("尚未与 EXE 登录账号", value.message)
 
     def test_cookie_missing_makes_no_request(self):
         status, calls = run(lambda req: self.fail("no HTTP"), cookie="")
