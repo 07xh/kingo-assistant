@@ -29,6 +29,7 @@ def official_term(*, user=USER, year="2026", term="0"):
 def approved_config():
     return {
         "base_url": BASE,
+        "xnxq": "2026-2027-1",
         "auth": {"cookie": ""},
         "known_year_term": {
             "verified": True, "identity_binding_verified": True,
@@ -86,7 +87,8 @@ RESULT_HTML = (
 class CurrentQueryTests(unittest.TestCase):
     def test_historical_js_canonical_base64_scheme(self):
         token = build_current_result_params(
-            official_term(), verified_user_code=USER)
+            official_term(), verified_user_code=USER,
+            expected_semester="2026-2027-1")
         self.assertEqual(
             base64.b64decode(token).decode("ascii"),
             "xn=2026&xq=0&xh=" + USER,
@@ -116,10 +118,11 @@ class CurrentQueryTests(unittest.TestCase):
         result, calls, budget = run(approved_config(), handler)
         self.assertEqual(result.code, "shape_observed")
         self.assertTrue(result.account_bound_query)
+        self.assertTrue(result.semester_bound_query)
         self.assertEqual(budget.calls, 2)
         self.assertEqual([v.method for v in calls], ["POST", "GET"])
         self.assertEqual(len({v.headers.get("cookie") for v in calls}), 1)
-        self.assertIn("当前学期接口返回的本人账号一致", result.message)
+        self.assertIn("本次查询账号和学期已与官网本次接口返回值对照", result.message)
         self.assertNotIn(USER, result.message)
         self.assertNotIn("params=", str(result))
 
@@ -180,6 +183,52 @@ class CurrentQueryTests(unittest.TestCase):
                 self.assertEqual(result.code, "invalid_response")
                 self.assertEqual(len(calls), 1)
 
+    def test_wrong_year_or_semester_aborts_before_result_page_get(self):
+        for year, code, term_name in (
+            ("2025", "0", "第一学期"),
+            ("2026", "1", "第二学期"),
+            ("2026", "0", "第二学期"),
+        ):
+            with self.subTest(year=year, code=code, term_name=term_name):
+                body = json.loads(official_term(year=year, term=code))
+                body["xqName"] = term_name
+                result, calls, budget = run(
+                    approved_config(),
+                    lambda request: httpx.Response(
+                        200, json=body,
+                        headers={"content-type": "application/json"},
+                    ))
+                self.assertEqual(result.code, "semester_mismatch")
+                self.assertEqual(len(calls), 1)
+                self.assertEqual(budget.calls, 1)
+
+    def test_missing_or_second_term_plan_never_queries(self):
+        for plan in (None, "", "2026-2027-2",
+                     "2026-2028-1", "2026-2027-0",
+                     "2019-2020-1"):
+            with self.subTest(plan=plan):
+                cfg = approved_config()
+                cfg["xnxq"] = plan
+                # Only the observed first-semester coding is supported.
+                if plan == "2019-2020-1":
+                    # Syntactically accepted, but the current school term
+                    # must still be checked dynamically against the plan.
+                    result, calls, budget = run(
+                        cfg, lambda request: httpx.Response(
+                            200, content=official_term(),
+                            headers={"content-type": "application/json"}))
+                    self.assertEqual(result.code, "semester_mismatch")
+                    self.assertEqual(len(calls), 1)
+                else:
+                    self.assertEqual(
+                        validate_known_page_contract(cfg, "selected_results"),
+                        "query_unverified")
+                    result, calls, budget = run(
+                        cfg, lambda request: self.fail("no network"))
+                    self.assertEqual(result.code, "query_unverified")
+                    self.assertEqual(calls, [])
+                    self.assertEqual(budget.calls, 0)
+
     def test_captured_query_and_unverified_yearterm_never_send(self):
         for mutation in ("token", "yearterm", "identity", "field"):
             cfg = approved_config()
@@ -207,6 +256,7 @@ class CurrentQueryTests(unittest.TestCase):
             build_current_result_params(
                 official_term(user="SENSITIVE_ACCOUNT_VALUE"),
                 verified_user_code=USER,
+                expected_semester="2026-2027-1",
             )
         self.assertEqual(raised.exception.code, "identity_mismatch")
         self.assertNotIn("SENSITIVE_ACCOUNT_VALUE", str(raised.exception))
