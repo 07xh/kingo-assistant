@@ -20,6 +20,7 @@ from core.client import KingoClient, parse_courses
 from core.inspector import inspect_html
 from core.scheduler import Scheduler
 from core.monitor_policy import validate_limits
+from core.adaptive_read_cadence import AdaptiveReadCadence
 from core.request_budget import read_verified_policy_config
 from core.time_sync import TimeSync
 from core.official_entries import OFFICIAL_ENTRIES, probe_official_login_surfaces
@@ -51,6 +52,8 @@ def validate(config: dict, check_only: bool = False, *,
     if strategy["mode"] == "burst":
         TimeSync.parse(strategy["target_time"])
     validate_limits(strategy)
+    # Fail before any school request if opt-in cadence settings are malformed.
+    AdaptiveReadCadence(strategy.get("adaptive_polling"))
     targets = config["courses"]
     minimum_courses = 0 if check_only else 1
     if not isinstance(targets, list) or not minimum_courses <= len(targets) <= 30:
