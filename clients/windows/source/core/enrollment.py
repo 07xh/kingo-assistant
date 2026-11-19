@@ -491,4 +491,5 @@ class EnrollmentEngine:
         return await run_enrollment(
             self, targets, prepared_schedule=prepared_schedule,
             defer_readback=defer_readback,
+            scheduler_window_open=scheduler_window_open,
         )
