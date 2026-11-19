@@ -12,148 +12,157 @@ from tkinter import ttk
 
 
 def build_home_page(app) -> None:
-    """Construct the Home workflow; the owner holds all state and callbacks."""
-    # Unit-tested direct builder calls still work without a scrolling shell.
+    """Construct a compact, Bypass-inspired workbench around existing callbacks.
+
+    The view owns no school state or business logic. All actions continue to
+    call the original Application methods; no network work starts at render.
+    """
     home_root = app.__dict__.get("_home_content", app.tab_home)
-    # Home: explain the actual workflow instead of displaying all buttons
-    # as equal options in one toolbar.
-    intro = ttk.Frame(home_root, padding=(10, 6))
+
+    intro = ttk.Frame(home_root, padding=(10, 5))
     intro.pack(fill="x")
     ttk.Label(
-        intro, text="建议顺序：填写目标课程 → 软件内登录 → 检查本人课程",
-        font=("Microsoft YaHei UI", 10, "bold"),
+        intro, text="课程工作台",
+        font=("Microsoft YaHei UI", 12, "bold"),
     ).pack(anchor="w")
     ttk.Label(
         intro,
-        text="第 1 步可离线使用；S202 只读查询待本人账号验收，自动提交尚未接通。",
-        foreground="#965b16",
+        text="目标课程、本人账号、只读查询与监测集中在一个页面；自动提交尚未接入。",
+        foreground="#64748B",
     ).pack(anchor="w", pady=(2, 0))
 
+    # Three compact control groups share one toolbar row. This replaces the
+    # previous full-width vertical step cards while retaining their callbacks.
+    toolbar = ttk.Frame(home_root, padding=(10, 3))
+    toolbar.pack(fill="x")
+    for column, weight in enumerate((1, 2, 1)):
+        toolbar.grid_columnconfigure(column, weight=weight, uniform="workbench")
+
     setup = ttk.LabelFrame(
-        home_root, text="第 1 步  ·  课程与志愿（本地可用）",
-        padding=(10, 6), style="KingoStep.TLabelframe",
+        toolbar, text="课程方案", padding=(8, 6),
+        style="KingoStep.TLabelframe",
     )
-    setup.pack(fill="x", padx=10, pady=(2, 5))
-    app.edit_button = ttk.Button(setup, text="填写 / 修改目标课程",
-                                  command=app.edit_settings)
-    app.edit_button.pack(side="left", padx=(0, 8))
-    app.edit_button.configure(style="KingoPrimary.TButton")
-    app.plans_button = ttk.Button(setup, text="管理课程方案",
-                                   command=app.manage_plans)
-    app.plans_button.pack(side="left", padx=(0, 10))
+    setup.grid(row=0, column=0, sticky="nsew", padx=(0, 6))
+    app.edit_button = ttk.Button(
+        setup, text="编辑目标课程", command=app.edit_settings,
+        style="KingoPrimary.TButton",
+    )
+    app.edit_button.pack(fill="x", pady=(0, 5))
+    app.plans_button = ttk.Button(
+        setup, text="课程方案", command=app.manage_plans,
+    )
+    app.plans_button.pack(fill="x")
     ttk.Label(
-        setup, text="只编辑本机计划，不会向学校提交选课。",
-        foreground="#666",
-    ).pack(side="left")
+        setup, text="本机保存 · 不会提交学校",
+        foreground="#64748B", wraplength=190,
+    ).pack(anchor="w", pady=(6, 0))
 
     auth_panel = ttk.LabelFrame(
-        home_root, text="第 2 步  ·  软件内登录（协议已接入 · 待实机验收）",
-        padding=(10, 6), style="KingoStep.TLabelframe",
+        toolbar, text="账号与数据", padding=(8, 6),
+        style="KingoStep.TLabelframe",
     )
-    auth_panel.pack(fill="x", padx=10, pady=(0, 5))
+    auth_panel.grid(row=0, column=1, sticky="nsew", padx=3)
     auth_actions = ttk.Frame(auth_panel)
     auth_actions.pack(fill="x")
     app.native_login_button = ttk.Button(
-        auth_actions, text="在 EXE 登录本人教务账号", command=app.start_native_login)
-    app.native_login_button.pack(side="left", padx=(0, 8))
-    app.native_login_button.configure(style="KingoPrimary.TButton")
+        auth_actions, text="登录教务账号", command=app.start_native_login,
+        style="KingoPrimary.TButton",
+    )
+    app.native_login_button.pack(side="left", padx=(0, 5), fill="x", expand=True)
     app.native_prepare_button = ttk.Button(
-        auth_actions, text="检查登录与课程数据（只读）",
-        command=app.check_native_preparation)
-    app.native_prepare_button.pack(side="left", padx=(0, 8))
+        auth_actions, text="核验登录与数据",
+        command=app.check_native_preparation,
+    )
+    app.native_prepare_button.pack(side="left", padx=5, fill="x", expand=True)
     app.native_clear_button = ttk.Button(
-        auth_actions, text="清除登录状态", command=app.clear_native_session)
-    app.native_clear_button.pack(side="left")
+        auth_actions, text="清除登录", command=app.clear_native_session,
+    )
+    app.native_clear_button.pack(side="left", padx=(5, 0))
+
     ttk.Label(
         auth_panel, textvariable=app.native_login_status,
-        foreground="#666", wraplength=920,
+        foreground="#64748B", wraplength=410,
     ).pack(anchor="w", pady=(6, 1))
     ttk.Label(
         auth_panel, textvariable=app.native_preparation_status,
-        foreground="#666", wraplength=920,
+        foreground="#64748B", wraplength=410,
     ).pack(anchor="w")
-    timetable_row = ttk.Frame(auth_panel)
-    timetable_row.pack(fill="x", pady=(5, 0))
+
+    data_actions = ttk.Frame(auth_panel)
+    data_actions.pack(fill="x", pady=(7, 0))
     app.timetable_read_button = ttk.Button(
-        timetable_row, text="读取本人课表（既有接口 · 只读）",
-        command=app.check_known_timetable)
-    app.timetable_read_button.pack(side="left", padx=(0, 8))
+        data_actions, text="读取本人课表", command=app.check_known_timetable,
+    )
+    app.timetable_read_button.pack(side="left", padx=(0, 5), fill="x", expand=True)
     app.live_catalog_button = ttk.Button(
-        timetable_row, text="实时读取可选课程（S202 · 只读）",
-        command=app.check_live_catalog,
+        data_actions, text="读取 S202 目录", command=app.check_live_catalog,
     )
-    app.live_catalog_button.pack(side="left", padx=(0, 8))
+    app.live_catalog_button.pack(side="left", padx=5, fill="x", expand=True)
     app.live_poll_button = ttk.Button(
-        timetable_row, text="开始自动刷新（≥60秒）",
-        command=app.toggle_live_polling,
+        data_actions, text="自动刷新", command=app.toggle_live_polling,
     )
-    app.live_poll_button.pack(side="left")
+    app.live_poll_button.pack(side="left", padx=(5, 0), fill="x", expand=True)
     ttk.Label(
         auth_panel, textvariable=app.timetable_read_status,
-        foreground="#666", wraplength=920,
-    ).pack(anchor="w", pady=(4, 0))
+        foreground="#64748B", wraplength=410,
+    ).pack(anchor="w", pady=(5, 0))
     ttk.Label(
         auth_panel, textvariable=app.live_catalog_status,
-        foreground="#416075", wraplength=920,
-    ).pack(anchor="w", pady=(4, 0))
+        foreground="#416075", wraplength=410,
+    ).pack(anchor="w", pady=(2, 0))
 
     monitor_panel = ttk.LabelFrame(
-        home_root, text="第 3 步  ·  课程余量监测（只读）",
-        padding=(10, 6), style="KingoStep.TLabelframe",
+        toolbar, text="监测控制", padding=(8, 6),
+        style="KingoStep.TLabelframe",
     )
-    monitor_panel.pack(fill="x", padx=10, pady=(0, 5))
+    monitor_panel.grid(row=0, column=2, sticky="nsew", padx=(6, 0))
     app.action_panel = ttk.Frame(monitor_panel)
     app.action_panel.pack(fill="x")
     app.start_button = ttk.Button(
-        app.action_panel, text="开始查询课程余量", command=app.start_monitor)
-    app.start_button.pack(side="left", padx=(0, 8))
-    app.start_button.configure(style="KingoPrimary.TButton")
-    app.stop_button = ttk.Button(
-        app.action_panel, text="停止查询", command=app.stop_monitor,
-        state="disabled")
-    app.stop_button.pack(side="left", padx=(0, 8))
-    ttk.Button(
-        app.action_panel, text="检查是否具备运行条件", command=app.preflight,
-    ).pack(side="left")
-    ttk.Label(
-        monitor_panel,
-        text="此功能只读学校数据，不会帮你提交选课；学校接口尚未核验时会拒绝启动。",
-        foreground="#666",
-    ).pack(anchor="w", pady=(6, 0))
-
-    enrollment = ttk.Frame(home_root, padding=(12, 3))
-    enrollment.pack(fill="x")
-    app.enrollment_gate_status = tk.StringVar(value=app.enrollment_gate_label())
-    ttk.Label(
-        enrollment, textvariable=app.enrollment_gate_status,
-        foreground="#965b16",
-    ).pack(side="left")
-    app.scheduled_start_button = ttk.Button(
-        enrollment, text="自动提交（暂不可用）",
-        command=app.start_scheduled_enrollment, state="disabled",
+        app.action_panel, text="开始只读监测", command=app.start_monitor,
+        style="KingoPrimary.TButton",
     )
-    app.scheduled_start_button.pack(side="right", padx=(8, 0))
-    app.scheduled_stop_button = ttk.Button(
-        enrollment, text="取消自动计划", command=app.stop_scheduled_enrollment,
+    app.start_button.pack(fill="x", pady=(0, 5))
+    app.stop_button = ttk.Button(
+        app.action_panel, text="停止监测", command=app.stop_monitor,
         state="disabled",
     )
-    app.scheduled_stop_button.pack(side="right")
+    app.stop_button.pack(fill="x", pady=(0, 5))
+    ttk.Button(
+        app.action_panel, text="离线预检", command=app.preflight,
+    ).pack(fill="x")
+
+    app.enrollment_gate_status = tk.StringVar(value=app.enrollment_gate_label())
+    ttk.Label(
+        monitor_panel, textvariable=app.enrollment_gate_status,
+        foreground="#965B16", wraplength=205,
+    ).pack(anchor="w", pady=(7, 4))
+    app.scheduled_start_button = ttk.Button(
+        monitor_panel, text="自动提交（未接入）",
+        command=app.start_scheduled_enrollment, state="disabled",
+    )
+    app.scheduled_start_button.pack(fill="x", pady=(0, 5))
+    app.scheduled_stop_button = ttk.Button(
+        monitor_panel, text="取消计划", command=app.stop_scheduled_enrollment,
+        state="disabled",
+    )
+    app.scheduled_stop_button.pack(fill="x")
 
     app.course_frame = ttk.LabelFrame(
         home_root, text="目标课程列表 · 本地配置 / 只读状态",
-        padding=8,
+        padding=7,
     )
     app.course_frame.pack(
-        fill="both", expand=True, padx=10, pady=(3, 8))
+        fill="both", expand=True, padx=10, pady=(5, 8))
     app.table = ttk.Treeview(
         app.course_frame,
         columns=("key", "course", "class_id", "teacher", "status"),
-        show="headings",
+        show="headings", height=12,
     )
     for col, label, width in (
         ("key", "志愿", 70), ("course", "课程 / 代码", 225),
         ("class_id", "教学班", 110), ("teacher", "任课教师", 120),
-        ("status", "查询结果", 240),
+        ("status", "监测状态", 240),
     ):
         app.table.heading(col, text=label)
         app.table.column(col, width=width, stretch=True)
@@ -164,13 +173,13 @@ def build_home_page(app) -> None:
     app.table.pack(fill="both", expand=True)
     app.table.bind(
         "<Double-1>", lambda _event: app.copy_selected_field("course_id"))
+    app.table.bind(
+        "<Control-c>", lambda _event: app.copy_selected_field("course_id"))
     ttk.Label(
         app.course_frame,
-        text="双击课程复制代码。示例课程不是学校实时数据。",
-        foreground="#666",
+        text="双击或按 Ctrl+C 复制课程代码。示例课程不会伪装成学校实时数据。",
+        foreground="#64748B",
     ).pack(anchor="w", pady=(5, 0))
-
-
 
 
 def build_manual_page(app) -> None:
