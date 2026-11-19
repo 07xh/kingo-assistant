@@ -399,6 +399,10 @@ async def live_s202_snapshot(
                     if error in ("expired", "restricted"):
                         raise PermissionError(error)
                     if error:
+                        # A 200 with an oversized/invalid payload breaks the
+                        # expected page contract; an HTTP failure does not.
+                        if response.status_code == 200:
+                            raise ValueError("unexpected response shape or size")
                         raise _ReadResponseUnavailable("unavailable")
                     return response
                 finally:
