@@ -99,7 +99,12 @@ known_school_pages:
     method: GET
     path: "/hsjw/wsxk/xkjg.ckdgxsxdkchj_data10319.jsp"
     query_verified: false
+    # Only if independently accepted: current_yearterm_base64.
+    # Compose each params value from this session's showYearTerm.action
+    # xn/xqM/userCode and EXE login identity; NEVER replay saved HAR values.
     query_mode: unverified
+    # Expected for that independently accepted mode:
+    # query_fields: {params: current_yearterm_base64}
 
 # 2026-11-03 and 2026-11-14 captures consistently show an EMPTY-BODY POST
 # returning text/plain JSON with year/semester and a user-scoped marker.

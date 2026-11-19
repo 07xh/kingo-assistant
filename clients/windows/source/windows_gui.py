@@ -169,6 +169,8 @@ def _invalidate_native_session(app, message: str) -> None:
     """
     app._native_session_cookie = None
     app._native_session_origin = None
+    app._native_verified_user_code = None
+    app._pending_native_login_account = None
     app.native_login_status.set(message)
     preparation_status = app.__dict__.get("native_preparation_status")
     if preparation_status is not None:
@@ -256,6 +258,8 @@ class Application(tk.Tk):
         self._school_page_read_in_progress = False
         self._term_probe_in_progress = False
         self._native_login_in_progress = False
+        self._native_verified_user_code = None
+        self._pending_native_login_account = None
         self._live_catalog_in_progress = False
         self._s202_result_in_progress = False
         self._s202_round_probe_in_progress = False
@@ -605,6 +609,10 @@ class Application(tk.Tk):
             return
         self._native_session_cookie = None
         self._native_session_origin = None
+        self._native_verified_user_code = None
+        # The network login verifies YearTerm.userCode against this account
+        # before any result can be considered a verified EXE session.
+        self._pending_native_login_account = username
         self._native_login_in_progress = True
         self.native_login_button.configure(state="disabled")
         self.native_login_status.set("正在执行已核验的登录流程，并独立核对本人账号")
@@ -620,6 +628,7 @@ class Application(tk.Tk):
             threading.Thread(target=execute, name="KingoNativeLogin", daemon=True).start()
         except RuntimeError:
             self._native_login_in_progress = False
+            self._pending_native_login_account = None
             self.native_login_button.configure(state="normal")
             self.native_login_status.set("登录线程启动失败；没有保存会话")
 
@@ -635,6 +644,8 @@ class Application(tk.Tk):
             return
         self._native_session_cookie = None
         self._native_session_origin = None
+        self._native_verified_user_code = None
+        self._pending_native_login_account = None
         self.native_login_status.set("已清除 EXE 内存会话；这不代表学校服务端注销")
         self.native_preparation_status.set("会话已清除，接口核验结果失效")
 
@@ -750,10 +761,22 @@ class Application(tk.Tk):
             self.school_page_status.set(result.message)
             self.status.set(result.message)
             return
+        pages = config.get("known_school_pages", {})
+        contract = pages.get("selected_results", {}) if isinstance(pages, dict) else {}
+        dynamic = (isinstance(contract, dict)
+                   and contract.get("query_mode") == "current_yearterm_base64")
+        verified_account = self.__dict__.get("_native_verified_user_code") if dynamic else None
+        if dynamic and (not verified_account
+                        or self.__dict__.get("_native_session_origin") != "jwmis.ncwu.edu.cn"
+                        or not self.__dict__.get("_native_session_cookie")):
+            self.school_page_status.set(
+                "请先用 EXE 完成官方账号身份核验；不能用本地配置代替账号")
+            return
+        extra = {"expected_user_code": verified_account} if dynamic else {}
         _start_ncwu_read_worker(
             self, config=config, cookie=scoped_native_cookie(self, config),
             read_call=lambda cfg, *, session_cookie: read_known_school_page(
-                cfg, "selected_results", session_cookie=session_cookie),
+                cfg, "selected_results", session_cookie=session_cookie, **extra),
             fallback_factory=lambda code: KnownSchoolPageResult(code, "selected_results"),
             flag="_school_page_read_in_progress", button=self.school_page_button,
             status_var=self.school_page_status,
@@ -1797,6 +1820,12 @@ class Application(tk.Tk):
                     result = event.value
                     self._native_session_cookie = result.session_cookie if result.verified else None
                     self._native_session_origin = result.session_origin if result.verified else None
+                    pending_account = self.__dict__.get("_pending_native_login_account")
+                    self._native_verified_user_code = (
+                        pending_account if result.verified
+                        and isinstance(pending_account, str) else None
+                    )
+                    self._pending_native_login_account = None
                     self.native_login_status.set(result.message)
                     self.native_preparation_status.set(
                         "EXE 会话已通过账号核验；课程目录和余量需另行验证" if result.verified
@@ -1919,9 +1948,9 @@ class Application(tk.Tk):
                     self.school_page_status.set(result.message)
                     self.status.set(result.message)
                     self.log(result.message)
-                    if result.code == "expired":
+                    if result.code in ("expired", "identity_mismatch"):
                         _invalidate_native_session(
-                            self, "学校页面提示登录失效，请重新授权")
+                            self, "学校结果接口账号核验失败或会话过期，请重新授权")
                     if result.code == "shape_observed" and result.candidates:
                         self.show_known_result_candidates(result)
                 elif event.kind == "native_preparation":
@@ -2036,6 +2065,8 @@ class Application(tk.Tk):
         self._closing = True
         self._native_session_cookie = None
         self._native_session_origin = None
+        self._native_verified_user_code = None
+        self._pending_native_login_account = None
         self._official_portal_appointment = None
         self._portal_prelogin_opened = False
         self._tray.stop()
