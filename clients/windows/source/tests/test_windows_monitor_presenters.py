@@ -8,7 +8,7 @@ from core.enrollment import RunReport
 from core.enrollment_schedule import ScheduledRunReport
 from windows_gui import Application, MonitorEvent
 from windows_monitor_events import (
-    apply_monitor_status, format_official_probe_results,
+    apply_monitor_status, format_adaptive_monitor_status, format_official_probe_results,
     scheduled_reason_text,
 )
 
@@ -54,6 +54,29 @@ class StatusPresenterTests(TestCase):
         app.bell.assert_not_called()
         app.log.assert_not_called()
         self.assertEqual(app._previous_states, {})
+
+
+class AdaptiveStatusPresenterTests(TestCase):
+    def test_disabled_and_missing_values(self):
+        self.assertIn("关闭", format_adaptive_monitor_status({"enabled": False}))
+        self.assertIn("关闭", format_adaptive_monitor_status(None))
+
+    def test_enabled_anonymized_report(self):
+        result = format_adaptive_monitor_status({
+            "enabled": True, "slowdown_multiplier": 2.0,
+            "slow_samples": 1, "healthy_samples": 3,
+            "session_cookie": "SHOULD_NOT_APPEAR", "course_id": "SECRET_COURSE",
+        })
+        self.assertIn("放缓 2×", result)
+        self.assertIn("压力 1 次", result)
+        self.assertNotIn("SHOULD_NOT_APPEAR", result)
+        self.assertNotIn("SECRET_COURSE", result)
+
+    def test_malformed_enabled_report_fails_closed(self):
+        self.assertIn("不可用", format_adaptive_monitor_status({
+            "enabled": True, "slowdown_multiplier": "2",
+            "slow_samples": 1, "healthy_samples": 1,
+        }))
 
 
 class ProbeTextTests(TestCase):
