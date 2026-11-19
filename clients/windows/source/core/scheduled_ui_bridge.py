@@ -108,6 +108,7 @@ async def run_prepared_schedule(
     engine: EnrollmentEngine,
     *,
     stop_event: asyncio.Event | None = None,
+    defer_readback: bool = False,
 ) -> ScheduledRunReport:
     """Execution seam for a future independently verified school adapter.
 
@@ -121,4 +122,7 @@ async def run_prepared_schedule(
         poll_interval_range=plan.poll_interval_range,
         max_wait_minutes=plan.max_wait_minutes,
     )
-    return await runner.run(plan.targets, plan.target_time, stop_event=stop_event)
+    return await runner.run(
+        plan.targets, plan.target_time, stop_event=stop_event,
+        defer_readback=defer_readback,
+    )

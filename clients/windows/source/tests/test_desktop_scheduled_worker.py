@@ -75,6 +75,44 @@ class DesktopScheduledWorkerTests(unittest.TestCase):
         run.assert_awaited_once()
         self.assertIsNone(worker.loop)
 
+    def test_worker_requests_separate_readback_mode(self):
+        worker, _ = self.make()
+        with patch("desktop_scheduled_worker.run_prepared_schedule",
+                   new_callable=AsyncMock, return_value=completed()) as run:
+            worker.start()
+            self.finish(worker)
+        self.assertTrue(run.await_args.kwargs["defer_readback"])
+
+    def test_deferred_readback_emits_provisional_then_final(self):
+        gateway = SimpleNamespace(
+            official_catalog_verified=True, official_enrollment_verified=True,
+            official_window_verified=True, official_write_verified=True,
+            account_scope="synthetic-account",
+            aclose=AsyncMock(),
+        )
+        eng = EnrollmentEngine(
+            gateway, SimpleNamespace(account_scope="synthetic-account"),
+            user_opted_in=True, institution_permits_write=True,
+            attestations=valid_registry(),
+        )
+        verifier = Mock()
+        verifier.finish = AsyncMock(return_value=RunReport(
+            {"A": "官方记录已确认成功"}, False,
+        ))
+        eng._deferred_verifier = verifier
+        worker, events = self.make(lambda: eng)
+        with patch("desktop_scheduled_worker.run_prepared_schedule",
+                   new_callable=AsyncMock, return_value=completed()):
+            worker.start()
+            self.finish(worker)
+        self.assertEqual([event.kind for event in events],
+                         ["waiting", "verification_pending", "result", "finished"])
+        self.assertEqual(events[-2].value.reason, "engine_completed")
+        self.assertEqual(events[-2].value.result.states["A"],
+                         "官方记录已确认成功")
+        verifier.finish.assert_awaited_once()
+        gateway.aclose.assert_awaited_once()
+
     def test_unverified_adapter_blocks_before_scheduling(self):
         worker, events = self.make(lambda: engine(verified=False))
         with patch("desktop_scheduled_worker.run_prepared_schedule",
@@ -104,7 +142,7 @@ class DesktopScheduledWorkerTests(unittest.TestCase):
 
         worker = DesktopScheduledWorker(plan(), lambda: engine(), record)
 
-        async def simulated_wait(_plan, _engine, *, stop_event):
+        async def simulated_wait(_plan, _engine, *, stop_event, defer_readback=False):
             await stop_event.wait()
             return completed("cancelled_waiting_for_window")
 

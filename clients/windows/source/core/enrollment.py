@@ -418,6 +418,7 @@ class EnrollmentEngine:
         self.institution_permits_write = institution_permits_write
         self.verification_policy = verification_policy or VerificationPolicy()
         self.attestations = attestations
+        self._deferred_verifier = None
 
     def _require_attestation(self, name: str) -> None:
         if self.attestations is None:
@@ -460,8 +461,35 @@ class EnrollmentEngine:
         from core.enrollment_recovery import reconcile_pending
         return await reconcile_pending(self.gateway, self.journal, targets)
 
-    async def run(self, targets: Sequence[Target]) -> RunReport:
+    @property
+    def has_deferred_verification(self) -> bool:
+        return self._deferred_verifier is not None
+
+    async def finish_deferred_verification(self) -> RunReport | None:
+        """Await official readback while the owned gateway remains alive."""
+        verifier = self._deferred_verifier
+        if verifier is None:
+            return None
+        try:
+            return await verifier.finish()
+        finally:
+            # finish() shields the read-only task. If the waiting caller is
+            # cancelled, the underlying verification may still be running.
+            # Retain the fence until the task really completes; otherwise a
+            # new submission could start with an unresolved in-flight result.
+            if verifier.task is not None and verifier.task.done():
+                self._deferred_verifier = None
+
+    async def run(self, targets: Sequence[Target], *, prepared_schedule=None,
+                  defer_readback: bool = False,
+                  scheduler_window_open: bool = False) -> RunReport:
+        if self._deferred_verifier is not None:
+            raise EnrollmentNotReady("存在独立结果核验任务，禁止并发提交")
         # Single engine entry point. Flow is split out for focused FSM testing;
         # it retains this module's V5.1 HMAC journal, lock and official gates.
         from core.enrollment_flow import run_enrollment
-        return await run_enrollment(self, targets)
+        return await run_enrollment(
+            self, targets, prepared_schedule=prepared_schedule,
+            defer_readback=defer_readback,
+            scheduler_window_open=scheduler_window_open,
+        )
