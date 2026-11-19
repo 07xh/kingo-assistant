@@ -11,8 +11,11 @@ acceptance has passed.
 - The scheduler can request one read-only timetable snapshot in the final
   30 seconds before the configured selection time.
 - This happens **only** if the real school gateway explicitly reports
-  `preopen_schedule_permitted=True` and exposes a session-bound
-  `preflight_session_token()`. Missing permissions mean **no extra request**.
+  `preopen_schedule_permitted=True`, independently verifies
+  `preopen_budget_headroom_verified=True` for the extra read **without
+  starving the opening-window checks**, and exposes a session-bound
+  `preflight_session_token()`. Missing permission or quota proof means
+  **no extra request**. The setting is not enabled by a local checkbox.
 - The snapshot is in RAM only and usable for a maximum of 30 seconds with
   precisely the same gateway identity, semester, session and ordered targets.
   Any mismatch automatically triggers the normal fresh read.
