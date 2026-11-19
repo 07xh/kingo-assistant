@@ -98,6 +98,7 @@ class PageLayoutExtractionTests(TestCase):
             "核对本人已选门数（只读）": "check_personal_s202_score",
             "核验初始化／资格预检 HAR（离线）": "inspect_ncwu_contracts",
             "复制脱敏契约报告": "copy_ncwu_contract_report",
+            "核验提交 HAR（离线）": "inspect_ncwu_submit_har",
             "检查自动选课计划（离线）": "inspect_scheduled_runner",
             "展开 / 收起高级配置": "toggle_advanced_panel",
             "导出本机运行日志": "export_log",

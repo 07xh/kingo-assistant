@@ -66,9 +66,11 @@ from core.ncwu_s202_score import PersonalScoreCount, read_personal_s202_score
 from core.ncwu_course_plan import PlanSnapshot, read_current_course_plan
 from core.ncwu_plan_alignment import compare_plan_targets
 from core.ncwu_contract_capture import inspect_two_endpoint_contracts
+from core.ncwu_submit_evidence import inspect_s202_submit_har
 from core.official_entries import OFFICIAL_ENTRIES, probe_official_login_surfaces
 from core.scheduled_ui_bridge import prepare_scheduled_plan
 from core.attestation import AttestationError, AttestationRegistry, resolve_registry
+from core.ncwu_gate_details import format_ncwu_gate_details
 from core.latency import DEFAULT_LATENCY_FILE, summarize_file
 from core.enrollment_schedule import ScheduledRunReport
 from main import _read_local_html, validate
@@ -402,6 +404,16 @@ class Application(tk.Tk):
         except AttestationError:
             return "自动选课：未接入提交适配器（验收登记表无效）"
         return f"自动选课：未接入提交适配器（验收证据 {report['valid']}/{report['total']}）"
+
+    def show_enrollment_gate_details(self) -> None:
+        """Display independent evidence status, without any school request."""
+        messagebox.showinfo(
+            "自动选课接口验收状态（只读）",
+            format_ncwu_gate_details(
+                getattr(self, "attestations", None),
+                adapter_installed=getattr(self, "_engine_factory", None) is not None,
+            ),
+        )
 
     def log(self, message: str) -> None:
         self.log_box.configure(state="normal")
@@ -844,6 +856,28 @@ class Application(tk.Tk):
                  "没有保存、上传或发送捕获的请求与响应。")
         messagebox.showinfo("初始化／教学班预检契约（仅本机）",
                             report.message)
+
+    def inspect_ncwu_submit_har(self) -> None:
+        """Inspect a local first-party submission HAR; never replay the POST."""
+        filename = filedialog.askopenfilename(
+            title="选择本人正常操作记录的 HAR（仅本地分析）",
+            filetypes=[("HTTP Archive", "*.har *.json")],
+        )
+        if not filename:
+            return
+        try:
+            source = Path(filename)
+            if source.stat().st_size > 16 * 1024 * 1024:
+                raise ValueError("file too large")
+            report = inspect_s202_submit_har(source.read_bytes())
+        except (OSError, ValueError, TypeError):
+            messagebox.showwarning(
+                "提交契约分析", "文件无法读取或过大；没有访问学校。")
+            return
+        self._last_ncwu_contract_report = (
+            report.message if report.code == "parsed" else None)
+        self.log("已离线分析 S202 提交字段结构；未保存原始 HAR、提交选课或启用写入。")
+        messagebox.showinfo("S202 提交契约（仅供人工核验）", report.message)
 
     def check_personal_s202_score(self) -> None:
         """Read own count using round fields from one current EXE session."""

@@ -128,6 +128,10 @@ def build_home_page(app) -> None:
         enrollment, textvariable=app.enrollment_gate_status,
         foreground="#965b16",
     ).pack(side="left")
+    app.enrollment_detail_button = ttk.Button(
+        enrollment, text="验收详情", command=app.show_enrollment_gate_details,
+    )
+    app.enrollment_detail_button.pack(side="left", padx=(8, 0))
     app.scheduled_start_button = ttk.Button(
         enrollment, text="自动提交（暂不可用）",
         command=app.start_scheduled_enrollment, state="disabled",
@@ -334,6 +338,10 @@ def build_tools_page(app) -> None:
     ttk.Button(
         contract_row, text="复制脱敏契约报告",
         command=app.copy_ncwu_contract_report,
+    ).pack(side="left", padx=(0, 8))
+    ttk.Button(
+        contract_row, text="核验提交 HAR（离线）",
+        command=app.inspect_ncwu_submit_har,
     ).pack(side="left")
     term_row = ttk.Frame(app.tools_operations)
     term_row.pack(fill="x", pady=(4, 1))
