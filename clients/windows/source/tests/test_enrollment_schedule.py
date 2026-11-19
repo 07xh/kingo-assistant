@@ -131,6 +131,7 @@ class ScheduledEnrollmentTest(unittest.TestCase):
     def test_prewindow_timetable_snapshot_reused_but_seats_stay_live(self):
         gateway = FakeGateway([WindowState.OPEN, WindowState.OPEN])
         gateway.preopen_schedule_permitted = True
+        gateway.preopen_budget_headroom_verified = True
         gateway.preflight_session_token = lambda: ("verified-session", "2026-2027-1")
         original = gateway.read_schedule
         observed = []
@@ -152,6 +153,7 @@ class ScheduledEnrollmentTest(unittest.TestCase):
     def test_skip_optional_preflight_near_deadline(self):
         gateway = FakeGateway([WindowState.OPEN, WindowState.OPEN])
         gateway.preopen_schedule_permitted = True
+        gateway.preopen_budget_headroom_verified = True
         gateway.preflight_session_token = lambda: ("verified-session", "2026-2027-1")
         original = gateway.read_schedule
         observed = []
