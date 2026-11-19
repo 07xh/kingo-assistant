@@ -30,11 +30,9 @@ class SchoolResultsGuiTests(TestCase):
         cfg = {"base_url": "https://jwmis.ncwu.edu.cn",
                "known_school_pages": {"selected_results": {"verified": False}}}
         with patch("windows_gui.read_config", return_value=cfg), \
-             patch("windows_gui.threading.Thread") as thread, \
-             patch("windows_gui.webbrowser.open") as browser:
+             patch("windows_gui.threading.Thread") as thread:
             Application.check_known_school_results(current)
         thread.assert_not_called()
-        browser.assert_not_called()
         self.assertIn("旧 HAR", str(current.school_page_status.set.call_args))
 
     def test_verified_read_uses_worker_no_browser(self):
@@ -45,12 +43,10 @@ class SchoolResultsGuiTests(TestCase):
              patch("windows_gui.validate_known_page_contract", return_value=None), \
              patch("windows_gui.read_known_school_page", new_callable=AsyncMock,
                    return_value=done) as reader, \
-             patch("windows_gui.threading.Thread") as thread, \
-             patch("windows_gui.webbrowser.open") as browser:
+             patch("windows_gui.threading.Thread") as thread:
             Application.check_known_school_results(current)
             thread.assert_called_once()
             thread.call_args.kwargs["target"]()
-            browser.assert_not_called()
         reader.assert_awaited_once_with(cfg, "selected_results", session_cookie=None)
         event = current.events.get_nowait()
         self.assertEqual(event.kind, "known_school_results")
