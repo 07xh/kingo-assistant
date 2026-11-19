@@ -114,6 +114,7 @@ class ScheduledEnrollmentTest(unittest.TestCase):
         self.assertEqual(report.reason, "engine_completed")
         self.assertGreaterEqual(self.clock.current, 1001)
         self.assertEqual(report.window_checks, 1)
+        self.assertEqual(self.gateway.window_calls, 2)
         self.assertEqual(len(self.gateway.writes), 1)
 
     def test_closed_window_rechecks_at_bounded_interval_then_starts(self):
@@ -123,8 +124,49 @@ class ScheduledEnrollmentTest(unittest.TestCase):
         self.assertEqual(report.reason, "engine_completed")
         self.assertEqual(report.window_checks, 2)
         self.assertEqual(self.clock.current, 1060)
+        self.assertEqual(gateway.window_calls, 3)
         self.assertEqual(gateway.catalog_calls, 1)
         self.assertEqual(len(gateway.writes), 1)
+
+    def test_prewindow_timetable_snapshot_reused_but_seats_stay_live(self):
+        gateway = FakeGateway([WindowState.OPEN, WindowState.OPEN])
+        gateway.preopen_schedule_permitted = True
+        gateway.preflight_session_token = lambda: ("verified-session", "2026-2027-1")
+        original = gateway.read_schedule
+        observed = []
+
+        async def read_schedule():
+            observed.append(self.clock.current)
+            return await original()
+
+        gateway.read_schedule = read_schedule
+        runner = self.make_runner(gateway=gateway)
+        report = self.run_runner(runner, target_time="1020")
+        self.assertEqual(report.reason, "engine_completed")
+        self.assertEqual(len(observed), 1)
+        self.assertLess(observed[0], 1020)  # Prefetched early.
+        self.assertEqual(gateway.catalog_calls, 1)
+        self.assertEqual(gateway.window_calls, 2)
+        self.assertEqual(len(gateway.writes), 1)
+
+    def test_skip_optional_preflight_near_deadline(self):
+        gateway = FakeGateway([WindowState.OPEN, WindowState.OPEN])
+        gateway.preopen_schedule_permitted = True
+        gateway.preflight_session_token = lambda: ("verified-session", "2026-2027-1")
+        original = gateway.read_schedule
+        observed = []
+
+        async def read_schedule():
+            observed.append(self.clock.current)
+            return await original()
+
+        gateway.read_schedule = read_schedule
+        runner = self.make_runner(gateway=gateway)
+        report = self.run_runner(runner, target_time="1002")
+        self.assertEqual(report.reason, "engine_completed")
+        self.assertEqual(len(observed), 1)
+        self.assertGreaterEqual(observed[0], 1002)
+        self.assertEqual(gateway.window_calls, 2)
 
     def test_closed_window_timeout_never_reads_catalog_or_writes(self):
         gateway = FakeGateway([WindowState.CLOSED])
@@ -157,8 +199,8 @@ class ScheduledEnrollmentTest(unittest.TestCase):
         report = self.run_runner(runner)
         self.assertEqual(report.reason, "engine_halted")
         self.assertTrue(report.result.halted)
-        self.assertEqual(report.result.states["A"], "学校选课窗口未开放")
-        self.assertEqual(gateway.catalog_calls, 0)
+        self.assertEqual(report.result.states["A"], "学校选课窗口已关闭")
+        self.assertEqual(gateway.catalog_calls, 1)
         self.assertEqual(gateway.writes, [])
 
     def test_cancelled_before_start_does_not_probe_window(self):
@@ -234,7 +276,7 @@ class ScheduledEnrollmentTest(unittest.TestCase):
         self.assertEqual(report.reason, "engine_completed")
         self.assertTrue(any(0 < seconds <= 0.05 for seconds in pauses))
         self.assertEqual(report.window_checks, 1)
-        self.assertEqual(self.gateway.window_calls, 3)  # scheduled check + two engine checks
+        self.assertEqual(self.gateway.window_calls, 2)  # scheduled check + final gate
         self.assertEqual(len(self.gateway.writes), 1)
 
     def test_poll_interval_and_timeout_bounds(self):
