@@ -126,6 +126,25 @@ class ScheduledEnrollmentTest(unittest.TestCase):
         self.assertEqual(gateway.catalog_calls, 1)
         self.assertEqual(len(gateway.writes), 1)
 
+    def test_scheduler_prepares_authorized_timetable_before_start(self):
+        gateway = FakeGateway([WindowState.OPEN, WindowState.OPEN])
+        gateway.preopen_schedule_permitted = True
+        gateway.preflight_session_token = lambda: ("verified-session", "2026-2027-1")
+        original = gateway.read_schedule
+        reads = []
+
+        async def counted_schedule():
+            reads.append("read")
+            return await original()
+
+        gateway.read_schedule = counted_schedule
+        runner = self.make_runner(gateway=gateway)
+        report = self.run_runner(runner, target_time="1020")
+        self.assertEqual(report.reason, "engine_completed")
+        self.assertEqual(len(gateway.writes), 1)
+        self.assertEqual(len(reads), 1)  # Prepared before target time, reused.
+        self.assertEqual(gateway.catalog_calls, 1)  # Live, never cached.
+
     def test_closed_window_timeout_never_reads_catalog_or_writes(self):
         gateway = FakeGateway([WindowState.CLOSED])
         runner = self.make_runner(gateway=gateway, poll=(60, 60), wait=1)
