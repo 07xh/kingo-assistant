@@ -68,7 +68,7 @@ class HomePageViewTests(TestCase):
         self.assertEqual(tree.call_args.kwargs, {
             "columns": ("key", "course", "class_id", "teacher", "status"),
             "show": "headings",
-            "height": 12,
+            "height": 8,
         })
         self.assertIs(tree.call_args.args[0], self.app.course_frame)
         scrollbar.assert_called_once()
@@ -99,7 +99,7 @@ class HomePageViewTests(TestCase):
             "开始只读监测": "start_monitor",
             "停止监测": "stop_monitor",
             "离线预检": "preflight",
-            "自动提交（未接入）": "start_scheduled_enrollment",
+            "提交未接入": "start_scheduled_enrollment",
             "取消计划": "stop_scheduled_enrollment",
         }
         self.assertEqual(set(self.buttons), set(bindings))
@@ -109,7 +109,7 @@ class HomePageViewTests(TestCase):
                 self.assertIs(kwargs["command"], getattr(self.app, name))
                 getattr(self.app, name).assert_not_called()
                 widget.pack.assert_called()
-        for name in ("自动提交（未接入）", "取消计划", "停止监测"):
+        for name in ("提交未接入", "取消计划", "停止监测"):
             self.assertEqual(self.buttons[name][1]["state"], "disabled")
 
         self.assertIs(self.app.edit_button, self.buttons["编辑目标课程"][0])
@@ -122,7 +122,7 @@ class HomePageViewTests(TestCase):
         self.assertIs(self.app.live_poll_button, self.buttons["自动刷新"][0])
         self.assertIs(self.app.start_button, self.buttons["开始只读监测"][0])
         self.assertIs(self.app.stop_button, self.buttons["停止监测"][0])
-        self.assertIs(self.app.scheduled_start_button, self.buttons["自动提交（未接入）"][0])
+        self.assertIs(self.app.scheduled_start_button, self.buttons["提交未接入"][0])
         self.assertIs(self.app.scheduled_stop_button, self.buttons["取消计划"][0])
 
     def test_statuses_and_copy_shortcuts_keep_existing_variables_and_behavior(self):
