@@ -203,3 +203,49 @@ attestation:
 #     proxy: "socks5h://127.0.0.1:1080"
 #     targets:
 #       - {key: b1, course_id: "K0012346", class_id: "3141592653590"}
+
+# ---------------------------------------------------------------------------
+# 写阶段突发（抢课）：独立于监控读取的 30 s 下限
+# ---------------------------------------------------------------------------
+# strategy.interval_range / monitor_policy 管的是“读取监测”，默认 30 s 一次，
+# 因为监测跑几小时、每次多读都是净成本。抢课的窗口只有几十秒，每次尝试只是
+# 一个很小的 POST，两者不能共用一个旋钮，否则要么监测被拖慢，要么抢课被限死。
+# 这一节只管写阶段，执行器在 core/multi_account_run.py。
+#
+# 生效间隔 = max(min_interval, window_seconds / window_requests)
+# 单账号速率上限 = min(60/生效间隔, window_requests * 60/window_seconds)
+#
+# 三档预设（--preset 可覆盖）：
+#   safe     并发 2，间隔 1.00 s，60 s/60 次   → 约 60 次/分/账号
+#   standard 并发 8，间隔 0.25 s，60 s/150 次  → 约 150 次/分/账号（默认）
+#   extreme  并发 16，间隔 0.08 s，60 s/600 次 → 约 600 次/分/账号
+# 串行基线（1 并发 / 30 s）只有 2 次/分，standard 单账号已是 75 倍。
+rush:
+  preset: standard
+  # concurrency 是整个进程的在途上限（所有账号合计），不是单账号；
+  # 单账号的公平份额 = concurrency // 账号数，至少 1，防止一个账号吃满。
+  concurrency: 8
+  # 单账号两次发送的最小间隔；下限 0.05 s，上限 5 s。
+  min_interval: 0.25
+  window_seconds: 60
+  window_requests: 150
+  # 多账号起步错峰，避免同一毫秒齐发（也是同一出口时的自然去相关）。
+  stagger_ms: 120
+  # 单个目标的总尝试次数与指数退避（含抖动），4xx/5xx 分类见执行器。
+  max_attempts: 60
+  backoff_base: 0.25
+  backoff_cap: 4.0
+  backoff_jitter: 0.2
+  # 连续多少次限流/网络失败后熔断该账号（验证码一次即熔断，不在此列）。
+  circuit_breaker: 8
+  # 整场突发的硬截止；到点后未开始的目标记为 skipped_deadline。
+  deadline_seconds: 180
+  # 服务端 Retry-After 的最大兑现时长，防止一个异常头把整场拖死。
+  retry_after_cap: 30
+  # 让读取轮询也按突发间隔走（默认 false，仍用 strategy.interval_range 的
+  # 30 s 下限）。监测跑几小时、每次多读都是净成本，所以这条必须显式打开：
+  # 抢课窗口里 30 s 一次读，等看到座位时座位已经没了。
+  drive_read_cadence: false
+  # 真实执行时每个账号各自的会话工厂（"模块:函数"，收到 AccountPlan，
+  # 返回带 submit()/aclose() 的对象）。缺省即该账号报 no_session，不会被联系。
+  # session_factory: "my_adapter:make_session"

@@ -19,6 +19,7 @@ from .monitor_state import MonitorStateStore
 from .monitor_policy import validate_limits
 from .adaptive_read_cadence import AdaptiveReadCadence
 from .selection_optim import PollingSchedule
+from .rush_read import build_rush_read
 from .release_watch import (
     NotificationLedger, WatchState, apply_observations, observe_all, target_matches,
 )
@@ -48,6 +49,9 @@ class Scheduler:
         self.pickup = (PollingSchedule.from_config(self.strategy)
                        if isinstance(pickup_cfg, dict) and pickup_cfg.get("enabled") is True
                        else None)
+        # Opt-in burst cadence for the write window. Absent or disabled keeps
+        # the declared monitor range untouched (30 s floor included).
+        self.rush = build_rush_read(config)
         self.states = {item["key"]: "待监测" for item in config["courses"]}
         state_file = self.strategy.get("state_file", "")
         self._state_store = MonitorStateStore(state_file) if state_file else None
@@ -156,11 +160,16 @@ class Scheduler:
             return True
 
     def _next_interval(self, limits) -> float:
-        """Random jitter normally; a precise cadence inside a pickup peak.
+        """Burst cadence when opted in, otherwise jitter inside the range.
 
+        ``rush.drive_read_cadence`` deliberately goes below ``limits.low``: the
+        monitor floor exists to spare a system that is polled for hours, and a
+        grab window is the one case where the floor is what loses the seat.
         A peak window may only tighten polling down to the configured floor and
         may never leave the operator-approved range.
         """
+        if self.rush is not None:
+            return self.rush.next_interval()
         if self.pickup is None:
             baseline = random.uniform(limits.low, limits.high)
         else:

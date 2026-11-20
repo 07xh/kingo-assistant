@@ -80,6 +80,11 @@ def validate(config: dict, check_only: bool = False, *,
         # any request is attempted. Offline only: no file is created.
         from core.multi_account_plan import build_account_plans
         build_account_plans(config)
+    if config.get("rush") is not None:
+        # The burst block is validated here too, so a typo in "rush" is caught
+        # offline instead of at the first submit of the window.
+        from core.rush_profile import from_mapping
+        from_mapping(config.get("rush"))
 
 
 def display_official_entries(*, probe: bool = False) -> None:
@@ -296,6 +301,8 @@ def main() -> int:
                         help="配合 --har-form：已核验的账号范围/学期/学号/学年/学期码/轮次")
     parser.add_argument("--har-json", action="store_true",
                         help="配合 --har-form：只输出 JSON")
+    parser.add_argument("--multi-run", nargs=argparse.REMAINDER, metavar="ARG",
+                        help="多账号并发抢课（写阶段）：--multi-run --dry-run|--live|--bench [...]")
     args = parser.parse_args()
     messages = deque(maxlen=5)
     logger.remove()
@@ -305,6 +312,12 @@ def main() -> int:
                format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}")
     logger.add(lambda msg: messages.append(str(msg).strip()), format="{time:HH:mm:ss} | {message}")
     try:
+        if args.multi_run is not None:
+            # Write-phase burst: its own cadence, its own budget, its own
+            # argparse. It never falls through to the read-only validator,
+            # whose dry_run requirement belongs to the monitor path.
+            from core.multi_account_cli import main as multi_run_main
+            return multi_run_main(["-c", args.config, *args.multi_run])
         if args.har_form:
             # Local files only; no config, no network, no submission.
             if not (args.har_file and args.har_evidence):

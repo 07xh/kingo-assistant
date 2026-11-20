@@ -79,11 +79,11 @@ class AccountPlan:
             raise PlanError("预算数据库必须是 Path")
         if not self.targets:
             raise PlanError(f"账号 {self.name} 没有目标")
-        if self.max_concurrency != 1:
-            # The cross-process lease is a single-holder lock. Allowing >1 here
-            # would silently weaken the guarantee the rest of the client relies
-            # on; the opt-in patch tool owns that decision, not this planner.
-            raise PlanError("多账号规划只接受 max_concurrency=1")
+        if type(self.max_concurrency) is not int or not 1 <= self.max_concurrency <= 16:
+            # Each account owns a separate database file, so >1 here is a
+            # per-account burst, not a shared-lease violation. The ceiling is
+            # the same one ``RequestPolicy`` enforces.
+            raise PlanError("账号并发数必须是 1–16 的整数")
 
     @property
     def egress(self) -> str:
@@ -242,7 +242,7 @@ def build_account_plans(config: Mapping[str, Any]) -> list[AccountPlan]:
             targets=tuple(targets),
             proxy=proxy,
             windows=windows,
-            max_concurrency=1,
+            max_concurrency=section.get("max_concurrency", 1),
             policy_source=str(shared_policy.get("source") or ""),
             notes=str(section.get("notes") or ""),
         ))
