@@ -27,7 +27,7 @@ _CONTENT_TYPE = "application/x-www-form-urlencoded; charset=GBK"
 _REQUIRED = ("xh", "xn", "xq", "lcid", "xktype", "hidOption", "items")
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, repr=False)
 class PreparedNCWUSubmission:
     """An externally VERIFIED first-party write form, not a captured cookie.
 
@@ -46,6 +46,11 @@ class PreparedNCWUSubmission:
     selected_item: str
     item_binding_sha256: str
 
+    def __repr__(self) -> str:
+        # Form fields contain personal identifiers and session-bound selection
+        # data. Never put them into exception logs or debug output.
+        return "PreparedNCWUSubmission(<redacted>)"
+
     def __post_init__(self) -> None:
         if not isinstance(self.fields, tuple) or not 6 <= len(self.fields) <= 100:
             raise ValueError("选课表单字段数量不符合当前官网契约")
@@ -57,7 +62,8 @@ class PreparedNCWUSubmission:
                 raise ValueError("选课表单必须是原站字段的有序键值对")
             key, value = pair
             if (not key.isascii() or not key.replace("_", "").isalnum()
-                    or len(key) > 64 or len(value) > 1024 or "\\x00" in value):
+                    or len(key) > 64 or len(value) > 1024
+                    or any(ord(ch) < 32 or ord(ch) == 127 for ch in value)):
                 raise ValueError("选课字段名或值异常")
             names.append(key)
             values[key] = value
