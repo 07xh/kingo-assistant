@@ -1249,8 +1249,10 @@ class Application(tk.Tk):
             self._live_target_review_button.configure(state="disabled")
         # Reuse the same read-only comparison in the main course grid;
         # no second HTTP request and no inferred class/seat availability.
-        if report is not None:
-            self.apply_live_target_rows(report)
+        if (report is not None
+                and isinstance(self.__dict__.get("_display_courses"), dict)
+                and hasattr(self, "table")):
+            Application.apply_live_target_rows(self, report)
         table = self._live_catalog_tree
         for iid in table.get_children():
             table.delete(iid)
