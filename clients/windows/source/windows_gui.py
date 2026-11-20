@@ -410,6 +410,11 @@ class Application(tk.Tk):
             format_ncwu_gate_details(
                 getattr(self, "attestations", None),
                 adapter_installed=getattr(self, "_engine_factory", None) is not None,
+                native_session_verified=bool(
+                    self.__dict__.get("_native_verified_user_code")
+                    and self.__dict__.get("_native_session_cookie")
+                    and self.__dict__.get("_native_session_origin") == "jwmis.ncwu.edu.cn"
+                ),
             ),
         )
 
