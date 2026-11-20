@@ -17,7 +17,7 @@ class SimpleNavigationTests(TestCase):
         frame.winfo_manager.return_value = ""
         app = SimpleNamespace(
             notebook=Mock(), tab_tools=tools,
-            advanced_panel=frame, log_frame=Mock(),
+            advanced_panel=frame, tools_operations=Mock(),
         )
         Application.toggle_advanced_panel(app)
         app.notebook.select.assert_called_once_with(tools)

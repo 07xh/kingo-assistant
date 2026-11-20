@@ -33,18 +33,13 @@ class PageLayoutExtractionTests(TestCase):
              patch("windows_page_sections.ttk.LabelFrame",
                    side_effect=label_frame), \
              patch("windows_page_sections.ttk.Button") as button, \
-             patch("windows_page_sections.ttk.Entry") as entry, \
-             patch("windows_page_sections.tk.Text") as text:
+             patch("windows_page_sections.ttk.Entry") as entry:
             build_tools_page(self.app)
-        self.assertEqual(len(boxes), 3)
+        self.assertEqual(len(boxes), 2)
         self.assertIs(self.app.tools_operations, boxes[0][0])
         self.assertIs(self.app.advanced_panel, boxes[1][0])
-        self.assertIs(self.app.log_frame, boxes[2][0])
         self.app.advanced_panel.pack.assert_not_called()
-        self.app.log_frame.pack.assert_called_once()
-        text.assert_called_once_with(
-            self.app.log_frame, height=7, state="disabled", wrap="word")
-        self.assertIs(self.app.log_box, text.return_value)
+        self.assertNotIn("log_box", self.app.__dict__)
         self.assertIs(self.app.config_entry, entry.return_value)
         self.assertEqual(entry.call_count, 2)
         entry.assert_any_call(
@@ -64,6 +59,7 @@ class PageLayoutExtractionTests(TestCase):
             "核验已选课程结果网页（只读）": "check_known_school_results",
             "读取华水 S202 已选结果（只读）": "check_s202_selected_results",
             "读取本学期开课计划（只读快照）": "check_course_plan",
+            "读取本人课表（既有接口 · 只读）": "check_known_timetable",
             "读取本人教务课表 AJAX（只读）": "check_lesson_detail",
             "核对当前 S202 轮次（只读）": "check_s202_round",
             "核对本人已选门数（只读）": "check_personal_s202_score",
@@ -73,7 +69,6 @@ class PageLayoutExtractionTests(TestCase):
             "核对提交 HTML／JS（离线）": "inspect_ncwu_static_submit_files",
             "检查自动选课计划（离线）": "inspect_scheduled_runner",
             "展开 / 收起高级配置": "toggle_advanced_panel",
-            "导出本机运行日志": "export_log",
         }
         for title, owner_method in expected.items():
             with self.subTest(title=title):

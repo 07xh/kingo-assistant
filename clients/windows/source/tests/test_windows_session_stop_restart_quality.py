@@ -69,14 +69,14 @@ class SessionLifecycleQualityTests(TestCase):
         loader.assert_not_called()
         thread.assert_not_called()
 
-    def test_native_login_waits_for_opted_in_refresh_before_asking_password(self):
+    def test_native_login_waits_for_opted_in_refresh_before_reading_form(self):
         current = app()
         current._live_polling = True
-        with patch("windows_gui.read_config") as loader, \
-             patch("windows_gui.simpledialog.askstring") as prompt:
+        current.login_password = Mock()
+        with patch("windows_gui.read_config") as loader:
             Application.start_native_login(current)
         loader.assert_not_called()
-        prompt.assert_not_called()
+        current.login_password.get.assert_not_called()
 
     def test_clear_during_auto_refresh_stops_future_cycles_but_not_inflight_read(self):
         current = app()

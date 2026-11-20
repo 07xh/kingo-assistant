@@ -13,31 +13,35 @@ from windows_visual_shell import (
 class ThemeConfigurationTests(TestCase):
     def test_theme_keeps_the_tab_strip_visible_and_styles_the_cta(self):
         owner = Mock()
+        owner.winfo_fpixels.return_value = 96
         style = Mock()
         style.theme_names.return_value = ("default", "clam")
-        with patch("windows_visual_shell.ttk.Style", return_value=style):
+        with patch("windows_visual_shell.ttk.Style", return_value=style), \
+             patch("windows_visual_shell.font.nametofont"):
             apply_light_theme(owner)
         style.theme_use.assert_called_once_with("clam")
         # The previous shell hid the notebook strip with an empty layout.
         # Navigation is a real tab control again, so that call is a defect.
         style.layout.assert_not_called()
-        style.configure.assert_any_call(
-            "KingoPrimary.TButton", padding=(10, 5),
-            font=("Microsoft YaHei UI", 9, "bold"),
-            background=PALETTE["accent"], foreground=PALETTE["surface"],
-            bordercolor=PALETTE["accent"], borderwidth=1, relief="solid")
+        button = next(call for call in style.configure.call_args_list
+                      if call.args == ("KingoPrimary.TButton",))
+        self.assertEqual(button.kwargs["background"], PALETTE["accent"])
+        self.assertEqual(button.kwargs["foreground"], PALETTE["surface"])
+        self.assertEqual(button.kwargs["font"][0], "Microsoft YaHei UI")
         owner.configure.assert_called_once_with(bg=PALETTE["background"])
 
     def test_grid_density_and_tab_colours_are_pinned(self):
         owner = Mock()
+        owner.winfo_fpixels.return_value = 192
         style = Mock()
         style.theme_names.return_value = ("clam",)
-        with patch("windows_visual_shell.ttk.Style", return_value=style):
+        with patch("windows_visual_shell.ttk.Style", return_value=style), \
+             patch("windows_visual_shell.font.nametofont"):
             apply_light_theme(owner)
         treeview = next(
             call for call in style.configure.call_args_list
             if call.args and call.args[0] == "Treeview")
-        self.assertEqual(treeview.kwargs["rowheight"], 23)
+        self.assertEqual(treeview.kwargs["rowheight"], 46)
         self.assertEqual(treeview.kwargs["background"], PALETTE["surface"])
         heading = next(
             call for call in style.configure.call_args_list
@@ -54,6 +58,7 @@ class ThemeConfigurationTests(TestCase):
 class ShellConstructionTests(TestCase):
     def test_shell_owns_command_strip_status_cells_and_page_host(self):
         owner = Mock()
+        owner.winfo_fpixels.return_value = 96
         owner.status = "status-var"
         frames = []
         labels = []
@@ -105,13 +110,13 @@ class ShellConstructionTests(TestCase):
         self.assertEqual(
             [kwargs["text"] for _, kwargs in labels
              if "text" in kwargs][:2],
-            ["KingoAssistant", "华水选课助手 · 只读监测"])
+            ["华水选课助手", "S202 只读"])
 
     def test_tab_table_is_the_single_source_of_tab_captions(self):
         self.assertEqual([attribute for attribute, _ in TABS],
-                         ["tab_home", "tab_tools"])
+                         ["tab_home", "tab_tools", "tab_history", "tab_account", "tab_settings"])
         self.assertEqual([caption for _, caption in TABS], [
-            "选课工作台", "工具与日志",
+            "选课工作台", "教务与工具", "执行记录", "账号与登录", "抢课设置",
         ])
 
     def test_navigation_no_longer_depends_on_a_hidden_sidebar(self):
@@ -121,6 +126,7 @@ class ShellConstructionTests(TestCase):
         self.assertFalse(hasattr(module, "sync_sidebar"))
         self.assertNotIn("sidebar", module.PALETTE)
         owner = Mock()
+        owner.winfo_fpixels.return_value = 96
         owner.status = "status-var"
         with patch("windows_visual_shell.tk.Frame", Mock()), \
              patch("windows_visual_shell.tk.Label", Mock()), \

@@ -15,7 +15,7 @@ import threading
 import time
 import tkinter as tk
 from urllib.parse import urlsplit
-from tkinter import filedialog, messagebox, simpledialog, ttk
+from tkinter import filedialog, messagebox, ttk
 
 from loguru import logger
 
@@ -35,9 +35,11 @@ from windows_monitor_events import (
     format_official_probe_results, scheduled_reason_text,
 )
 from windows_readonly_widgets import _open_readonly_popup, _create_readonly_tree
-from windows_page_sections import build_home_page, build_tools_page
+from windows_page_sections import (
+    build_account_page, build_history_page, build_home_page, build_settings_page, build_tools_page,
+)
 from windows_visual_shell import (
-    DEFAULT_SIZE, MINIMUM_SIZE, TABS, apply_light_theme, make_visual_shell,
+    TABS, apply_light_theme, enable_windows_dpi, make_visual_shell, size_window,
     make_scrollable_content, bind_page_wheel, bind_responsive_shell,
 )
 from desktop_scheduled_worker import DesktopScheduledWorker
@@ -184,6 +186,7 @@ def _invalidate_native_session(app, message: str) -> None:
     app._native_session_origin = None
     app._native_verified_user_code = None
     app._pending_native_login_account = None
+    Application.clear_catalog(app)
     app.native_login_status.set(message)
     preparation_status = app.__dict__.get("native_preparation_status")
     if preparation_status is not None:
@@ -244,10 +247,10 @@ def _finish_ncwu_read_event(
 
 class Application(tk.Tk):
     def __init__(self):
+        enable_windows_dpi()
         super().__init__()
         self.title(APP_TITLE)
-        self.geometry("%dx%d" % DEFAULT_SIZE)
-        self.minsize(*MINIMUM_SIZE)
+        size_window(self)
         self.events: queue.Queue[MonitorEvent] = queue.Queue()
         self._tray = TrayController(lambda kind: self.events.put(MonitorEvent(kind)))
         self.worker: MonitorWorker | None = None
@@ -281,17 +284,13 @@ class Application(tk.Tk):
         self._course_plan_in_progress = False
         self._live_polling = False
         self._live_poll_timer = None
-        self._live_catalog_popup = None
-        self._live_catalog_tree = None
-        self._live_catalog_message = None
+        self._catalog_rows: tuple[tuple[str, ...], ...] = ()
         self._live_target_report = None
-        self._live_target_message = None
-        self._live_target_review_button = None
         self._native_session_cookie: str | None = None
         self._native_session_origin: str | None = None
         self.native_login_status = tk.StringVar(value="尚未登录｜已接入普通网页账号的签名协议，需本人实机验收")
         self.native_preparation_status = tk.StringVar(value="尚未通过 EXE 接口核验身份与课程目录")
-        self.live_catalog_status = tk.StringVar(value="实时 S202 查询：先登录本人账号，再点击读取；选课未开放也可查询页面")
+        self.live_catalog_status = tk.StringVar(value="登录后查询 S202 课程目录")
         self.s202_result_status = tk.StringVar(value="S202 官方已选结果页尚未读取；只读检查不能直接确认选课成功")
         self.s202_round_status = tk.StringVar(value="S202 本轮次尚未核对；选课未开放也可读取官方时间窗信息")
         self.s202_score_status = tk.StringVar(value="S202 已选门数尚未核对；汇总数量不代表目标教学班已选中")
@@ -323,27 +322,29 @@ class Application(tk.Tk):
         """Mount the compact shell on the current API-only Application."""
         apply_light_theme(self)
         main = make_visual_shell(self)
+        ttk.Button(self.toolbar, text="打开配置", command=self.pick_config).pack(
+            side="left", padx=(0, 4))
+        ttk.Button(self.toolbar, text="检查配置", command=self.check_config).pack(
+            side="left")
         ttk.Button(
             self.toolbar_extras, text="使用说明", command=self.show_function_guide,
             style="KingoQuiet.TButton",
         ).pack(side="right")
 
         self.notebook = ttk.Notebook(main, style="Kingo.Content.TNotebook")
-        self.tab_home = ttk.Frame(self.notebook)
-        self.tab_tools = ttk.Frame(self.notebook)
         for attribute, caption in TABS:
-            self.notebook.add(getattr(self, attribute), text=caption)
+            tab = ttk.Frame(self.notebook)
+            setattr(self, attribute, tab)
+            self.notebook.add(tab, text=caption)
         self.notebook.pack(fill="both", expand=True)
 
-        self._home_footer = ttk.Frame(self.tab_home)
-        self._home_footer.pack(side="bottom", fill="x")
-        self._home_content, self.home_scroll_canvas, self.home_scrollbar = (
-            make_scrollable_content(self.tab_home))
         self._tools_content, self.tools_scroll_canvas, self.tools_scrollbar = (
             make_scrollable_content(self.tab_tools))
         build_home_page(self)
+        build_account_page(self)
+        build_history_page(self)
+        build_settings_page(self)
         build_tools_page(self)
-        bind_page_wheel(self.home_scroll_canvas, self._home_content)
         bind_page_wheel(self.tools_scroll_canvas, self._tools_content)
         bind_responsive_shell(self)
 
@@ -353,7 +354,7 @@ class Application(tk.Tk):
             self.advanced_panel.pack_forget()
         else:
             self.advanced_panel.pack(
-                fill="x", before=self.log_frame, padx=10, pady=(0, 8))
+                fill="x", after=self.tools_operations, padx=10, pady=(0, 8))
 
     def show_function_guide(self) -> None:
         """Plain-language capability legend. No network or hidden actions."""
@@ -366,7 +367,7 @@ class Application(tk.Tk):
             "不会提交选课；需要真实接口核验后才能启动。\n\n"
             "自动提交：目前未接入华水真实选课接口，按钮保持禁用。\n\n"
             "正式方案为 EXE 内纯 HTTP 登录与提交；未验收的提交接口保持禁用。\n\n"
-            "工具与日志：本机诊断、模拟测试和高级配置，"
+            "教务与工具：本机诊断、模拟测试和高级配置，"
             "不代表学校接口已经接通。",
         )
 
@@ -401,17 +402,21 @@ class Application(tk.Tk):
         )
 
     def log(self, message: str) -> None:
-        self.log_box.configure(state="normal")
-        self.log_box.insert("end", time.strftime("%H:%M:%S") + "  " + message + "\n")
-        self.log_box.see("end")
-        self.log_box.configure(state="disabled")
+        line = time.strftime("%H:%M:%S") + "  " + message + "\n"
+        for view in (self.log_box, self.execution_log):
+            view.configure(state="normal")
+            view.insert("end", line)
+            view.see("end")
+            view.configure(state="disabled")
 
-    def edit_settings(self) -> None:
+    def edit_settings(self, *, course: dict | None = None) -> None:
         if self.worker or self.__dict__.get("scheduled_worker"):
             messagebox.showinfo("请先停止监测", "运行期间无法修改配置，请先停止当前任务。")
             return
         try:
-            SettingsEditor(self, Path(self.path.get()), self.check_config)
+            editor = SettingsEditor(self, Path(self.path.get()), self.check_config)
+            if course is not None:
+                editor.add_course(course)
         except (ValueError, OSError, KeyError) as exc:
             self.log("配置编辑器无法启动：" + type(exc).__name__)
             messagebox.showerror("无法打开编辑器", "配置文件结构可能损坏，请先点击检查配置。")
@@ -564,6 +569,12 @@ class Application(tk.Tk):
         # an opt-in refresh timer between requests) may use it.
         if _ncwu_read_busy(self, include_polling=True):
             return
+        username = self.login_username.get().strip()
+        password = self.login_password.get()
+        self.login_password.set("")
+        if not username or not password:
+            self.native_login_status.set("请输入学工号和密码")
+            return
         try:
             config = read_config(Path(self.path.get()), offline=True)
         except (ValueError, TypeError, KeyError, OSError):
@@ -573,18 +584,10 @@ class Application(tk.Tk):
         if code is not None:
             self.native_login_status.set(NativeLoginResult(code).message)
             return
-        username = simpledialog.askstring("EXE 内登录", "本人官方账号：", parent=self)
-        if username is None:
-            return
-        password = simpledialog.askstring(
-            "EXE 内登录", "官方密码（仅用于本次请求，不会保存）：",
-            show="*", parent=self,
-        )
-        if password is None:
-            return
         self._native_session_cookie = None
         self._native_session_origin = None
         self._native_verified_user_code = None
+        Application.clear_catalog(self)
         # The network login verifies YearTerm.userCode against this account
         # before any result can be considered a verified EXE session.
         self._pending_native_login_account = username
@@ -623,6 +626,16 @@ class Application(tk.Tk):
         self._pending_native_login_account = None
         self.native_login_status.set("已清除 EXE 内存会话；这不代表学校服务端注销")
         self.native_preparation_status.set("会话已清除，接口核验结果失效")
+        Application.clear_catalog(self)
+
+    def refresh_account_view(self, *_args) -> None:
+        account = self._native_verified_user_code
+        masked = "••••" + account[-4:] if account and len(account) > 4 else "—"
+        values = (masked, "教务密码", "已核验" if account else "未登录", "仅本次")
+        if self.account_table.exists("current"):
+            self.account_table.item("current", values=values)
+        else:
+            self.account_table.insert("", "end", iid="current", values=values)
 
     def check_known_timetable(self) -> None:
         """Read the previously observed school timetable route, not electives."""
@@ -1174,7 +1187,7 @@ class Application(tk.Tk):
         if _ncwu_read_busy(self):
             return
         if not self._native_session_cookie or self._native_session_origin != "jwmis.ncwu.edu.cn":
-            self.live_catalog_status.set("请先点击「在 EXE 登录本人教务账号」")
+            self.live_catalog_status.set("请先在「账号与登录」页登录")
             return
         try:
             config = read_config(Path(self.path.get()), offline=True)
@@ -1200,7 +1213,7 @@ class Application(tk.Tk):
         self._live_poll_timer = None
         if timer is not None:
             self.after_cancel(timer)
-        self.live_poll_button.configure(text="开始自动刷新（≥60秒）")
+        self.live_poll_button.configure(text="自动刷新")
 
     def toggle_live_polling(self) -> None:
         """Opt-in, budget-gated polling. Never enabled by default."""
@@ -1229,77 +1242,74 @@ class Application(tk.Tk):
             self.stop_live_polling()
 
     def show_live_catalog_rows(self, result: LiveElectiveSnapshot) -> None:
-        """Reuse a single memory-only course table on repeated snapshots."""
-        popup = self._live_catalog_popup
-        if popup is None or not popup.winfo_exists():
-            popup = tk.Toplevel(self)
-            popup.title("华水 S202 · 实时课程目录（非已选结果）")
-            popup.geometry("1160x530")
-            popup.transient(self)
-            self._live_catalog_popup = popup
-            self._live_catalog_message = tk.StringVar(value="")
-            ttk.Label(
-                popup, textvariable=self._live_catalog_message, wraplength=1120,
-            ).pack(anchor="w", padx=12, pady=(12, 6))
-            target_header = ttk.Frame(popup, padding=(12, 0, 12, 8))
-            target_header.pack(fill="x")
-            self._live_target_message = tk.StringVar(
-                value="尚未与本地志愿关联；仅供课程目录核对")
-            ttk.Label(
-                target_header, textvariable=self._live_target_message,
-                wraplength=955, foreground="#41566c",
-            ).pack(side="left", fill="x", expand=True)
-            self._live_target_review_button = ttk.Button(
-                target_header, text="查看志愿候选分析",
-                command=self.show_live_target_review, state="disabled",
-            )
-            self._live_target_review_button.pack(side="right", padx=(8, 0))
-            columns = ("name", "code", "class_number", "teacher", "selection_status", "points", "target")
-            titles = ("课程名称", "课程代码", "显示班号", "教师", "选课状态", "选课币字段", "本地志愿（仅候选）")
-            widths = (210, 145, 135, 115, 145, 110, 160)
-            table = _create_readonly_tree(
-                popup, columns=columns, titles=titles, widths=widths,
-                minwidth=80, height=15,
-            )
-            scrollbar = ttk.Scrollbar(popup, orient="vertical", command=table.yview)
-            table.configure(yscrollcommand=scrollbar.set)
-            scrollbar.pack(side="right", fill="y", padx=(0, 10), pady=(0, 14))
-            table.pack(side="left", fill="both", expand=True, padx=(12, 0), pady=(0, 14))
-            self._live_catalog_tree = table
-        self._live_catalog_message.set(result.message)
+        """Put the verified snapshot and its local candidates in the workbench."""
         try:
             config = read_config(Path(self.path.get()), offline=True)
             report = compare_live_targets(result, config)
-            self._live_target_report = report
-            self._live_target_message.set(report.message.splitlines()[0])
-            self._live_target_review_button.configure(
-                state="normal" if report.targets else "disabled")
         except (ValueError, TypeError, KeyError, OSError):
             report = None
-            self._live_target_report = None
-            self._live_target_message.set(
-                "本地志愿配置无法读取或验证，仍可查看学校实时课程列表。")
-            self._live_target_review_button.configure(state="disabled")
-        # Reuse the same read-only comparison in the main course grid;
-        # no second HTTP request and no inferred class/seat availability.
-        if (report is not None
-                and isinstance(self.__dict__.get("_display_courses"), dict)
-                and hasattr(self, "table")):
+        self._live_target_report = report
+        self._live_target_review_button.configure(
+            state="normal" if report is not None and report.targets else "disabled")
+        if report is not None:
             Application.apply_live_target_rows(self, report)
-        table = self._live_catalog_tree
-        for iid in table.get_children():
-            table.delete(iid)
+
+        rows = []
         for index, course in enumerate(result.courses):
             marks = (
                 "、".join(report.row_marks[index])
                 if report is not None and index < len(report.row_marks)
                 else ""
             )
-            table.insert("", "end", values=(
+            rows.append((
                 course.course_name, course.course_code, course.class_number,
                 course.teacher, course.selection_status, course.points_label,
                 ("课程候选：" + marks) if marks else "",
             ))
+        self._catalog_rows = tuple(rows)
+        Application.render_catalog_rows(self)
+
+    def render_catalog_rows(self, *_args) -> None:
+        """Filter the last snapshot locally, including when a timer refreshes it."""
+        table = self._live_catalog_tree
+        table.delete(*table.get_children())
+        course = self.course_filter.get().strip().casefold()
+        teacher = self.teacher_filter.get().strip().casefold()
+        shown = 0
+        for index, row in enumerate(self._catalog_rows):
+            name, code, _, instructor, *_ = row
+            if (course and course not in name.casefold() and course not in code.casefold()
+                    or teacher and teacher not in instructor.casefold()):
+                continue
+            table.insert("", "end", iid=str(index), values=row)
+            shown += 1
+        self.catalog_count.set(f"显示 {shown} / {len(self._catalog_rows)} 门")
+        Application.update_catalog_selection(self)
+
+    def update_catalog_selection(self, _event=None) -> None:
+        selected = self._live_catalog_tree.selection()
+        available = bool(selected and self._catalog_rows[int(selected[0])][1])
+        self.add_catalog_course_button.configure(
+            state="normal" if available else "disabled")
+
+    def add_catalog_course(self) -> None:
+        selected = self._live_catalog_tree.selection()
+        if not selected:
+            return
+        name, code, _, teacher, *_ = self._catalog_rows[int(selected[0])]
+        if code:
+            self.edit_settings(course={
+                "course_id": code, "course_name": name, "teacher": teacher,
+            })
+
+    def clear_catalog(self) -> None:
+        if "_live_catalog_tree" not in self.__dict__:
+            return
+        self._catalog_rows = ()
+        self._live_target_report = None
+        self._live_target_review_button.configure(state="disabled")
+        self.live_catalog_status.set("登录后查询 S202 课程目录")
+        self.render_catalog_rows()
 
     def apply_live_target_rows(self, report) -> None:
         """Show fresh S202 course candidates in the existing Home target grid.
@@ -1337,7 +1347,7 @@ class Application(tk.Tk):
             return
         messagebox.showinfo(
             "S202 正选列表 × 本地志愿（只读分析）",
-            report.message, parent=self._live_catalog_popup,
+            report.message, parent=self,
         )
 
     def check_native_preparation(self) -> None:
@@ -1509,6 +1519,15 @@ class Application(tk.Tk):
     def populate(self, config: dict) -> None:
         self.table.delete(*self.table.get_children())
         self._display_courses = {}
+        plan_summary = self.__dict__.get("plan_summary")
+        if plan_summary is not None and "strategy" in config:
+            strategy = config["strategy"]
+            target = str(strategy.get("target_time") or "").strip()
+            plan_summary.set(f"计划时间  {target}" if target else "计划时间  未指定")
+            low, high = strategy["interval_range"]
+            duration = strategy.get("max_duration_minutes", 480)
+            self.monitor_settings_summary.set(
+                f"学期  {config['xnxq']}    查询间隔  {low}–{high} 秒    最长监测  {duration} 分钟")
         for item in config["courses"]:
             key = str(item["key"])
             self._display_courses[key] = dict(item)
@@ -2141,28 +2160,23 @@ def run_packaged_gui_smoke() -> None:
                     raise AssertionError("Expected two placeholder courses in packaged template")
                 if not app.toolbar.winfo_exists() or not app.status_bar.winfo_exists():
                     raise AssertionError("Desktop command strip or status bar missing")
-                if app.minsize() != MINIMUM_SIZE:
-                    raise AssertionError("Compact window minimum size regressed")
-                for canvas, content in (
-                    (app.home_scroll_canvas, app._home_content),
-                    (app.tools_scroll_canvas, app._tools_content),
-                ):
-                    if not canvas.winfo_exists() or not content.winfo_exists():
-                        raise AssertionError("Scrollable page missing in frozen Tk GUI")
-                    if not str(canvas.cget("yscrollcommand")):
-                        raise AssertionError("Scrollable page has no linked scrollbar")
+                if not str(app.tools_scroll_canvas.cget("yscrollcommand")):
+                    raise AssertionError("Tools page has no linked scrollbar")
                 if not app.table.winfo_exists() or not app.log_box.winfo_exists():
                     raise AssertionError("Scrollable pages lost their original controls")
-                if len(app.notebook.tabs()) != 2 or app.notebook.index("current") != 0:
-                    raise AssertionError("Expected only the API workbench and tools tabs")
+                captions = tuple(app.notebook.tab(tab, "text") for tab in app.notebook.tabs())
+                if captions != tuple(caption for _, caption in TABS) or app.notebook.index("current") != 0:
+                    raise AssertionError("Expected the workbench and its supporting tabs")
                 app.notebook.select(app.tab_tools)
                 app.update()
                 if app.notebook.select() != str(app.tab_tools):
                     raise AssertionError("Tools tab failed to navigate")
                 app.notebook.select(app.tab_home)
                 app.update()
-                if app.scheduled_start_button.master.master != app._home_footer:
-                    raise AssertionError("Submission gate must stay outside the scrolling content")
+                for control in (app._live_catalog_tree, app.table, app.log_box,
+                                app.start_button, app.scheduled_start_button):
+                    if not str(control).startswith(str(app.tab_home) + "."):
+                        raise AssertionError("Core controls must stay on the workbench")
                 if app.scheduled_start_button.cget("style") == "KingoPrimary.TButton":
                     raise AssertionError("Unverified submit must not appear as primary action")
                 # Regression for PR #19/#20 GUI composition: main previously
@@ -2171,8 +2185,8 @@ def run_packaged_gui_smoke() -> None:
                     raise AssertionError("Typed plan preflight entry not mounted in main UI")
                 if str(app.scheduled_start_button.cget("state")) != "disabled":
                     raise AssertionError("Unverified live enrollment must never be enabled")
-                if app.native_login_button.winfo_manager() != "pack":
-                    raise AssertionError("In-EXE login button missing from primary Windows UI")
+                if not str(app.native_login_button).startswith(str(app.tab_account) + "."):
+                    raise AssertionError("Account tab must contain the inline login form")
                 if app.native_prepare_button.winfo_manager() != "pack":
                     raise AssertionError("Native identity/catalog API check not mounted")
                 if app.timetable_read_button.winfo_manager() != "pack":
@@ -2207,19 +2221,15 @@ def run_packaged_gui_smoke() -> None:
                     app.check_known_year_term()
                 if "旧 HAR" not in app.term_probe_status.get():
                     raise AssertionError("Unverified term probe must stop without network")
-                # Clicking native login can now collect credentials, but a
-                # cancelled account prompt must never issue network requests.
-                with patch.object(simpledialog, "askstring", return_value=None) as prompt, \
-                     patch("core.ncwu_signed_login.httpx.AsyncClient",
-                           side_effect=AssertionError("cancelled login attempted network")):
+                with patch("core.ncwu_signed_login.httpx.AsyncClient",
+                           side_effect=AssertionError("empty login attempted network")):
                     app.start_native_login()
-                    prompt.assert_called_once()
+                if app.native_login_status.get() != "请输入学工号和密码":
+                    raise AssertionError("Empty login form must ask for credentials")
                 if app._native_session_cookie is not None:
                     raise AssertionError("Unverified login must not produce a session")
                 if app.notebook.index("current") != 0:
                     raise AssertionError("The first tab must be the selection homepage")
-                if not str(app.log_box).startswith(str(app.tab_tools) + "."):
-                    raise AssertionError("Developer log must belong only to Tools tab")
                 if app.status_bar.winfo_manager() != "pack":
                     raise AssertionError("The live status footer must remain visible")
                 with patch("core.client.httpx.AsyncClient", side_effect=AssertionError("network attempted")):

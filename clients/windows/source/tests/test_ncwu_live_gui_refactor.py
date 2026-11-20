@@ -92,7 +92,7 @@ class LiveCatalogGuiRefactorTests(TestCase):
         self.assertIsNone(app._native_session_origin)
         self.assertFalse(app._live_polling)
         app.live_poll_button.configure.assert_called_once_with(
-            text="开始自动刷新（≥60秒）")
+            text="自动刷新")
         app.show_live_catalog_rows.assert_not_called()
         self.assertFalse(any(
             call.args and call.args[0] == 60_000

@@ -16,6 +16,9 @@ class ResponsiveShellTests(TestCase):
         owner.winfo_height.return_value = height
         owner.tab_home.winfo_children.return_value = []
         owner.tab_tools.winfo_children.return_value = []
+        owner.tab_history.winfo_children.return_value = []
+        owner.tab_account.winfo_children.return_value = []
+        owner.tab_settings.winfo_children.return_value = []
         return owner
 
     def test_minimum_width_reserves_space_for_status_cells(self):

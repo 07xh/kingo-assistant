@@ -15,8 +15,9 @@ from main import validate
 
 
 class CourseDialog(simpledialog.Dialog):
-    def __init__(self, parent, existing: dict | None = None):
-        self.existing = deepcopy(existing or {})
+    def __init__(self, parent, existing: dict | None = None, *, initial: dict | None = None):
+        initial_course = existing if existing is not None else initial
+        self.existing = deepcopy(initial_course or {})
         self.values = {}
         self.result = None
         super().__init__(parent, title="编辑课程" if existing else "新增课程")
@@ -202,11 +203,11 @@ class SettingsEditor(tk.Toplevel):
         selection = self.table.selection()
         return int(selection[0]) if selection else None
 
-    def add_course(self):
+    def add_course(self, initial: dict | None = None):
         if len(self.courses) >= 30:
             messagebox.showwarning("数量已达上限", "最多配置 30 门课程", parent=self)
             return
-        dialog = CourseDialog(self)
+        dialog = CourseDialog(self, initial=initial)
         if dialog.result:
             self.courses.append(dialog.result)
             self.refresh_table()
