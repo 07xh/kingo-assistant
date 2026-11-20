@@ -17,6 +17,7 @@ def app_fixture():
         _session_check_in_progress=False,
         _native_session_cookie="JSESSIONID=LOCAL_SYNTHETIC",
         _native_session_origin="jwmis.ncwu.edu.cn",
+        _native_verified_user_code="synthetic-account",
         _live_catalog_in_progress=False, _live_polling=False,
         _live_poll_timer=None, live_poll_button=Mock(),
         live_catalog_status=Mock(), live_catalog_button=Mock(),
