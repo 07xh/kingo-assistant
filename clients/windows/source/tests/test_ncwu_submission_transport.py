@@ -149,6 +149,33 @@ class SubmissionTransportTests(unittest.IsolatedAsyncioTestCase):
                 )
         self.assertEqual(self.calls, [])
 
+    async def test_prepared_form_redacts_identity_and_dynamic_selection_items(self):
+        rendered = repr(self.prepared)
+        self.assertEqual(rendered, "PreparedNCWUSubmission(<redacted>)")
+        for sensitive in (
+            "OWN-LOCAL-ID", "SERVER-GENERATED-OPTION",
+            "SERVER-GENERATED-SINGLE-ITEM", "ROUND-1",
+        ):
+            self.assertNotIn(sensitive, rendered)
+            self.assertNotIn(sensitive, str(self.prepared))
+
+    async def test_form_rejects_control_characters_without_school_requests(self):
+        for bad in ("HAS\\x00NULL", "HAS\\rCR", "HAS\\nLF", "HAS\\x7fDEL"):
+            # Use actual control characters, not an escaped textual sequence.
+            value = bad.encode("ascii").decode("unicode_escape")
+            fields = tuple(
+                (k, value) if k == "hidOption" else (k, v)
+                for k, v in self.form
+            )
+            with self.subTest(bad=repr(value)), self.assertRaises(ValueError):
+                PreparedNCWUSubmission(
+                    fields, "OWN-LOCAL-ID", "2026", "0", "ROUND-1",
+                    "COURSE-LOCAL", "INTERNAL-CLASS-ID",
+                    "SERVER-GENERATED-SINGLE-ITEM",
+                    sha256(self.evidence).hexdigest(),
+                )
+        self.assertEqual(self.calls, [])
+
     async def test_redirect_or_empty_response_is_unknown_not_retry(self):
         for status, body in ((302, b"redirect"), (200, b"")):
             self.calls.clear()

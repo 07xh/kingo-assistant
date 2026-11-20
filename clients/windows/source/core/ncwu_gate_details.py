@@ -20,7 +20,9 @@ _STATES = {
 }
 
 
-def format_ncwu_gate_details(registry, *, adapter_installed: bool) -> str:
+def format_ncwu_gate_details(
+    registry, *, adapter_installed: bool, native_session_verified: bool = False,
+) -> str:
     """Explain local blockers without reading account data or contacting NCWU."""
     states = {}
     if registry is not None:
@@ -37,6 +39,15 @@ def format_ncwu_gate_details(registry, *, adapter_installed: bool) -> str:
             f"{_STATES.get(states.get(gate, 'missing'), '状态未知')}"
         )
     lines.extend((
+        "",
+        "真实接口验收四阶段（与上方证据登记相互独立）：",
+        "① EXE 登录：" + (
+            "当前内存有身份回读记录及会话；仍需确认服务端有效性"
+            if native_session_verified else "待完成当前本人会话身份回读"
+        ),
+        "② 课程/教学班：仅有只读候选，内部教学班唯一映射未实测验收。",
+        "③ 正式提交：校方许可、真实单项表单及业务响应未验收。",
+        "④ 官方回读：已实现验证桥接器，权威精确读取器尚未接通。",
         "",
         "自动执行器：" + (
             "已注入，但仍须实机验收" if adapter_installed else "未接入"
