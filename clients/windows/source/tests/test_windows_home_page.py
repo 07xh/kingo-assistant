@@ -48,9 +48,9 @@ class HomePageViewTests(TestCase):
         self.assertEqual(
             [group[2]["text"] for group in self.groups],
             [
-                "第 1 步  ·  课程与志愿（本地可用）",
-                "第 2 步  ·  软件内登录（协议已接入 · 待实机验收）",
-                "第 3 步  ·  课程余量监测（只读）",
+                "课程计划",
+                "教务账号与课程数据",
+                "课程余量监测（只读）",
                 "目标课程列表 · 本地配置 / 只读状态",
             ],
         )
@@ -64,6 +64,7 @@ class HomePageViewTests(TestCase):
         self.assertEqual(tree.call_args.kwargs, {
             "columns": ("key", "course", "class_id", "teacher", "status"),
             "show": "headings",
+            "height": 7,
         })
         self.assertIs(tree.call_args.args[0], self.app.course_frame)
         scrollbar.assert_called_once()

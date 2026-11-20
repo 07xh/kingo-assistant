@@ -37,7 +37,7 @@ from windows_monitor_events import (
 from windows_readonly_widgets import _open_readonly_popup, _create_readonly_tree
 from windows_page_sections import build_home_page, build_tools_page
 from windows_visual_shell import (
-    apply_light_theme, make_visual_shell, connect_sidebar,
+    DEFAULT_SIZE, MINIMUM_SIZE, TABS, apply_light_theme, make_visual_shell,
     make_scrollable_content, bind_page_wheel, bind_responsive_shell,
 )
 from desktop_scheduled_worker import DesktopScheduledWorker
@@ -246,8 +246,8 @@ class Application(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title(APP_TITLE)
-        self.geometry("1100x740")
-        self.minsize(880, 560)
+        self.geometry("%dx%d" % DEFAULT_SIZE)
+        self.minsize(*MINIMUM_SIZE)
         self.events: queue.Queue[MonitorEvent] = queue.Queue()
         self._tray = TrayController(lambda kind: self.events.put(MonitorEvent(kind)))
         self.worker: MonitorWorker | None = None
@@ -308,7 +308,6 @@ class Application(tk.Tk):
         )
         self._build()
         menu = tk.Menu(self)
-        menu.add_command(label="工具与日志", command=lambda: self.notebook.select(self.tab_tools))
         app_menu = tk.Menu(menu, tearoff=False)
         app_menu.add_command(label="显示/隐藏高级配置", command=self.toggle_advanced_panel)
         app_menu.add_command(label="最小化到系统托盘", command=self.close)
@@ -321,51 +320,23 @@ class Application(tk.Tk):
         self.check_config()
 
     def _build(self) -> None:
-        """LightC-inspired compact shell around the unchanged business views."""
+        """Mount the compact shell on the current API-only Application."""
         apply_light_theme(self)
         main = make_visual_shell(self)
-
-        header = ttk.Frame(main, padding=(18, 16, 18, 12))
-        header.pack(fill="x")
         ttk.Button(
-            header, text="使用说明", command=self.show_function_guide,
+            self.toolbar_extras, text="使用说明", command=self.show_function_guide,
             style="KingoQuiet.TButton",
-        ).pack(side="right", padx=(10, 0), pady=(5, 0))
-        ttk.Label(
-            header, text="工作台  /  课程管理",
-            style="KingoSubtitle.TLabel",
-        ).pack(anchor="w")
-        ttk.Label(
-            header, text="KingoAssistant",
-            style="KingoTitle.TLabel",
-        ).pack(anchor="w", pady=(3, 0))
-        self.shell_subtitle = ttk.Label(
-            header,
-            text="原生登录与 S202 只读查询已实现 · 待本人账号验收  |  自动提交未接通",
-            style="KingoSubtitle.TLabel",
-        )
-        self.shell_subtitle.pack(anchor="w", pady=(6, 0))
+        ).pack(side="right")
 
-        # Stable footer is allocated before the expanding content; status
-        # remains the original Application StringVar, never copied to the shell.
-        self.status_bar = ttk.Label(
-            main, textvariable=self.status, style="KingoStatus.TLabel",
-            padding=(18, 11), wraplength=940,
-        )
-        self.status_bar.pack(side="bottom", fill="x", padx=13, pady=(5, 9))
-
-        # Keep Notebook and original page attributes for all callbacks/tests.
-        # Only the old tab strip is hidden; navigation lives in the sidebar.
         self.notebook = ttk.Notebook(main, style="Kingo.Content.TNotebook")
         self.tab_home = ttk.Frame(self.notebook)
         self.tab_tools = ttk.Frame(self.notebook)
-        self.notebook.add(self.tab_home, text="① 选课首页")
-        self.notebook.add(self.tab_tools, text="② 工具与日志")
-        self.notebook.pack(
-            fill="both", expand=True, padx=(11, 12), pady=(0, 4),
-        )
-        # Each long page scrolls independently. The Notebook pages remain
-        # original navigation targets for sidebar, menus and all callbacks.
+        for attribute, caption in TABS:
+            self.notebook.add(getattr(self, attribute), text=caption)
+        self.notebook.pack(fill="both", expand=True)
+
+        self._home_footer = ttk.Frame(self.tab_home)
+        self._home_footer.pack(side="bottom", fill="x")
         self._home_content, self.home_scroll_canvas, self.home_scrollbar = (
             make_scrollable_content(self.tab_home))
         self._tools_content, self.tools_scroll_canvas, self.tools_scrollbar = (
@@ -374,7 +345,6 @@ class Application(tk.Tk):
         build_tools_page(self)
         bind_page_wheel(self.home_scroll_canvas, self._home_content)
         bind_page_wheel(self.tools_scroll_canvas, self._tools_content)
-        connect_sidebar(self)
         bind_responsive_shell(self)
 
     def toggle_advanced_panel(self) -> None:
@@ -2103,9 +2073,9 @@ def run_packaged_gui_smoke() -> None:
                         raise AssertionError("Official entry inventory missing mobile app")
                 if len(app.table.get_children()) != 2:
                     raise AssertionError("Expected two placeholder courses in packaged template")
-                if not app.sidebar.winfo_exists():
-                    raise AssertionError("Compact visual sidebar missing")
-                if app.minsize() != (880, 560):
+                if not app.toolbar.winfo_exists() or not app.status_bar.winfo_exists():
+                    raise AssertionError("Desktop command strip or status bar missing")
+                if app.minsize() != MINIMUM_SIZE:
                     raise AssertionError("Compact window minimum size regressed")
                 for canvas, content in (
                     (app.home_scroll_canvas, app._home_content),
@@ -2117,22 +2087,16 @@ def run_packaged_gui_smoke() -> None:
                         raise AssertionError("Scrollable page has no linked scrollbar")
                 if not app.table.winfo_exists() or not app.log_box.winfo_exists():
                     raise AssertionError("Scrollable pages lost their original controls")
-                if set(app.sidebar_buttons) != {"home", "tools"}:
-                    raise AssertionError("Only API Home and Tools sidebar entries should exist")
-                if app.notebook.cget("style") != "Kingo.Content.TNotebook":
-                    raise AssertionError("Old top-tab layout still active")
-                if app.sidebar_buttons["home"].cget("bg") != "#4869E8":
-                    raise AssertionError("Home navigation should start selected")
-                app.sidebar_buttons["tools"].invoke()
+                if len(app.notebook.tabs()) != 2 or app.notebook.index("current") != 0:
+                    raise AssertionError("Expected only the API workbench and tools tabs")
+                app.notebook.select(app.tab_tools)
                 app.update()
                 if app.notebook.select() != str(app.tab_tools):
-                    raise AssertionError("Tools sidebar failed to navigate")
-                if app.sidebar_buttons["tools"].cget("bg") != "#4869E8":
-                    raise AssertionError("Tools active navigation highlight missing")
+                    raise AssertionError("Tools tab failed to navigate")
                 app.notebook.select(app.tab_home)
                 app.update()
-                if app.sidebar_buttons["home"].cget("bg") != "#4869E8":
-                    raise AssertionError("Sidebar must sync with existing Notebook changes")
+                if app.scheduled_start_button.master.master != app._home_footer:
+                    raise AssertionError("Submission gate must stay outside the scrolling content")
                 if app.scheduled_start_button.cget("style") == "KingoPrimary.TButton":
                     raise AssertionError("Unverified submit must not appear as primary action")
                 # Regression for PR #19/#20 GUI composition: main previously
@@ -2166,7 +2130,7 @@ def run_packaged_gui_smoke() -> None:
                 if not str(app.school_page_button).startswith(str(app.tab_tools) + "."):
                     raise AssertionError("Readback action must belong to Tools page only")
                 if app.notebook.select() != str(app.tab_home):
-                    raise AssertionError("Home must remain active after sidebar regression")
+                    raise AssertionError("The workbench tab must be active before the demo")
                 with patch("core.known_school_pages.httpx.AsyncClient",
                            side_effect=AssertionError("unverified result-page query attempted network")):
                     app.check_known_school_results()

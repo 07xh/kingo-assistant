@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from windows_gui import Application
+from windows_visual_shell import MINIMUM_SIZE, TABS
 from desktop_editor import SettingsEditor
 from core.desktop_settings import load_config
 
@@ -17,11 +18,15 @@ def main():
             app.withdraw()
             app.update()
             # Assert only Home and Tools layouts are attached to the Tk Application.
-            assert tuple(app.notebook.tab(tab, 'text') for tab in app.notebook.tabs()) == (
-                '① 选课首页', '② 工具与日志')
-            assert app.sidebar.winfo_exists()
+            assert tuple(app.notebook.tab(tab, 'text') for tab in app.notebook.tabs()) == tuple(
+                caption for _, caption in TABS)
+            assert app.toolbar.winfo_exists()
+            assert app.status_bar.winfo_exists()
             assert app.visual_content.winfo_exists()
-            assert app.minsize() == (880, 560)
+            assert app.minsize() == MINIMUM_SIZE
+            app.geometry('%dx%d' % MINIMUM_SIZE)
+            app.deiconify()
+            app.update()
             for viewport, body, bar in (
                 (app.home_scroll_canvas, app._home_content, app.home_scrollbar),
                 (app.tools_scroll_canvas, app._tools_content, app.tools_scrollbar),
@@ -36,8 +41,9 @@ def main():
             assert app.home_scroll_canvas.bbox('all') is not None
             app.home_scroll_canvas.yview_moveto(1)
             app.update_idletasks()
-            assert app.home_scroll_canvas.yview()[0] > 0, 'Home course table must be scroll-reachable'
             assert app.table.winfo_exists()
+            assert app.scheduled_start_button.winfo_ismapped()
+            assert app.scheduled_start_button.master.master == app._home_footer
             app.home_scroll_canvas.yview_moveto(0)
             app.notebook.select(app.tab_tools)
             app.update_idletasks()
@@ -49,17 +55,13 @@ def main():
             app.tools_scroll_canvas.yview_moveto(0)
             app.notebook.select(app.tab_home)
             app.update_idletasks()
-            assert set(app.sidebar_buttons) == {'home', 'tools'}
             assert app.notebook.cget('style') == 'Kingo.Content.TNotebook'
-            assert app.sidebar.winfo_width() <= 110
-            assert app.sidebar_buttons['home'].cget('bg') == '#4869E8'
-            app.sidebar_buttons['tools'].invoke()
+            assert app.notebook.select() == str(app.tab_home)
+            app.notebook.select(app.tab_tools)
             app.update()
             assert app.notebook.select() == str(app.tab_tools)
-            assert app.sidebar_buttons['tools'].cget('bg') == '#4869E8'
             app.notebook.select(app.tab_home)
             app.update()
-            assert app.sidebar_buttons['home'].cget('bg') == '#4869E8'
             assert app.edit_button.cget('style') == 'KingoPrimary.TButton'
             assert app.native_login_button.cget('style') == 'KingoPrimary.TButton'
             assert app.start_button.cget('style') == 'KingoPrimary.TButton'
