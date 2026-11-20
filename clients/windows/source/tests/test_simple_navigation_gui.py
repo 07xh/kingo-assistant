@@ -18,10 +18,12 @@ class SimpleNavigationTests(TestCase):
         app = SimpleNamespace(
             notebook=Mock(), tab_tools=tools,
             advanced_panel=frame, tools_operations=Mock(),
+            after_idle=Mock(), tools_scroll_canvas=Mock(),
         )
         Application.toggle_advanced_panel(app)
         app.notebook.select.assert_called_once_with(tools)
         frame.pack.assert_called_once()
+        app.after_idle.assert_called_once_with(app.tools_scroll_canvas.yview_moveto, 1)
 
     def test_function_guide_describes_each_capability_without_actions(self):
         with patch("windows_gui.messagebox.showinfo") as message:

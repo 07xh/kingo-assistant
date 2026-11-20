@@ -40,8 +40,9 @@ def build_home_page(app) -> None:
     """Keep consultation, targets, log and execution visible together."""
     body = ttk.Frame(app.tab_home, padding=(6, 5))
     body.pack(fill="both", expand=True)
-    body.rowconfigure(1, weight=3)
-    body.rowconfigure(3, weight=2)
+    scale = display_scale(app)
+    body.rowconfigure(1, weight=3, minsize=round(53 * scale))
+    body.rowconfigure(3, weight=2, minsize=round(184 * scale))
     body.columnconfigure(0, weight=1)
 
     query = ttk.Frame(body)
@@ -126,6 +127,10 @@ def build_home_page(app) -> None:
     plan.grid(row=0, column=2, sticky="nsew")
     app.plan_summary = tk.StringVar(master=app, value="尚未读取本机计划")
     ttk.Label(plan, textvariable=app.plan_summary, style="Muted.TLabel").pack(anchor="w")
+    app.enrollment_gate_status = tk.StringVar(master=app, value=app.enrollment_gate_label())
+    ttk.Label(plan, textvariable=app.enrollment_gate_status,
+              style="Muted.TLabel", wraplength=round(182 * scale)).pack(
+                  anchor="w", pady=(3, 2))
     app.action_panel = ttk.Frame(plan)
     app.action_panel.pack(side="bottom", fill="x")
     for col in (0, 1):
@@ -133,26 +138,22 @@ def build_home_page(app) -> None:
     app.start_button = ttk.Button(
         app.action_panel, text="开始余量监测", command=app.start_monitor,
         style="KingoPrimary.TButton")
-    app.start_button.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(3, 0))
+    app.start_button.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(3, 0))
     ttk.Button(app.action_panel, text="启动前检查", command=app.preflight).grid(
-        row=0, column=0, sticky="ew", padx=(0, 3))
+        row=2, column=0, sticky="ew", padx=(0, 3))
     app.stop_button = ttk.Button(
         app.action_panel, text="停止", command=app.stop_monitor, state="disabled")
-    app.stop_button.grid(row=0, column=1, sticky="ew")
+    app.stop_button.grid(row=2, column=1, sticky="ew")
 
-    app.enrollment_gate_status = tk.StringVar(master=app, value=app.enrollment_gate_label())
     app.enrollment_detail_button = ttk.Button(
-        plan, text="提交条件", command=app.show_enrollment_gate_details)
-    app.enrollment_detail_button.pack(anchor="w", pady=(3, 0))
-    ttk.Label(plan, textvariable=app.enrollment_gate_status,
-              style="Muted.TLabel", wraplength=round(182 * display_scale(app))).pack(
-                  anchor="w", pady=(3, 2))
+        app.action_panel, text="提交条件", command=app.show_enrollment_gate_details)
+    app.enrollment_detail_button.grid(row=0, column=0, sticky="ew", padx=(0, 3), pady=(0, 2))
     app.scheduled_start_button = ttk.Button(
-        plan, text="自动提交", command=app.start_scheduled_enrollment, state="disabled")
-    app.scheduled_start_button.pack(anchor="w", pady=(0, 2))
+        app.action_panel, text="自动提交", command=app.start_scheduled_enrollment, state="disabled")
+    app.scheduled_start_button.grid(row=1, column=0, sticky="ew", padx=(0, 3), pady=(0, 2))
     app.scheduled_stop_button = ttk.Button(
-        plan, text="取消自动计划", command=app.stop_scheduled_enrollment, state="disabled")
-    app.scheduled_stop_button.pack(anchor="w")
+        app.action_panel, text="取消自动计划", command=app.stop_scheduled_enrollment, state="disabled")
+    app.scheduled_stop_button.grid(row=1, column=1, sticky="ew", pady=(0, 2))
 
 
 def build_history_page(app) -> None:
@@ -232,7 +233,7 @@ def build_settings_page(app) -> None:
     for label, command in (
         ("编辑时间与监测参数", app.edit_settings),
         ("管理课程方案", app.manage_plans),
-        ("高级配置", app.toggle_advanced_panel),
+        ("高级配置", lambda: app.toggle_advanced_panel(show=True)),
     ):
         ttk.Button(actions, text=label, command=command).pack(side="left", padx=(0, 5))
 

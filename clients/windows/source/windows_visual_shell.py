@@ -56,15 +56,16 @@ def display_scale(widget) -> float:
     return widget.winfo_fpixels("1i") / 96
 
 
-def size_window(owner) -> None:
+def size_window(owner, default_size=DEFAULT_SIZE, minimum_size=MINIMUM_SIZE) -> None:
     scale = display_scale(owner)
     screen = (owner.winfo_screenwidth() - round(24 * scale),
               owner.winfo_screenheight() - round(80 * scale))
     width, height = (min(round(size * scale), limit)
-                     for size, limit in zip(DEFAULT_SIZE, screen))
+                     for size, limit in zip(default_size, screen))
     owner.geometry(f"{width}x{height}")
-    owner.minsize(*(min(round(size * scale), limit)
-                    for size, limit in zip(MINIMUM_SIZE, screen)))
+    if minimum_size is not None:
+        owner.minsize(*(min(round(size * scale), limit)
+                        for size, limit in zip(minimum_size, screen)))
 
 
 def apply_light_theme(owner) -> None:

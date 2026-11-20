@@ -348,13 +348,16 @@ class Application(tk.Tk):
         bind_page_wheel(self.tools_scroll_canvas, self._tools_content)
         bind_responsive_shell(self)
 
-    def toggle_advanced_panel(self) -> None:
+    def toggle_advanced_panel(self, *, show: bool = False) -> None:
+        visible = self.advanced_panel.winfo_manager()
         self.notebook.select(self.tab_tools)
-        if self.advanced_panel.winfo_manager():
+        if visible and not show:
             self.advanced_panel.pack_forget()
         else:
-            self.advanced_panel.pack(
-                fill="x", after=self.tools_operations, padx=10, pady=(0, 8))
+            if not visible:
+                self.advanced_panel.pack(
+                    fill="x", after=self.tools_operations, padx=10, pady=(0, 8))
+            self.after_idle(self.tools_scroll_canvas.yview_moveto, 1)
 
     def show_function_guide(self) -> None:
         """Plain-language capability legend. No network or hidden actions."""
@@ -612,6 +615,9 @@ class Application(tk.Tk):
 
     def clear_native_session(self) -> None:
         """Clear in-process credentials; this is not a verified server logout."""
+        password = self.__dict__.get("login_password")
+        if password is not None:
+            password.set("")
         # Stop future refreshes immediately, but do not invalidate the Cookie
         # while an already-started request might still be checking its result.
         if self.__dict__.get("_live_polling", False):

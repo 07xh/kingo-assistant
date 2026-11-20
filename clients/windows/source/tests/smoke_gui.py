@@ -33,6 +33,9 @@ def main():
                 assert widget.winfo_ismapped(), f'Minimum window hid {widget}'
                 assert widget.winfo_width() > 50 and widget.winfo_height() > 10
                 assert widget.winfo_rooty() + widget.winfo_height() <= app.status_bar.winfo_rooty()
+            for button in (app.start_button, app.stop_button,
+                           app.scheduled_start_button, app.scheduled_stop_button):
+                assert button.winfo_height() >= button.winfo_reqheight(), f'Minimum window clipped {button}'
             for tab, control in (
                 (app.tab_account, app.native_login_button),
                 (app.tab_history, app.execution_log),

@@ -54,6 +54,7 @@ class NativeLoginGuiTests(TestCase):
         with patch("windows_gui.threading.Thread") as thread:
             Application.clear_native_session(self.app)
         self.assertIsNone(self.app._native_session_cookie)
+        self.app.login_password.set.assert_called_once_with("")
         thread.assert_not_called()
 
     def test_native_session_is_only_usable_for_same_origin(self):
