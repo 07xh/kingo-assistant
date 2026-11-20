@@ -27,6 +27,19 @@ class GateDetailsTest(unittest.TestCase):
         self.assertIn("仍须实机验收", result)
         self.assertIn("没有已验证的 S202 提交表单提供器", result)
 
+    def test_native_session_is_not_a_validated_submission(self):
+        report = format_ncwu_gate_details(
+            None, adapter_installed=False, native_session_verified=True)
+        self.assertIn("当前内存有身份回读记录及会话", report)
+        self.assertIn("内部教学班唯一映射未实测验收", report)
+        self.assertIn("权威精确读取器尚未接通", report)
+        self.assertIn("不会据此启用正式选课提交", report)
+
+    def test_missing_session_is_reported_without_a_login_request(self):
+        report = format_ncwu_gate_details(
+            None, adapter_installed=False, native_session_verified=False)
+        self.assertIn("待完成当前本人会话身份回读", report)
+
     def test_broken_registry_fails_closed(self):
         class Broken:
             def describe(self):
