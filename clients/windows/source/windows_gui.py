@@ -838,6 +838,9 @@ class Application(tk.Tk):
             config = read_config(Path(self.path.get()), offline=True)
             alignment = compare_plan_targets(result, config)
             heading = alignment.message.splitlines()[0]
+            if (isinstance(self.__dict__.get("_display_courses"), dict)
+                    and hasattr(self, "table")):
+                Application.apply_plan_alignment_rows(self, alignment)
         except (OSError, ValueError, TypeError, KeyError):
             alignment = None
             heading = "尚未核对本地志愿：本地课程配置不可读取或格式不正确。"
@@ -875,6 +878,36 @@ class Application(tk.Tk):
         tree.configure(yscrollcommand=scrollbar.set)
         scrollbar.pack(side="right", fill="y", padx=(0, 10), pady=(0, 14))
         tree.pack(side="left", fill="both", expand=True, padx=(12, 0), pady=(0, 14))
+
+    def apply_plan_alignment_rows(self, alignment) -> None:
+        """Reflect exact course/class matches from an existing read-only plan.
+
+        This is a historical course-plan observation, not current S202 seats
+        or confirmation that a course was selected.
+        """
+        labels = {
+            "matched_ids": "开课计划：教学班匹配｜非实时余量",
+            "metadata_unverified": "开课计划：班级匹配，资料待核",
+            "metadata_conflict": "开课计划：名称或教师不符",
+            "ambiguous": "开课计划：重复教学班，待核对",
+            "course_id_missing": "开课计划：请填写课程代码",
+            "course_not_in_plan": "本次开课计划未找到该课程",
+            "class_id_missing": "开课计划：未填内部教学班ID",
+            "class_unknown": "开课计划：缺少教学班ID",
+            "class_unmatched": "开课计划：教学班ID未匹配",
+            "semester_unverified": "开课计划：学期未核验",
+            "semester_mismatch": "开课计划：学期与计划不符",
+        }
+        displayed = self.__dict__.get("_display_courses", {})
+        for target in alignment.targets:
+            row = displayed.get(target.key)
+            if (not isinstance(row, dict)
+                    or str(row.get("course_id") or "").strip() != target.course_id
+                    or str(row.get("class_id") or "").strip() != target.class_id
+                    or not self.table.exists(target.key)):
+                continue
+            self.table.set(target.key, "status", labels.get(
+                target.status, "开课计划：结果无法确认"))
 
     def copy_ncwu_contract_report(self) -> None:
         """Copy only locally generated structural evidence, never the HAR."""
