@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import sys
 from collections import deque
 from copy import deepcopy
 from pathlib import Path
@@ -243,7 +244,27 @@ async def run(config: dict, messages: deque) -> None:
         await client.aclose()
 
 
+def _ensure_utf8_stdout() -> None:
+    """Print Chinese diagnostics on a cp1252 Windows console without crashing.
+
+    ``sys.stdout`` on a default Windows console is bound to the ANSI code page;
+    any non-Latin character raises UnicodeEncodeError inside ``print``. Every
+    user-facing message in this CLI is Chinese, so the stream is re-bound once,
+    at entry, before any output. ``errors="replace"`` keeps an exotic character
+    from aborting an otherwise successful run. A redirected stream (tests, pipes
+    without ``reconfigure``) is left untouched.
+    """
+    reconfigure = getattr(sys.stdout, "reconfigure", None)
+    if not callable(reconfigure):
+        return
+    try:
+        reconfigure(encoding="utf-8", errors="replace")
+    except (ValueError, OSError):
+        pass
+
+
 def main() -> int:
+    _ensure_utf8_stdout()
     parser = argparse.ArgumentParser(description="青果选课：只读课程余量查询与提醒")
     parser.add_argument("-c", "--config", default="config.yaml")
     parser.add_argument("--check-config", action="store_true", help="无需网络，校验配置的基本结构")

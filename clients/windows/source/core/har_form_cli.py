@@ -133,7 +133,10 @@ def run(argv: list[str]) -> int:
 
 def _emit(result: dict, as_json: bool, code: int) -> int:
     if as_json:
-        print(json.dumps(result, ensure_ascii=False, indent=2))
+        # ASCII-only JSON: a Windows console defaults to cp1252, and a raw
+        # Chinese character there raises UnicodeEncodeError mid-print. \uXXXX is
+        # still valid JSON for every consumer.
+        print(json.dumps(result, ensure_ascii=True, indent=2))
         return code
     print("== HAR 写表单 × 映射证据 离线校验 ==")
     if result.get("har"):
@@ -159,7 +162,26 @@ def _emit(result: dict, as_json: bool, code: int) -> int:
     return code
 
 
+def _configure_stdout() -> None:
+    """Make Chinese diagnostics printable under a cp1252 Windows console.
+
+    ``sys.stdout`` on a Windows runner defaults to the ANSI code page, and any
+    non-Latin character raises UnicodeEncodeError from ``print``. Reconfiguring
+    to UTF-8 with ``errors="replace"`` keeps the human-readable path working;
+    ``--json`` output is ASCII-only regardless. A redirected StringIO has no
+    ``reconfigure``, so the guard also keeps tests untouched.
+    """
+    reconfigure = getattr(sys.stdout, "reconfigure", None)
+    if not callable(reconfigure):
+        return
+    try:
+        reconfigure(encoding="utf-8", errors="replace")
+    except (ValueError, OSError):
+        pass
+
+
 def main(argv: list[str] | None = None) -> int:
+    _configure_stdout()
     try:
         return run(list(sys.argv[1:] if argv is None else argv))
     except SystemExit as exc:
