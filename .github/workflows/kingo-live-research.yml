@@ -53,7 +53,7 @@ jobs:
           python-version: ${{ matrix.python }}
       - name: Compile
         shell: bash
-        run: python -m py_compile tools/kingo-live/*.py tools/bench/*.py tools/patch/*.py
+        run: python -m py_compile tools/kingo-live/*.py tools/bench/*.py tools/patch/*.py tools/dead_code_audit.py
       - name: Real loopback HTTP end-to-end
         shell: bash
         working-directory: tools/kingo-live
@@ -77,3 +77,8 @@ jobs:
           python p1_polling_plan.py selftest
           python v1v2_limit_lift.py selftest
           python v4_multiaccount.py selftest
+      - name: Repository dead-code audit
+        shell: bash
+        run: |
+          python tools/dead_code_audit.py --repo . --out dead-code-audit.json
+          python -c "import json; r=json.load(open('dead-code-audit.json',encoding='utf-8')); print('orphans:', [x['rel'] for x in r['orphans'] if 'dead_code_audit' not in x['rel']] or 'none')"
