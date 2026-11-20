@@ -35,9 +35,7 @@ PALETTE = {
 # itself. Fixed pixel sizes would look cramped on a scaled display.
 FONT_UI = ("Microsoft YaHei UI", 9)
 FONT_BOLD = ("Microsoft YaHei UI", 9, "bold")
-FONT_TITLE = ("Microsoft YaHei UI", 11, "bold")
 FONT_SMALL = ("Microsoft YaHei UI", 8)
-FONT_MONO = ("Consolas", 9)
 
 # (notebook attribute, tab caption). Kept here so the shell owns the strip
 # captions and the Application builds both tabs from one table.
@@ -62,35 +60,11 @@ def apply_light_theme(owner) -> None:
     # --- containers -------------------------------------------------
     style.configure("TFrame", background=p["background"])
     style.configure("Shell.TFrame", background=p["background"])
-    style.configure("Surface.TFrame", background=p["surface"])
-    style.configure("Panel.TFrame", background=p["panel"])
-    style.configure("Card.TFrame", background=p["surface"])
 
     # --- text -------------------------------------------------------
     style.configure(
         "TLabel", background=p["background"], foreground=p["ink"],
         font=FONT_UI)
-    style.configure(
-        "Surface.TLabel", background=p["surface"],
-        foreground=p["ink"], font=FONT_UI)
-    style.configure(
-        "Muted.TLabel", background=p["background"],
-        foreground=p["muted"], font=FONT_SMALL)
-    style.configure(
-        "SurfaceMuted.TLabel", background=p["surface"],
-        foreground=p["muted"], font=FONT_SMALL)
-    style.configure(
-        "Hint.TLabel", background=p["background"],
-        foreground=p["warn"], font=FONT_SMALL)
-    style.configure(
-        "SurfaceHint.TLabel", background=p["surface"],
-        foreground=p["warn"], font=FONT_SMALL)
-    style.configure(
-        "KingoTitle.TLabel", background=p["background"],
-        foreground=p["ink"], font=FONT_TITLE)
-    style.configure(
-        "KingoSubtitle.TLabel", background=p["background"],
-        foreground=p["muted"], font=FONT_SMALL)
     style.configure(
         "KingoStatus.TLabel", background=p["panel_alt"],
         foreground=p["ink"], font=FONT_SMALL)
@@ -99,15 +73,13 @@ def apply_light_theme(owner) -> None:
         foreground=p["muted"], font=FONT_SMALL)
 
     # --- group boxes (WinForms GroupBox) ----------------------------
-    for name, fill in (("TLabelframe", p["background"]),
-                       ("Card.TLabelframe", p["surface"])):
-        style.configure(
-            name, background=fill, bordercolor=p["stroke"],
-            lightcolor=p["stroke"], darkcolor=p["stroke"],
-            borderwidth=1, relief="solid", padding=2)
-        style.configure(
-            f"{name}.Label", background=fill, foreground=p["ink"],
-            font=FONT_BOLD, padding=(2, 0))
+    style.configure(
+        "TLabelframe", background=p["background"], bordercolor=p["stroke"],
+        lightcolor=p["stroke"], darkcolor=p["stroke"],
+        borderwidth=1, relief="solid", padding=2)
+    style.configure(
+        "TLabelframe.Label", background=p["background"], foreground=p["ink"],
+        font=FONT_BOLD, padding=(2, 0))
     style.configure(
         "KingoStep.TLabelframe", background=p["background"],
         bordercolor=p["stroke"], borderwidth=1, relief="solid")
@@ -178,11 +150,6 @@ def apply_light_theme(owner) -> None:
         "TCheckbutton", background=p["background"], foreground=p["ink"],
         font=FONT_UI, focuscolor=p["background"], padding=(0, 2))
     style.map("TCheckbutton", background=[("active", p["background"])])
-    style.configure(
-        "Surface.TCheckbutton", background=p["surface"],
-        foreground=p["ink"], font=FONT_UI)
-    style.map(
-        "Surface.TCheckbutton", background=[("active", p["surface"])])
     style.configure(
         "TRadiobutton", background=p["background"], foreground=p["ink"],
         font=FONT_UI, focuscolor=p["background"])
