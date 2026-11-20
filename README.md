@@ -1,8 +1,10 @@
-# KingoAssistant
+# KingoAssistant · 全自动抢课
 
-KingoAssistant is an independent personal course-selection assistant for the NCWU (North China University of Water Resources and Electric Power) academic system.
+**KingoAssistant 是面向华北水利水电大学青果教务系统的全自动抢课软件（Windows 原生 EXE），不是模拟抢课、浏览器自动点击或仅提醒用户手动提交的工具。** 正式执行方案为 **纯 HTTP 接口登录 → 课程与教学班准确匹配 → 选课正式开放后自动提交 → 官方已选记录回读确认**。从登录到结果确认由软件自动执行，不依赖浏览器或人工完成最后一步。
 
-> This project is not affiliated with NCWU or Kingosoft.
+**开发状态说明：** “全自动抢课”是项目的正式定位与唯一目标，不代表当前已通过真实环境验收。华水真实选课提交协议仍待验证，当前版本的正式自动提交功能保持禁用；本地测试与调度程序不等于已完成真实抢课。
+
+> 独立个人项目，与华北水利水电大学及青果软件官方无隶属关系。
 
 ## Current status
 
