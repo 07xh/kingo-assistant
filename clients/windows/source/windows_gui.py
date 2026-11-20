@@ -1247,6 +1247,10 @@ class Application(tk.Tk):
             self._live_target_message.set(
                 "本地志愿配置无法读取或验证，仍可查看学校实时课程列表。")
             self._live_target_review_button.configure(state="disabled")
+        # Reuse the same read-only comparison in the main course grid;
+        # no second HTTP request and no inferred class/seat availability.
+        if report is not None:
+            self.apply_live_target_rows(report)
         table = self._live_catalog_tree
         for iid in table.get_children():
             table.delete(iid)
@@ -1261,6 +1265,33 @@ class Application(tk.Tk):
                 course.teacher, course.selection_status, course.points_label,
                 ("课程候选：" + marks) if marks else "",
             ))
+
+    def apply_live_target_rows(self, report) -> None:
+        """Show fresh S202 course candidates in the existing Home target grid.
+
+        Only update rows whose current course and class still match the plan
+        used for the comparison. The S202 display class number is never
+        treated as an authoritative internal teaching-class ID.
+        """
+        labels = {
+            "candidate": "官网课程候选｜教学班未核验",
+            "not_seen": "本次页面未见｜可能分页",
+            "semester_unverified": "服务器学期未核验",
+            "semester_mismatch": "学校学期与计划不符",
+            "metadata_conflict": "课程或教师信息不符",
+            "metadata_unknown": "课程资料不足",
+            "missing_target": "请填写真实课程代码",
+        }
+        displayed = self.__dict__.get("_display_courses", {})
+        for target in report.targets:
+            row = displayed.get(target.key)
+            if (not isinstance(row, dict)
+                    or str(row.get("course_id") or "").strip() != target.course_code
+                    or str(row.get("class_id") or "").strip() != target.configured_class_id
+                    or not self.table.exists(target.key)):
+                continue
+            self.table.set(target.key, "status", labels.get(
+                target.status, "本次查询未能确认"))
 
     def show_live_target_review(self) -> None:
         """Explain candidate courses without equating skbh with skbjdm."""
