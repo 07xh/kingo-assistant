@@ -82,19 +82,31 @@ APP_TITLE = "KingoAssistant · Windows（只读监测｜自动提交尚未接入
 
 
 def scoped_native_cookie(app, config: dict) -> str | None:
-    """Never send a volatile login token to a different configured origin."""
+    """Return only a fully identity-verified EXE session at its original origin.
+
+    None: no EXE session. Empty string: session present but cannot be trusted.
+    Neither state authorizes an environment or YAML Cookie fallback.
+    """
     cookie = app.__dict__.get("_native_session_cookie")
     if cookie is None:
-        return None  # Legacy external session behavior if no native login exists.
+        return None
     origin = app.__dict__.get("_native_session_origin")
+    account = app.__dict__.get("_native_verified_user_code")
+    if (not isinstance(cookie, str) or not cookie
+            or not isinstance(account, str) or not account.strip()
+            or origin != "jwmis.ncwu.edu.cn"):
+        return ""
     address = config.get("base_url") if isinstance(config, dict) else None
     try:
         parsed = urlsplit(address)
     except (TypeError, ValueError):
         return ""
-    if parsed.scheme == "https" and parsed.netloc == origin:
+    if (parsed.scheme == "https" and parsed.netloc == origin
+            and parsed.path in ("", "/")
+            and not parsed.query and not parsed.fragment
+            and parsed.username is None and parsed.password is None):
         return cookie
-    return ""  # Explicitly prevent fallback to a legacy environment session.
+    return ""  # Do not let stale sessions escape the verified school origin.
 
 
 def current_attestations() -> AttestationRegistry:
@@ -1444,8 +1456,8 @@ class Application(tk.Tk):
             config = read_config(Path(self.path.get()), offline=True)
             config = resolve_state_file(config, app_dir())
             cookie = scoped_native_cookie(self, config)
-            checks = (inspect_readiness(config, session_cookie=cookie)
-                      if cookie is not None else inspect_readiness(config))
+            checks = inspect_readiness(
+                config, session_cookie=cookie, native_session_only=True)
         except Exception:
             messagebox.showerror("无法检查", "配置结构无效，请先修正 YAML 文件。")
             return
@@ -1700,18 +1712,19 @@ class Application(tk.Tk):
             # a second YAML read between authorization and worker construction.
             config = resolve_state_file(config, app_dir())
             session_cookie = scoped_native_cookie(self, config)
-            checks = (inspect_readiness(config, session_cookie=session_cookie)
-                      if session_cookie is not None else inspect_readiness(config))
+            checks = inspect_readiness(
+                config, session_cookie=session_cookie, native_session_only=True)
             blockers, warnings = split_checks(checks)
             if blockers:
                 self.status.set(f"无法启动｜{len(blockers)} 项本地前提未完成")
                 messagebox.showwarning("先完成启动预检", format_checks(checks))
                 self.log(f"启动被本地预检拦截：{len(blockers)} 项；没有连接学校。")
                 return
-            if session_cookie is not None:
-                validate(config, check_only=False, session_cookie=session_cookie)
-            else:
-                validate(config, check_only=False)
+            # A mocked/misconfigured readiness report must not re-enable
+            # legacy auth. The worker only receives the verified EXE session.
+            if not session_cookie:
+                raise ValueError("必须先在 EXE 内完成本人账号身份核验")
+            validate(config, check_only=False, session_cookie=session_cookie)
             self.populate(config)
             self._previous_states = {}
             self._demo_report = None
@@ -1724,9 +1737,11 @@ class Application(tk.Tk):
         # Advisory hints are logged and remain available via readiness UI.
         if warnings:
             self.log(f"本地预检有 {len(warnings)} 项非阻断提示；可在运行准备度中查看。")
-        session_cookie = scoped_native_cookie(self, config)
-        worker = (MonitorWorker(config, self.events, session_cookie=session_cookie)
-                  if session_cookie is not None else MonitorWorker(config, self.events))
+        if scoped_native_cookie(self, config) != session_cookie:
+            self.status.set("无法启动｜本次 EXE 会话发生变化，请重新核验")
+            self.log("会话来源核验未通过；没有创建学校监测任务。")
+            return
+        worker = MonitorWorker(config, self.events, session_cookie=session_cookie)
         try:
             worker.start()
         except (RuntimeError, OSError):
