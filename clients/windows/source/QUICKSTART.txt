@@ -1,4 +1,4 @@
-青果选课辅助 Windows V4.6 — 最短验收路径
+青果选课辅助 Windows V5.1 — 最短验收路径
 
 一、解压本 ZIP（不要直接在压缩软件预览窗口中运行）。
 二、Windows 安装 Python 3.10+ 后双击 run-windows.bat，首次需联网安装依赖。
@@ -11,9 +11,11 @@
 
 【重要】
 这个 ZIP 是源码包，里面没有已经构建好的 Windows EXE。
-学校真实只读课程接口与登录态均尚未验收，程序不会自动提交选课。
+学校真实只读课程接口与登录态均尚未验收；默认配置下不会提交选课。写入通道
+（`core/ncwu_submission_transport.py`）需要四项验收证据、用户显式授权与学校许可同时成立
+才会发一次 POST，且只以官方 course+class 回读判定成功。
 不要将学校账号、Cookie、HAR、未脱敏的 HTML 分享给他人。
-详情见 README-Windows.md 与 CHANGELOG-Windows-v4.5.md。
+详情见 README.md 与 CHANGELOG-Windows-v5.1.md。
 
-V4.6：点击「离线工具」→「本机 HAR 结构检查」，可以只看华水请求数量与状态，不能据此认定接口已核验。
+V5.1：`tools/patch/` 提供写协议取证与限速策略补丁，自检全部离线。
 Windows 构建后需要验证 dist\build-verification.json（必须为 Windows 原生测试记录）。

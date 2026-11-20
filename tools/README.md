@@ -8,6 +8,7 @@
 |---|---|
 | `tools/kingo-live/` | 真实 HTTP 客户端：请求预算、时钟对齐、会话预热、释放事件监控、精确目标匹配、备选降级链、失败分类状态机、官方名单回读；HAR → config 字段映射 |
 | `tools/bench/` | 离线四段延迟仿真：名额分配规则（fcfs / random / priority）、锁策略、P5 敏感度矩阵 |
+| `tools/patch/` | 外挂式补丁层：写协议取证（HAR → S202 写入合同 → attestation）、轮询窗口排程与席位扩散、并发/频率解锁、多账号编排 |
 
 ## 运行
 
@@ -24,6 +25,13 @@ cd ../bench
 python academic_latency_sim.py --self-test
 python academic_latency_sim.py --all
 python academic_latency_sim.py --p5-matrix --repeats 5
+
+# 写协议取证 / 轮询 / 限速 / 多账号（全部离线自检）
+cd ../patch
+python p0_protocol_recon.py selftest
+python p1_polling_plan.py selftest
+python v1v2_limit_lift.py selftest
+python v4_multiaccount.py selftest
 ```
 
 `tools/kingo-live/README.md` 里出现的 `kingo-live/xxx` 一律指 `tools/kingo-live/xxx`，

@@ -9,6 +9,7 @@ on:
     paths:
       - "tools/kingo-live/**"
       - "tools/bench/**"
+      - "tools/patch/**"
       - "tools/README.md"
       - "tools/.gitignore"
       - ".github/workflows/kingo-live-research.yml"
@@ -18,6 +19,7 @@ on:
     paths:
       - "tools/kingo-live/**"
       - "tools/bench/**"
+      - "tools/patch/**"
       - "tools/README.md"
       - "tools/.gitignore"
       - ".github/workflows/kingo-live-research.yml"
@@ -51,7 +53,7 @@ jobs:
           python-version: ${{ matrix.python }}
       - name: Compile
         shell: bash
-        run: python -m py_compile tools/kingo-live/*.py tools/bench/*.py
+        run: python -m py_compile tools/kingo-live/*.py tools/bench/*.py tools/patch/*.py
       - name: Real loopback HTTP end-to-end
         shell: bash
         working-directory: tools/kingo-live
@@ -67,3 +69,11 @@ jobs:
           python academic_latency_sim.py --self-test
           python academic_latency_sim.py --all
           python academic_latency_sim.py --p5-matrix --repeats 5
+      - name: Writer-gate and rate-limit patch tooling
+        shell: bash
+        working-directory: tools/patch
+        run: |
+          python p0_protocol_recon.py selftest
+          python p1_polling_plan.py selftest
+          python v1v2_limit_lift.py selftest
+          python v4_multiaccount.py selftest
