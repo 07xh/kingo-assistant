@@ -16,6 +16,7 @@ class S202GuiTests(TestCase):
             _native_preparation_in_progress=False,
             _session_check_in_progress=False,
             _native_session_cookie=None, _native_session_origin=None,
+            _native_verified_user_code=None,
             s202_result_status=Mock(), s202_result_button=Mock(),
             path=SimpleNamespace(get=lambda: "config.yaml"),
             events=queue.Queue(),
@@ -33,6 +34,7 @@ class S202GuiTests(TestCase):
         cfg = {"base_url": "https://jwmis.ncwu.edu.cn"}
         self.app._native_session_cookie = "JSESSIONID=LOCAL"
         self.app._native_session_origin = "jwmis.ncwu.edu.cn"
+        self.app._native_verified_user_code = "synthetic-account"
         with patch("windows_gui.read_config", return_value=cfg), \
              patch("windows_gui.threading.Thread") as thread, \
              patch("windows_gui.read_s202_selected_results",
