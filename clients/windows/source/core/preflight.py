@@ -50,7 +50,8 @@ def format_checks(checks: list[Check], *, max_detail: int = 4) -> str:
 
 
 def inspect_readiness(config: dict, env: dict | None = None,
-                      session_cookie: str | None = None) -> list[Check]:
+                      session_cookie: str | None = None, *,
+                      native_session_only: bool = False) -> list[Check]:
     environment = os.environ if env is None else env
     protocol = config.get('protocol', {})
     auth = config.get('auth', {})
@@ -59,8 +60,14 @@ def inspect_readiness(config: dict, env: dict | None = None,
     fields = ('identity_path', 'identity_referer', 'identity_selector',
               'entry', 'entry_referer', 'list', 'term_field', 'columns')
     verified = protocol.get('verified') is True
-    has_auth = bool(session_cookie if session_cookie is not None else
-                    (environment.get('KINGO_COOKIE') or auth.get('cookie')))
+    # The native Windows UI must never treat an imported environment/YAML
+    # cookie as its authenticated in-process login session. Legacy CLI
+    # introspection retains its separate backwards-compatible default.
+    has_auth = (bool(session_cookie.strip()) if isinstance(session_cookie, str)
+                else False) if native_session_only else bool(
+                    session_cookie if session_cookie is not None else
+                    (environment.get('KINGO_COOKIE') or auth.get('cookie'))
+                )
     all_paths = all(bool(protocol.get(field)) for field in fields) and bool(protocol.get('table_marker'))
     valid_courses = isinstance(courses, list) and bool(courses) and all(isinstance(c, dict) for c in courses)
     placeholders = any('FILL_FROM_' in str(c.get('course_id', '')) or
@@ -78,7 +85,10 @@ def inspect_readiness(config: dict, env: dict | None = None,
         Check('真实只读协议', verified and all_paths,
               '学校只读接口和表格标识尚未完成本人核对；不能启动真实监测'),
         Check('本人登录会话', has_auth,
-              '未提供本人官方登录会话；推荐使用环境变量 KINGO_COOKIE'),
+              ('请先在 EXE 内登录本人教务账号并通过官方身份回读；'
+               '不会使用环境变量或配置文件中的 Cookie'
+               if native_session_only else
+               '未提供本人官方登录会话；旧 CLI 模式可通过环境变量提供')),
         Check('安全运行模式', config.get('strategy', {}).get('dry_run') is True,
               '仅允许 dry_run: true，禁止执行选课写入'),
         Check('本机配置不含会话敏感值', not bool(auth.get('cookie')),

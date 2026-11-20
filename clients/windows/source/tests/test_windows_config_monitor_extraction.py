@@ -104,6 +104,16 @@ class MonitorExtractionTests(TestCase):
         self.assertEqual(events[1].value, "failed")
         self.assertNotIn("PRIVATE_COOKIE_AND_STUDENT_ID", repr(events))
 
+    def test_worker_without_exe_session_never_initializes_school_client(self):
+        monitor = MonitorWorker(
+            {"auth": {"cookie": "LEGACY_COOKIE"}}, queue.Queue())
+        with patch.dict("os.environ", {"KINGO_COOKIE": "ENV_COOKIE"}), \
+             patch("windows_monitor_runtime.KingoClient",
+                   side_effect=AssertionError("unexpected school HTTP")):
+            with self.assertRaisesRegex(RuntimeError, "EXE"):
+                asyncio.run(monitor._run())
+        self.assertIsNone(monitor.client)
+
     def test_stopping_before_run_never_initializes_school_client(self):
         monitor = MonitorWorker({}, queue.Queue())
         monitor._stop_requested.set()

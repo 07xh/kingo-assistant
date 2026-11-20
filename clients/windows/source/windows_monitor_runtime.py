@@ -82,6 +82,11 @@ class MonitorWorker:
         self.loop = asyncio.get_running_loop()
         if self._stop_requested.is_set():
             return
+        # Defence in depth: Windows monitoring cannot silently borrow a
+        # KINGO_COOKIE/YAML cookie through KingoClient's legacy CLI fallback.
+        # The GUI must supply the identity-verified in-process EXE session.
+        if not isinstance(self.session_cookie, str) or not self.session_cookie:
+            raise RuntimeError("Windows 监测必须使用本次 EXE 已核验会话")
         # Phase timings land in the app data folder; see core/latency.py.
         recorder = LatencyRecorder(app_dir() / DEFAULT_LATENCY_FILE)
         client = (KingoClient(self.config, session_cookie=self.session_cookie,

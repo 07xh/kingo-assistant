@@ -148,7 +148,7 @@ class MonitorStartRollbackTests(TestCase):
              patch("windows_gui.inspect_readiness", return_value=[]), \
              patch("windows_gui.split_checks", return_value=([], [])), \
              patch("windows_gui.validate"), \
-             patch("windows_gui.scoped_native_cookie", return_value=None), \
+             patch("windows_gui.scoped_native_cookie", return_value="SID=synthetic-session"), \
              patch("windows_gui.MonitorWorker", return_value=worker) as constructor:
             Application.start_monitor(current)
         return worker, constructor

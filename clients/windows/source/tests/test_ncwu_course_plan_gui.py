@@ -17,6 +17,7 @@ class CoursePlanButtonTests(TestCase):
             _session_check_in_progress=False,
             _native_session_cookie=None,
             _native_session_origin=None,
+            _native_verified_user_code=None,
             path=SimpleNamespace(get=lambda: "config.yaml"),
             course_plan_button=Mock(),
             course_plan_status=Mock(),
@@ -34,6 +35,7 @@ class CoursePlanButtonTests(TestCase):
     def test_uses_same_session_and_never_opens_browser(self):
         self.app._native_session_cookie = "JSESSIONID=LOCAL_ONLY"
         self.app._native_session_origin = "jwmis.ncwu.edu.cn"
+        self.app._native_verified_user_code = "synthetic-account"
         cfg = {"base_url": "https://jwmis.ncwu.edu.cn"}
         with patch("windows_gui.read_config", return_value=cfg), \
              patch("windows_gui.threading.Thread") as thread, \

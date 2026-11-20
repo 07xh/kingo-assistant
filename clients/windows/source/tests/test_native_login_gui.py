@@ -58,6 +58,7 @@ class NativeLoginGuiTests(TestCase):
     def test_native_session_is_only_usable_for_same_origin(self):
         self.app._native_session_cookie = "SID=private"
         self.app._native_session_origin = "jwmis.ncwu.edu.cn"
+        self.app._native_verified_user_code = "alice"
         self.assertEqual(scoped_native_cookie(
             self.app, {"base_url": "https://jwmis.ncwu.edu.cn"}),
             "SID=private")
@@ -65,6 +66,17 @@ class NativeLoginGuiTests(TestCase):
             self.app, {"base_url": "https://another.example"}), "")
         self.assertNotIn("SID=private", str(scoped_native_cookie(
             self.app, {"base_url": "https://another.example"})))
+
+    def test_cookie_without_verified_identity_is_not_a_native_session(self):
+        self.app._native_session_cookie = "SID=private"
+        self.app._native_session_origin = "jwmis.ncwu.edu.cn"
+        self.assertEqual(scoped_native_cookie(
+            self.app, {"base_url": "https://jwmis.ncwu.edu.cn"}), "")
+        self.app._native_verified_user_code = "alice"
+        self.assertEqual(scoped_native_cookie(
+            self.app, {"base_url": "https://jwmis.ncwu.edu.cn?unsafe=1"}), "")
+        self.assertEqual(scoped_native_cookie(
+            self.app, {"base_url": "https://jwmis.ncwu.edu.cn:444"}), "")
 
     def test_session_cannot_be_cleared_during_monitor(self):
         self.app._native_session_cookie = "SID=private"

@@ -13,6 +13,23 @@ class PreflightTest(unittest.TestCase):
         self.assertFalse(next(x for x in checks if x.label == '本人登录会话').passed)
         self.assertTrue(next(x for x in checks if x.label == '安全运行模式').passed)
 
+    def test_native_only_readiness_rejects_config_and_env_cookies(self):
+        config = deepcopy(load_config(bundled_config()))
+        config["auth"]["cookie"] = "SECRET_CONFIG"
+        with_env = {"KINGO_COOKIE": "SECRET_ENV"}
+        report = inspect_readiness(
+            config, env=with_env, native_session_only=True)
+        session = next(x for x in report if x.label == "本人登录会话")
+        self.assertFalse(session.passed)
+        self.assertIn("EXE", session.detail)
+        self.assertNotIn("SECRET_ENV", session.detail)
+        self.assertNotIn("SECRET_CONFIG", session.detail)
+        with_session = inspect_readiness(
+            config, env=with_env, session_cookie="SID=synthetic",
+            native_session_only=True)
+        self.assertTrue(next(
+            x for x in with_session if x.label == "本人登录会话").passed)
+
     def test_secrets_are_not_printed(self):
         config = deepcopy(load_config(bundled_config()))
         config['auth']['cookie'] = 'SECRET_LONG_COOKIE'
