@@ -8,6 +8,8 @@
 
 ## 当前状态
 
+- **最新 Windows 预览版本号：`v5.2.0-beta.1`。** 采用 PR #89 的 Win32 密集工作台；版本构建与预发布由 [GitHub Actions](https://github.com/07xh/kingo-assistant/actions) 核验。仅代表桌面 UI、离线计划和现有只读能力的预览，不代表学校真实登录或自动选课已验收。[预览版说明](docs/releases/v5.2.0-beta.1.md)。
+
 - **Windows 工作台**有「选课工作台」和「工具与日志」两页。选课计划、教务账号、读取课程和只读监测共用主界面；定时计划与提交验收状态固定在底部。[界面与验收](docs/design/windows-dense-desktop-ui-20261119.md)
 - **界面开发路线已确定：** 使用当前 Tkinter/ttk 紧凑 Win32 密集工作台（PR #89）作为唯一 Windows UI 基线；不再规划 React + Tauri Lite、液态玻璃或现代侧栏 UI 迁移。此前 Lite 方案 PR #47 已关闭，旧方案仅保留在 Git 历史中，不作为开发或构建目标。
 - **校内读写采用进程内 HTTP。** 只读监测须使用应用自身核验的会话，并满足协议和请求预算。正式写入及官方结果回读仍缺少端到端验收，当前不能启用真实提交。[执行架构](docs/architecture/pure-api-execution.md)
