@@ -7,14 +7,14 @@ from tkinter import messagebox, simpledialog, ttk
 
 from core.desktop_settings import load_config, save_config_atomic
 from core.plan_store import delete_plan, list_plans, load_plan, save_plan, save_switch_backup
+from windows_visual_shell import size_window
 
 
 class PlanManager(tk.Toplevel):
     def __init__(self, parent: tk.Misc, *, config_path: Path, plans_dir: Path, on_saved):
         super().__init__(parent)
         self.title("课程方案管理（本地，不联网）")
-        self.geometry("600x420")
-        self.minsize(510, 350)
+        size_window(self, (600, 420), (510, 350))
         self.transient(parent)
         self.config_path = config_path
         self.plans_dir = plans_dir

@@ -1,33 +1,27 @@
-"""Dense Win32/WinForms-style visual shell for the existing Tk application.
-
-The layout language deliberately mirrors a classic Windows desktop client:
-a flat command strip, a real tab control, 1px group boxes, compact 9pt text,
-a white data grid and a status bar. Nothing here touches the network,
-configuration, sessions or course state. The API-only workbench and tools
-are the two visible ``ttk.Notebook`` pages.
-"""
+"""Typography, theme, and window layout for the Windows workbench."""
 from __future__ import annotations
 
+import sys
 import tkinter as tk
-from tkinter import ttk
+from tkinter import font, ttk
 
 PALETTE = {
-    "background": "#F0F0F0",
+    "background": "#F5F5F5",
     "surface": "#FFFFFF",
-    "panel": "#F0F0F0",
-    "panel_alt": "#E9E9E9",
-    "ink": "#101010",
+    "panel": "#F5F5F5",
+    "panel_alt": "#EEEEEE",
+    "ink": "#242424",
     "muted": "#5B5B5B",
-    "stroke": "#A0A0A0",
-    "stroke_soft": "#C8C8C8",
-    "accent": "#0F6CBD",
-    "accent_hover": "#0C5896",
-    "accent_soft": "#DCEBFA",
-    "selected": "#CCE4FF",
+    "stroke": "#D7D7D7",
+    "stroke_soft": "#E3E3E3",
+    "accent": "#005EAE",
+    "accent_hover": "#004B8C",
+    "accent_soft": "#F1F1F1",
+    "selected": "#E4F0FA",
     "ok": "#0B6A0B",
     "warn": "#8A5300",
     "danger": "#A4262C",
-    "grid_header": "#ECECEC",
+    "grid_header": "#F5F5F5",
 }
 
 # Point sizes, not pixels: the desktop client this layout mirrors is a
@@ -37,16 +31,41 @@ FONT_UI = ("Microsoft YaHei UI", 9)
 FONT_BOLD = ("Microsoft YaHei UI", 9, "bold")
 FONT_SMALL = ("Microsoft YaHei UI", 8)
 
-# (notebook attribute, tab caption). Kept here so the shell owns the strip
-# captions and the Application builds both tabs from one table.
 TABS = (
     ("tab_home", "选课工作台"),
-    ("tab_tools", "工具与日志"),
+    ("tab_tools", "教务与工具"),
+    ("tab_history", "执行记录"),
+    ("tab_account", "账号与登录"),
+    ("tab_settings", "抢课设置"),
 )
 
 TOOLBAR_HEIGHT = 34
-DEFAULT_SIZE = (1180, 790)
-MINIMUM_SIZE = (960, 640)
+DEFAULT_SIZE = (1120, 710)
+MINIMUM_SIZE = (940, 600)
+
+
+def enable_windows_dpi() -> None:
+    """Apply the system DPI before Tk creates the Windows HWND."""
+    if sys.platform == "win32":
+        from ctypes import windll
+
+        windll.user32.SetProcessDPIAware()
+
+
+def display_scale(widget) -> float:
+    return widget.winfo_fpixels("1i") / 96
+
+
+def size_window(owner, default_size=DEFAULT_SIZE, minimum_size=MINIMUM_SIZE) -> None:
+    scale = display_scale(owner)
+    screen = (owner.winfo_screenwidth() - round(24 * scale),
+              owner.winfo_screenheight() - round(80 * scale))
+    width, height = (min(round(size * scale), limit)
+                     for size, limit in zip(default_size, screen))
+    owner.geometry(f"{width}x{height}")
+    if minimum_size is not None:
+        owner.minsize(*(min(round(size * scale), limit)
+                        for size, limit in zip(minimum_size, screen)))
 
 
 def apply_light_theme(owner) -> None:
@@ -56,6 +75,8 @@ def apply_light_theme(owner) -> None:
     style = ttk.Style(owner)
     if "clam" in style.theme_names():
         style.theme_use("clam")
+    for name in ("TkDefaultFont", "TkTextFont", "TkMenuFont"):
+        font.nametofont(name, root=owner).configure(family=FONT_UI[0], size=FONT_UI[1])
 
     # --- containers -------------------------------------------------
     style.configure("TFrame", background=p["background"])
@@ -65,6 +86,7 @@ def apply_light_theme(owner) -> None:
     style.configure(
         "TLabel", background=p["background"], foreground=p["ink"],
         font=FONT_UI)
+    style.configure("Muted.TLabel", foreground=p["muted"], font=FONT_SMALL)
     style.configure(
         "KingoStatus.TLabel", background=p["panel_alt"],
         foreground=p["ink"], font=FONT_SMALL)
@@ -80,39 +102,24 @@ def apply_light_theme(owner) -> None:
     style.configure(
         "TLabelframe.Label", background=p["background"], foreground=p["ink"],
         font=FONT_BOLD, padding=(2, 0))
-    style.configure(
-        "KingoStep.TLabelframe", background=p["background"],
-        bordercolor=p["stroke"], borderwidth=1, relief="solid")
-    style.configure(
-        "KingoStep.TLabelframe.Label", background=p["background"],
-        foreground=p["ink"], font=FONT_BOLD)
-
     # --- buttons ----------------------------------------------------
     style.configure(
-        "TButton", padding=(10, 4), font=FONT_UI,
-        background=p["panel_alt"], foreground=p["ink"],
+        "TButton", padding=(10, 4), width=0, font=FONT_UI,
+        background=p["surface"], foreground=p["ink"],
         bordercolor=p["stroke"], borderwidth=1, relief="solid",
-        focuscolor=p["accent_soft"], anchor="center")
+        lightcolor=p["stroke"], darkcolor=p["stroke"],
+        focuscolor=p["accent"], anchor="center")
     style.map(
         "TButton",
         background=[("disabled", p["panel"]), ("pressed", p["accent_soft"]),
                     ("active", p["accent_soft"])],
         foreground=[("disabled", p["muted"])],
-        bordercolor=[("active", p["accent"])])
-    style.configure(
-        "KingoBar.TButton", padding=(7, 3), font=FONT_UI,
-        background=p["panel"], foreground=p["ink"],
-        bordercolor=p["panel"], borderwidth=1, relief="flat")
-    style.map(
-        "KingoBar.TButton",
-        background=[("active", p["accent_soft"]),
-                    ("pressed", p["selected"])],
-        bordercolor=[("active", p["stroke_soft"])])
-    # The single wide call-to-action on the home page.
+        bordercolor=[("focus", p["accent"])])
     style.configure(
         "KingoPrimary.TButton", padding=(10, 5), font=FONT_BOLD,
         background=p["accent"], foreground=p["surface"],
-        bordercolor=p["accent"], borderwidth=1, relief="solid")
+        bordercolor=p["accent"], lightcolor=p["accent"], darkcolor=p["accent"],
+        focuscolor=p["surface"], borderwidth=1, relief="solid")
     style.map(
         "KingoPrimary.TButton",
         background=[("disabled", p["stroke_soft"]),
@@ -161,7 +168,7 @@ def apply_light_theme(owner) -> None:
 
     # --- data grid --------------------------------------------------
     style.configure(
-        "Treeview", rowheight=23, background=p["surface"],
+        "Treeview", rowheight=round(23 * display_scale(owner)), background=p["surface"],
         fieldbackground=p["surface"], foreground=p["ink"],
         borderwidth=1, relief="solid", font=FONT_UI)
     style.map(
@@ -171,7 +178,8 @@ def apply_light_theme(owner) -> None:
     style.configure(
         "Treeview.Heading", background=p["grid_header"],
         foreground=p["ink"], padding=(6, 4), font=FONT_BOLD,
-        relief="raised", borderwidth=1)
+        lightcolor=p["grid_header"], darkcolor=p["grid_header"],
+        relief="flat", borderwidth=1)
     style.map(
         "Treeview.Heading", background=[("active", p["accent_soft"])])
 
@@ -180,9 +188,7 @@ def apply_light_theme(owner) -> None:
     # tabs, so no ``style.layout(..., [])`` may hide the notebook again.
     style.configure(
         "Kingo.Content.TNotebook", background=p["background"],
-        borderwidth=1, tabmargins=(4, 4, 4, 0), padding=0)
-    # clam only paints a raised tab when the light/dark/border colours are
-    # set explicitly; background alone leaves every tab flat white.
+        borderwidth=1, tabmargins=0, padding=0)
     style.configure(
         "Kingo.Content.TNotebook.Tab", background=p["panel_alt"],
         foreground=p["ink"], font=FONT_UI, padding=(14, 5),
@@ -193,7 +199,7 @@ def apply_light_theme(owner) -> None:
         background=[("selected", p["surface"]),
                     ("active", p["accent_soft"])],
         lightcolor=[("selected", "#FFFFFF")],
-        foreground=[("selected", p["ink"])],
+        foreground=[("selected", p["accent"])],
         expand=[("selected", (0, 0, 0, 0))])
 
 
@@ -204,20 +210,15 @@ def make_visual_shell(owner) -> ttk.Frame:
     shell.pack(fill="both", expand=True)
     owner.visual_shell = shell
 
-    strip = tk.Frame(shell, bg=p["panel"], height=TOOLBAR_HEIGHT)
+    strip = tk.Frame(shell, bg=p["panel"], height=round(TOOLBAR_HEIGHT * display_scale(owner)))
     strip.pack(side="top", fill="x")
     strip.pack_propagate(False)
     owner.toolbar = strip
 
     brand = tk.Label(
-        strip, text="KingoAssistant", bg=p["panel"], fg=p["accent"],
-        font=("Microsoft YaHei UI", 10, "bold"))
-    brand.pack(side="left", padx=(10, 8), pady=6)
-    tk.Label(
-        strip, text="华水选课助手 · 只读监测", bg=p["panel"], fg=p["muted"],
-        font=FONT_SMALL).pack(side="left", pady=8)
-    tk.Frame(strip, bg=p["stroke_soft"], width=1).pack(
-        side="left", fill="y", padx=8, pady=7)
+        strip, text="华水选课助手", bg=p["panel"], fg=p["ink"],
+        font=("Microsoft YaHei UI", 11, "bold"))
+    brand.pack(side="left", padx=(9, 10))
     # Keep the help shortcut visible at the minimum width.
     owner.toolbar_extras = tk.Frame(strip, bg=p["panel"])
     owner.toolbar_extras.pack(side="right", padx=(0, 6))
@@ -240,7 +241,7 @@ def make_visual_shell(owner) -> ttk.Frame:
         side="right", fill="y", pady=4)
 
     body = ttk.Frame(shell, style="Shell.TFrame")
-    body.pack(side="top", fill="both", expand=True, padx=6, pady=4)
+    body.pack(side="top", fill="both", expand=True, padx=6, pady=(3, 4))
     owner.visual_content = body
     return body
 

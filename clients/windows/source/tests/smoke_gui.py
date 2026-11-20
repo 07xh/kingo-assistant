@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from windows_gui import Application
-from windows_visual_shell import MINIMUM_SIZE, TABS
+from windows_visual_shell import TABS
 from desktop_editor import SettingsEditor
 from core.desktop_settings import load_config
 
@@ -17,40 +17,41 @@ def main():
             app = Application()
             app.withdraw()
             app.update()
-            # Assert only Home and Tools layouts are attached to the Tk Application.
+            # Verify the minimum window keeps the entire workbench in view.
             assert tuple(app.notebook.tab(tab, 'text') for tab in app.notebook.tabs()) == tuple(
                 caption for _, caption in TABS)
             assert app.toolbar.winfo_exists()
             assert app.status_bar.winfo_exists()
             assert app.visual_content.winfo_exists()
-            assert app.minsize() == MINIMUM_SIZE
-            app.geometry('%dx%d' % MINIMUM_SIZE)
+            app.geometry('%dx%d' % app.minsize())
             app.deiconify()
             app.update()
-            for viewport, body, bar in (
-                (app.home_scroll_canvas, app._home_content, app.home_scrollbar),
-                (app.tools_scroll_canvas, app._tools_content, app.tools_scrollbar),
+            for widget in (
+                app._live_catalog_tree, app.table, app.log_box, app.live_catalog_button,
+                app.start_button, app.stop_button, app.scheduled_start_button,
             ):
-                assert viewport.winfo_exists()
-                assert body.winfo_exists()
-                assert bar.winfo_exists()
-                assert viewport.cget('yscrollcommand')
-                assert len(viewport.find_all()) == 1
-            app.notebook.select(app.tab_home)
-            app.update_idletasks()
-            assert app.home_scroll_canvas.bbox('all') is not None
-            app.home_scroll_canvas.yview_moveto(1)
-            app.update_idletasks()
-            assert app.table.winfo_exists()
-            assert app.scheduled_start_button.winfo_ismapped()
-            assert app.scheduled_start_button.master.master == app._home_footer
-            app.home_scroll_canvas.yview_moveto(0)
+                assert widget.winfo_ismapped(), f'Minimum window hid {widget}'
+                assert widget.winfo_width() > 50 and widget.winfo_height() > 10
+                assert widget.winfo_rooty() + widget.winfo_height() <= app.status_bar.winfo_rooty()
+            for button in (app.start_button, app.stop_button,
+                           app.scheduled_start_button, app.scheduled_stop_button):
+                assert button.winfo_height() >= button.winfo_reqheight(), f'Minimum window clipped {button}'
+            for tab, control in (
+                (app.tab_account, app.native_login_button),
+                (app.tab_history, app.execution_log),
+                (app.tab_settings, app.tab_settings),
+            ):
+                app.notebook.select(tab)
+                app.update()
+                assert control.winfo_ismapped()
+
             app.notebook.select(app.tab_tools)
             app.update_idletasks()
             assert app.tools_scroll_canvas.bbox('all') is not None
             app.tools_scroll_canvas.yview_moveto(1)
             app.update_idletasks()
-            assert app.tools_scroll_canvas.yview()[0] > 0, 'Tool/log bottom must be scroll-reachable'
+            assert app.tools_scroll_canvas.yview()[1] == 1.0, 'Bottom of tools must be reachable'
+            assert app.term_probe_button.winfo_rooty() + app.term_probe_button.winfo_height() <= app.status_bar.winfo_rooty()
             assert app.log_box.winfo_exists()
             app.tools_scroll_canvas.yview_moveto(0)
             app.notebook.select(app.tab_home)
@@ -62,7 +63,6 @@ def main():
             assert app.notebook.select() == str(app.tab_tools)
             app.notebook.select(app.tab_home)
             app.update()
-            assert app.edit_button.cget('style') == 'KingoPrimary.TButton'
             assert app.native_login_button.cget('style') == 'KingoPrimary.TButton'
             assert app.start_button.cget('style') == 'KingoPrimary.TButton'
             for widget in (
@@ -75,6 +75,10 @@ def main():
             ):
                 assert widget.winfo_exists(), f'missing page widget: {widget}'
             assert app.log_box.cget('state') == 'disabled'
+            app.notebook.select(app.tab_history)
+            app.update()
+            app.log('离线记录验证')
+            assert app.execution_log.get('1.0', 'end-1c') == app.log_box.get('1.0', 'end-1c')
             assert app.advanced_panel.winfo_manager() == ''
             app.toggle_advanced_panel()
             assert app.notebook.select() == str(app.tab_tools)
@@ -94,11 +98,11 @@ def main():
                 app.live_catalog_button, app.live_poll_button,
                 app.action_panel, app.start_button, app.stop_button,
                 app.scheduled_start_button, app.scheduled_stop_button,
-                app.course_frame, app.table,
+                app._live_catalog_tree, app.table,
             ):
                 assert widget.winfo_exists(), f'missing home widget: {widget}'
-            assert 'S202' in app.live_catalog_button.cget('text')
-            assert '≥60秒' in app.live_poll_button.cget('text')
+            assert app.live_catalog_button.cget('text') == '查询课程'
+            assert app.live_poll_button.cget('text') == '自动刷新'
             assert len(app.table.get_children()) == 2
             with patch('core.client.httpx.AsyncClient', side_effect=AssertionError('demo attempted network')):
                 app.demo_next()

@@ -16,17 +16,19 @@ class NativeLoginGuiTests(TestCase):
             _native_login_in_progress=False, _native_preparation_in_progress=False,
             _session_check_in_progress=False, _native_session_cookie=None,
             path=SimpleNamespace(get=lambda: str(Path("config.yaml"))),
+            login_username=Mock(), login_password=Mock(),
             native_login_status=Mock(), native_login_button=Mock(),
             native_preparation_status=Mock(), events=queue.Queue(),
         )
+        self.app.login_username.get.return_value = "alice"
+        self.app.login_password.get.return_value = "secret"
 
-    def test_unverified_contract_never_asks_password_or_uses_network(self):
+    def test_unverified_contract_clears_password_and_never_uses_network(self):
         cfg = {"protocol": {"verified": False}, "auth": {}}
         with patch("windows_gui.read_config", return_value=cfg), \
-             patch("windows_gui.simpledialog.askstring") as dialog, \
              patch("windows_gui.threading.Thread") as thread:
             Application.start_native_login(self.app)
-        dialog.assert_not_called()
+        self.app.login_password.set.assert_called_once_with("")
         thread.assert_not_called()
 
     def test_verified_login_runs_in_background_without_browser(self):
@@ -34,14 +36,13 @@ class NativeLoginGuiTests(TestCase):
         response = NativeLoginResult("verified", "SID=mock-private", "jwmis.ncwu.edu.cn")
         with patch("windows_gui.read_config", return_value=cfg), \
              patch("windows_gui.validate_ncwulogin_entry", return_value=None), \
-             patch("windows_gui.simpledialog.askstring", side_effect=["alice", "secret"]) as dialog, \
              patch("windows_gui.login_ncwusigned", new_callable=AsyncMock,
                    return_value=response) as login, \
              patch("windows_gui.threading.Thread") as thread:
             Application.start_native_login(self.app)
             self.assertEqual(thread.call_args.kwargs["name"], "KingoNativeLogin")
             thread.call_args.kwargs["target"]()
-        self.assertEqual(dialog.call_count, 2)
+        self.app.login_password.set.assert_called_once_with("")
         login.assert_awaited_once_with(cfg, "alice", "secret")
         event = self.app.events.get_nowait()
         self.assertEqual(event.kind, "native_login")
@@ -53,6 +54,7 @@ class NativeLoginGuiTests(TestCase):
         with patch("windows_gui.threading.Thread") as thread:
             Application.clear_native_session(self.app)
         self.assertIsNone(self.app._native_session_cookie)
+        self.app.login_password.set.assert_called_once_with("")
         thread.assert_not_called()
 
     def test_native_session_is_only_usable_for_same_origin(self):
