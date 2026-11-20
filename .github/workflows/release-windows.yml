@@ -38,8 +38,9 @@ jobs:
             throw 'Invalid preview version in RELEASE_VERSION'
           }
           "tag=$tag" >> $env:GITHUB_OUTPUT
-          gh release view $tag --json tagName 2>$null | Out-Null
-          if ($LASTEXITCODE -eq 0) { throw "Release already exists: $tag; bump RELEASE_VERSION before publishing" }
+          $existing = @(gh release list --limit 100 --json tagName | ConvertFrom-Json)
+          if ($LASTEXITCODE -ne 0) { throw "Unable to query GitHub releases" }
+          if ($existing.tagName -contains $tag) { throw "Release already exists: $tag; bump RELEASE_VERSION before publishing" }
 
       - name: Install build dependencies
         shell: pwsh
