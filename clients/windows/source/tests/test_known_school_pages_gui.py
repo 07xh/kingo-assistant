@@ -30,11 +30,9 @@ class SchoolResultsGuiTests(TestCase):
         cfg = {"base_url": "https://jwmis.ncwu.edu.cn",
                "known_school_pages": {"selected_results": {"verified": False}}}
         with patch("windows_gui.read_config", return_value=cfg), \
-             patch("windows_gui.threading.Thread") as thread, \
-             patch("windows_gui.webbrowser.open") as browser:
+             patch("windows_gui.threading.Thread") as thread:
             Application.check_known_school_results(current)
         thread.assert_not_called()
-        browser.assert_not_called()
         self.assertIn("旧 HAR", str(current.school_page_status.set.call_args))
 
     def test_verified_read_uses_worker_no_browser(self):
@@ -45,17 +43,149 @@ class SchoolResultsGuiTests(TestCase):
              patch("windows_gui.validate_known_page_contract", return_value=None), \
              patch("windows_gui.read_known_school_page", new_callable=AsyncMock,
                    return_value=done) as reader, \
-             patch("windows_gui.threading.Thread") as thread, \
-             patch("windows_gui.webbrowser.open") as browser:
+             patch("windows_gui.threading.Thread") as thread:
             Application.check_known_school_results(current)
             thread.assert_called_once()
             thread.call_args.kwargs["target"]()
-            browser.assert_not_called()
         reader.assert_awaited_once_with(cfg, "selected_results", session_cookie=None)
         event = current.events.get_nowait()
         self.assertEqual(event.kind, "known_school_results")
         self.assertEqual(event.value.table_count, 1)
         self.assertTrue(current._school_page_read_in_progress)
+
+    def test_dynamic_query_needs_verified_exe_account_before_worker(self):
+        current = app()
+        current._native_session_cookie = "SID=EXE-LOCAL"
+        current._native_session_origin = "jwmis.ncwu.edu.cn"
+        cfg = {"base_url": "https://jwmis.ncwu.edu.cn",
+               "known_school_pages": {"selected_results": {
+                   "query_mode": "current_yearterm_base64"}}}
+        with patch("windows_gui.read_config", return_value=cfg), \
+             patch("windows_gui.validate_known_page_contract", return_value=None), \
+             patch("windows_gui.threading.Thread") as thread:
+            Application.check_known_school_results(current)
+        thread.assert_not_called()
+        self.assertIn("身份核验", str(current.school_page_status.set.call_args))
+
+    def test_dynamic_query_uses_verified_memory_account_only(self):
+        current = app()
+        current._native_session_cookie = "SID=EXE-LOCAL"
+        current._native_session_origin = "jwmis.ncwu.edu.cn"
+        current._native_verified_user_code = "FICTIONAL001"
+        cfg = {"base_url": "https://jwmis.ncwu.edu.cn",
+               "known_school_pages": {"selected_results": {
+                   "query_mode": "current_yearterm_base64"}}}
+        done = KnownSchoolPageResult("shape_observed", "selected_results", 1, 1)
+        with patch("windows_gui.read_config", return_value=cfg), \
+             patch("windows_gui.validate_known_page_contract", return_value=None), \
+             patch("windows_gui.read_known_school_page", new_callable=AsyncMock,
+                   return_value=done) as read, \
+             patch("windows_gui.threading.Thread") as thread:
+            Application.check_known_school_results(current)
+            thread.assert_called_once()
+            thread.call_args.kwargs["target"]()
+        read.assert_awaited_once_with(
+            cfg, "selected_results", session_cookie="SID=EXE-LOCAL",
+            expected_user_code="FICTIONAL001",
+        )
+
+    def test_clear_native_session_removes_verified_account(self):
+        current = app()
+        current._native_session_cookie = "SID=EXE-LOCAL"
+        current._native_session_origin = "jwmis.ncwu.edu.cn"
+        current._native_verified_user_code = "FICTIONAL001"
+        current._pending_native_login_account = "PRIVATE-ACCOUNT"
+        current.native_login_status = Mock()
+        current.native_preparation_status = Mock()
+        Application.clear_native_session(current)
+        self.assertIsNone(current._native_verified_user_code)
+        self.assertIsNone(current._pending_native_login_account)
+        self.assertIsNone(current._native_session_cookie)
+
+    def test_account_mismatch_event_clears_exe_verified_identity(self):
+        current = app()
+        current.after = Mock()
+        current.poll = Mock()
+        current.log = Mock()
+        current.native_login_status = Mock()
+        current.native_preparation_status = Mock()
+        current._native_session_cookie = "SID=EXE-LOCAL"
+        current._native_session_origin = "jwmis.ncwu.edu.cn"
+        current._native_verified_user_code = "FICTIONAL001"
+        current._pending_native_login_account = None
+        current._live_polling = False
+        current.events.put(SimpleNamespace(
+            kind="known_school_results",
+            value=KnownSchoolPageResult("identity_mismatch", "selected_results")))
+        Application.poll(current)
+        self.assertIsNone(current._native_session_cookie)
+        self.assertIsNone(current._native_session_origin)
+        self.assertIsNone(current._native_verified_user_code)
+        self.assertIn("账号核验失败",
+                      str(current.native_login_status.set.call_args))
+
+    def test_known_exact_field_candidates_are_display_only(self):
+        from core.ncwu_known_result_candidates import HistoricalClassCandidate
+        current = app()
+        result = KnownSchoolPageResult(
+            "shape_observed", "selected_results", 1, 2,
+            candidates=(HistoricalClassCandidate(
+                "C101", "INTERNAL-SKBJDM", "未核验"),),
+            recognized_identity_tables=1,
+        )
+        with patch("windows_gui._open_readonly_popup") as popup, \
+             patch("windows_gui._create_readonly_tree") as tree:
+            Application.show_known_result_candidates(current, result)
+        popup.assert_called_once()
+        self.assertEqual(tree.return_value.insert.call_count, 1)
+        self.assertIn("INTERNAL-SKBJDM",
+                      tree.return_value.insert.call_args.kwargs["values"])
+        self.assertIn("不能据此认定选课成功、提交许可", result.message)
+
+    def test_scoped_exact_target_and_status_visible_without_success(self):
+        from core.ncwu_known_result_candidates import HistoricalClassCandidate
+        current = app()
+        result = KnownSchoolPageResult(
+            "shape_observed", "selected_results", 1, 2,
+            candidates=(HistoricalClassCandidate(
+                "COURSE1", "CLASS1", "选中", "03"),),
+            recognized_identity_tables=1,
+            account_bound_query=True,
+            semester_bound_query=True,
+        )
+        cfg = {"courses": [
+            {"key": "A", "course_id": "COURSE1", "class_id": "CLASS1"}]}
+        with patch("windows_gui.read_config", return_value=cfg), \
+             patch("windows_gui._open_readonly_popup") as popup, \
+             patch("windows_gui._create_readonly_tree") as tree, \
+             patch("windows_gui.ttk.Button") as button:
+            Application.show_known_result_candidates(current, result)
+        self.assertEqual(tree.return_value.insert.call_count, 1)
+        cells = tree.return_value.insert.call_args.kwargs["values"]
+        self.assertIn("03", cells)
+        self.assertIn("志愿 A：精确候选", cells)
+        self.assertIn("state_code", tree.call_args.kwargs["columns"])
+        self.assertIn("志愿 1 条", str(popup.call_args))
+        button.assert_called_once()
+        self.assertIn("均不是选课成功证明",
+                      button.call_args.kwargs["text"])
+
+    def test_config_failure_still_displays_unverified_candidates(self):
+        from core.ncwu_known_result_candidates import HistoricalClassCandidate
+        current = app()
+        result = KnownSchoolPageResult(
+            "shape_observed", "selected_results", 1, 2,
+            candidates=(HistoricalClassCandidate(
+                "COURSE1", "CLASS1", "选中", "03"),),
+        )
+        with patch("windows_gui.read_config", side_effect=ValueError), \
+             patch("windows_gui._open_readonly_popup"), \
+             patch("windows_gui._create_readonly_tree") as tree, \
+             patch("windows_gui.ttk.Button") as button:
+            Application.show_known_result_candidates(current, result)
+        self.assertIn("未建立精确志愿关联",
+                      tree.return_value.insert.call_args.kwargs["values"])
+        button.assert_not_called()
 
     def test_blocked_when_timetable_active(self):
         current = app()

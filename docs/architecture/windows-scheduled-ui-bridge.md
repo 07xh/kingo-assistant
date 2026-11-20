@@ -8,7 +8,7 @@ The `core.scheduled_ui_bridge` module provides:
 2. `run_prepared_schedule(plan, engine, stop_event)`: connects the typed local plan to the actual `ScheduledEnrollmentRunner`. It accepts only an **explicitly injected** `EnrollmentEngine`; the engine must independently pass user authorization, institutional permission, and the official catalog, selection-window, enrollment-readback and write capability gates before waiting or contacting the school.
 3. Windows GUI control **自动选课计划预检（离线）**: validates current saved plan using the bridge and prints blockers. It **does not** call `run_prepared_schedule`, launch a background worker, create a network client, or claim an automatic-enrollment session is running.
 
-The existing **预约按时打开官网（辅助）** remains a separate manual fallback and must not be conflated with the real scheduled runner. No estimated selection date is silently treated as an actual open window.
+**2026-11-20 decision:** The old **预约按时打开官网（辅助）** is removed from the supported plan; its UI and callbacks have now been removed from the Windows runtime. Only the in-process HTTP scheduled executor belongs to the current architecture. No estimated selection date is silently treated as an open window. See [pure API architecture](pure-api-execution.md).
 
 ## Next gates
 

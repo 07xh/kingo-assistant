@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from hashlib import sha256
+import time
+from types import SimpleNamespace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import IsolatedAsyncioTestCase
@@ -13,6 +15,8 @@ from core.course_models import CourseTarget
 from core.enrollment import AttemptJournal, EnrollmentEngine, EnrollmentNotReady, SubmitReceipt, WindowState
 from core.ncwu_submission_transport import PreparedNCWUSubmission
 from core.ncwu_submission_gateway import NCWUEvidenceBoundGateway, make_ncwu_enrollment_engine
+from core.ncwu_exact_readback import ExactSelectedSnapshot
+from tests.test_ncwu_exact_readback import DIGEST
 
 
 class FakeSource:
@@ -33,7 +37,17 @@ class FakeSource:
         return WindowState.OPEN
 
     async def read_enrollments(self):
-        return set()
+        return ExactSelectedSnapshot(
+            account_scope=self.account_scope, semester=self.enrollment_semester,
+            school_origin=self.verified_school_origin,
+            internal_student_id=self.current_internal_student_id,
+            academic_year=self.current_academic_year,
+            academic_term=self.current_academic_term,
+            round_id=self.current_round_id, identity_field="skbjdm",
+            source_path="/hsjw/student/verified-exact-test.jsp",
+            contract_sha256=DIGEST, observed_monotonic=time.monotonic(),
+            records=frozenset(),
+        )
 
     async def list_offerings(self):
         return []
@@ -44,7 +58,7 @@ class FakeSource:
 
 class Attest:
     def require(self, name):
-        return None
+        return SimpleNamespace(contract_sha256=DIGEST)
 
 
 class Budget:
@@ -221,13 +235,46 @@ class GatewayTests(IsolatedAsyncioTestCase):
         with self.assertRaises(EnrollmentNotReady):
             await self.bridge(source=source, attestations=registry).read_enrollments()
 
-    async def test_verified_read_returns_source_records_unchanged(self):
+    async def test_verified_read_returns_only_scoped_exact_records(self):
         source = FakeSource()
         records = {("COURSE-ID", "INTERNAL-CLASS")}
 
         async def read():
-            return records
+            result = await FakeSource.read_enrollments(source)
+            from dataclasses import replace
+            return replace(result, records=frozenset(records))
 
         source.read_enrollments = read
-        self.assertIs(await self.bridge(source=source).read_enrollments(), records)
+        self.assertEqual(await self.bridge(source=source).read_enrollments(), records)
         self.assertEqual(self.sent, [])
+
+    async def test_plain_candidate_or_unscoped_set_cannot_be_used_for_success(self):
+        source = FakeSource()
+        async def read():
+            return {("COURSE-ID", "VISIBLE-SKBH")}
+        source.read_enrollments = read
+        with self.assertRaises(EnrollmentNotReady):
+            await self.bridge(source=source).read_enrollments()
+        self.assertEqual(self.sent, [])
+
+    async def test_stale_exact_snapshot_is_not_accepted_by_gateway(self):
+        source = FakeSource()
+        from dataclasses import replace
+        cached = replace(await FakeSource.read_enrollments(source),
+                         observed_monotonic=time.monotonic() - 60)
+        async def read():
+            return cached
+        source.read_enrollments = read
+        with self.assertRaises(EnrollmentNotReady):
+            await self.bridge(source=source).read_enrollments()
+        self.assertEqual(self.sent, [])
+
+    async def test_wrong_attested_parser_digest_never_returns_records(self):
+        source = FakeSource()
+        from dataclasses import replace
+        async def read():
+            return replace(await FakeSource.read_enrollments(source),
+                           contract_sha256="0" * 64)
+        source.read_enrollments = read
+        with self.assertRaises(EnrollmentNotReady):
+            await self.bridge(source=source).read_enrollments()

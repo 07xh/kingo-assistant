@@ -28,14 +28,31 @@ class NativeLoginResult:
     # Never include a credential in repr, logs, return message or settings.
     session_cookie: str = field(default="", repr=False, compare=False)
     session_origin: str = field(default="", repr=False, compare=False)
+    # Non-sensitive, allowlisted phase identifier for first-party login acceptance.
+    stage: str = ""
 
     @property
     def verified(self) -> bool:
         return self.code == "verified" and bool(self.session_cookie) and bool(self.session_origin)
 
     @property
-    def message(self) -> str:
+    def diagnostic_stage(self) -> str:
+        """Public phase name only; never include an HTTP body, URL or token."""
         return {
+            "login_page": "登录页读取",
+            "signing_script": "签名脚本读取",
+            "temporary_key": "临时密钥读取",
+            "server_timestamp": "服务器时间参数读取",
+            "signing": "本机签名构造",
+            "submit_login": "官方登录响应",
+            "identity_readback": "官方账号身份回读",
+            "session_binding": "本次会话绑定",
+            "complete": "登录及身份回读完成",
+        }.get(self.stage, "")
+
+    @property
+    def message(self) -> str:
+        base = {
             "protocol_unverified": "学校身份接口尚未核验；未执行 EXE 登录",
             "identity_unverified": "学期账号身份回读协议尚未核验；未发送账号密码",
             "identity_mismatch": "登录后的学期接口账号标识与本次输入不一致；已丢弃会话",
@@ -56,6 +73,7 @@ class NativeLoginResult:
             "unavailable": "EXE 登录未成功完成身份核验；没有保存会话",
             "verified": "EXE 自有登录会话已通过官方身份核验；尚不代表可自动提交选课",
         }[self.code]
+        return base + (f"｜验收阶段：{self.diagnostic_stage}" if self.diagnostic_stage else "")
 
 
 def _contract(config: Mapping) -> tuple[str | None, tuple | None]:

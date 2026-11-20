@@ -11,7 +11,7 @@ interrupt an in-flight submit/official-result readback.
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import threading
 from typing import Callable
 
@@ -92,8 +92,19 @@ class DesktopScheduledWorker:
             engine.validate_ready()
             self.send(ScheduledWorkerEvent("waiting"))
             report = await run_prepared_schedule(
-                self.plan, engine, stop_event=cancel
+                self.plan, engine, stop_event=cancel,
+                defer_readback=True,
             )
+            # Make the provisional status visible immediately while the
+            # read-only verifier runs. Do not close the gateway/session first.
+            if engine.has_deferred_verification:
+                self.send(ScheduledWorkerEvent("verification_pending", report))
+                final = await engine.finish_deferred_verification()
+                if final is not None:
+                    report = replace(
+                        report, result=final,
+                        reason="engine_halted" if final.halted else "engine_completed",
+                    )
         finally:
             # Always close an owned gateway, including after a rejected gate.
             # Cleanup failures are reported as non-fatal diagnostics, not as

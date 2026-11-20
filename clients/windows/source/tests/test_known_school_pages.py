@@ -74,6 +74,25 @@ class SchoolPageTests(TestCase):
         self.assertEqual(requests[0].headers["cookie"], "SID=SELF")
         self.assertEqual(budget.requests, 1)
 
+    def test_actual_td_heading_with_internal_fields_yields_candidate_not_confirmation(self):
+        html = (
+            "<html><body><table>"
+            "<tr><td>课程</td><td>上课班级 代码</td><td>选课 状态</td></tr>"
+            "<tr><td>虚构课程</td><td>展示班号</td><td>未知状态</td>"
+            '<td name="kcdm" id="kcdm_0">COURSE101</td>'
+            '<td name="skbjdm" id="skbjdm_0">CLASS-PRIVATE</td></tr>'
+            "</table></body></html>"
+        )
+        result, requests, _ = call(
+            config(), "selected_results", lambda req: httpx.Response(
+                200, text=html, headers={"content-type": "text/html"}))
+        self.assertEqual(result.code, "shape_observed")
+        self.assertEqual(result.recognized_identity_tables, 1)
+        self.assertEqual(len(result.candidates), 1)
+        self.assertEqual(result.candidates[0].internal_class_id, "CLASS-PRIVATE")
+        self.assertNotIn("CLASS-PRIVATE", result.message)
+        self.assertEqual(len(requests), 1)
+
     def test_unverified_query_does_not_send(self):
         cfg = config()
         cfg["known_school_pages"]["selected_results"]["query_verified"] = False

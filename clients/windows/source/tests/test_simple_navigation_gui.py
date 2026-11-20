@@ -7,12 +7,9 @@ from windows_gui import Application
 
 
 class SimpleNavigationTests(TestCase):
-    def test_manual_backup_is_a_separate_tab(self):
-        manual = object()
-        notebook = Mock()
-        app = SimpleNamespace(notebook=notebook, tab_manual=manual)
-        Application.toggle_portal_panel(app)
-        notebook.select.assert_called_once_with(manual)
+    def test_browser_backup_navigation_is_removed(self):
+        self.assertFalse(hasattr(Application, "toggle_portal_panel"))
+        self.assertFalse(hasattr(Application, "open_official_portal"))
 
     def test_advanced_configuration_opens_tool_tab(self):
         tools = object()
@@ -34,7 +31,7 @@ class SimpleNavigationTests(TestCase):
         self.assertIn("自动提交", displayed)
         self.assertIn("禁用", displayed)
         self.assertIn("只读取", displayed)
-        self.assertIn("手动官网备用", displayed)
+        self.assertIn("纯 HTTP", displayed)
         self.assertIn("接口", displayed)
 
     def test_template_course_is_marked_as_example_not_online_result(self):

@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 import httpx
 
+from core import ncwu_live_elective as live_module
 from core.ncwu_live_elective import (
     CATALOG_PATH, HOST, REFERER, S202_PAGE, WINDOW_PATH,
     _extract_query_form, live_s202_snapshot,
@@ -60,19 +61,24 @@ def catalog(*, row=True):
     ).encode("gbk")
 
 
-def run(handler, config=None, cookie=COOKIE, recorder=None):
+def run(handler, config=None, cookie=COOKIE, recorder=None, *,
+        manual_cooldown=False, budget_factory=None):
     seen = []
     def handle(request):
         seen.append(request)
         return handler(request)
+    kwargs = {}
+    if budget_factory is not None:
+        kwargs["budget_factory"] = budget_factory
     result = asyncio.run(live_s202_snapshot(
         config or CONF, session_cookie=cookie,
         http_factory=lambda: httpx.AsyncClient(
             transport=httpx.MockTransport(handle),
             follow_redirects=False,
         ),
-        enforce_manual_cooldown=False,
+        enforce_manual_cooldown=manual_cooldown,
         latency_recorder=recorder,
+        **kwargs,
     ))
     return result, seen
 
@@ -101,6 +107,63 @@ class LiveS202Tests(TestCase):
             return httpx.Response(200, content=catalog(),
                 headers={"content-type": "text/html; charset=GBK"})
         self.fail("Unexpected request " + request.url.path)
+
+    def test_failed_policy_does_not_consume_manual_cooldown(self):
+        # An invalid config has zero network effects. The next corrected
+        # attempt should not need to wait an extra minute.
+        with patch.object(live_module, "_NEXT_MANUAL_AT", 0.0):
+            invalid = {**CONF, "server_policy": {"verified": True}}
+            def refuse_policy(*_):
+                raise ValueError("invalid local policy")
+            result, requests = run(
+                lambda req: self.fail("network not expected"),
+                config=invalid, manual_cooldown=True,
+                budget_factory=refuse_policy,
+            )
+            self.assertEqual(result.code, "policy_unverified")
+            self.assertEqual(requests, [])
+            self.assertEqual(live_module._NEXT_MANUAL_AT, 0.0)
+
+            result, requests = run(
+                lambda req: httpx.Response(503),
+                manual_cooldown=True,
+            )
+            self.assertEqual(result.code, "unavailable")
+            self.assertEqual(len(requests), 1)
+            self.assertGreater(live_module._NEXT_MANUAL_AT, 0.0)
+
+            result, requests = run(
+                lambda req: self.fail("still in cooldown"),
+                manual_cooldown=True,
+            )
+            self.assertEqual(result.code, "cooldown")
+            self.assertEqual(requests, [])
+
+    def test_page_server_error_is_unavailable_not_protocol_changed(self):
+        for status in (500, 502, 503):
+            with self.subTest(status=status):
+                result, requests = run(
+                    lambda req: httpx.Response(status),
+                )
+                self.assertEqual(result.code, "unavailable")
+                self.assertEqual(result.stage, "page")
+                self.assertEqual(len(requests), 1)
+
+    def test_page_connect_error_is_unavailable_not_protocol_changed(self):
+        def fail_network(request):
+            raise httpx.ConnectError("synthetic connection failure", request=request)
+        result, requests = run(fail_network)
+        self.assertEqual(result.code, "unavailable")
+        self.assertEqual(result.stage, "page")
+        self.assertEqual(len(requests), 1)
+
+    def test_telemetry_failure_cannot_change_success_result(self):
+        class BrokenRecorder:
+            def record(self, _sample):
+                raise RuntimeError("synthetic logger failure")
+        result, requests = run(self.handler, recorder=BrokenRecorder())
+        self.assertEqual(result.code, "catalog_read")
+        self.assertEqual(len(requests), 3)
 
     def test_three_s202_reads_record_anonymous_transport_phases(self):
         recorder = LatencyRecorder(None)

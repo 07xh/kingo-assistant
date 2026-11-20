@@ -1,38 +1,19 @@
-# Pre-login and explicit session readiness (V5.3)
+# EXE 纯接口登录与会话准备
 
-This increment is intentionally distinct from live automatic enrollment.
-It does not infer permission to submit, and it does not add a school-specific
-write adapter.
+> 2026-11-20 起，本文替代历史浏览器预登录方案。参见[唯一正式架构](pure-api-execution.md)。
 
-## Browser pre-login
+## 登录流程
 
-- The confirmed appointment opens the fixed official NCWU portal **15 minutes
-  before** the configured China-local time, once, so the user can complete the
-  official login/CAPTCHA/MFA with the normal browser.
-- It opens the portal again once at the confirmed time as a **manual fallback**.
-  The app must stay open and Windows awake.
-- A separate button opens the official portal immediately for early login.
-- Browser opening is **not** proof of authentication; the app cannot read the
-  browser's session, and it does not automatically submit anything.
+1. EXE 内由用户明确启动登录，预先检查学校许可、已验收的认证接口、请求限额与凭据处理规则。
+2. 使用应用内 HTTPS 客户端遵循学校正常认证协议建立会话；不打开真实浏览器，不从浏览器导入 Cookie。
+3. 经独立官方身份接口回读证明会话属于本人。仅收到 HTTP 200 或 Cookie 不构成成功证明。
+4. 会话仅在进程中保留。过期、权限不足、身份不匹配或服务器限流时停止，不盲目重登/绕过。
+5. CAS、验证码、MFA 若无法以学校许可的纯接口方式正常完成，就报告“不支持/需官方许可”，不退回浏览器登录 + HTTP 提交路线。
 
-## Script-session check
+## 取消的功能
 
-- **Check script session (read-only)** is a separate, explicit user action.
-- It needs a verified official identity endpoint in the protocol configuration,
-  plus a session supplied to the existing read-only HTTP client. A local
-  `KINGO_COOKIE` environment variable is supported, but **do not store a
-  school password, raw HAR or token in the repository or YAML**.
-- The check invokes the existing same-origin HTTPS identity GET. It reports
-  only whether that check succeeded, expired, was restricted, or could not be
-  verified. No student name, cookie, response body or token is logged.
-- A working browser login is **not** silently transferred into the script
-  session. Automatic credential login is unavailable until an official,
-  permitted authentication mechanism can be verified.
-- No repeat login loops, CAPTCHA bypass, cross-origin redirects, or write calls.
+“提前 15 分钟打开官网”“到点再次打开浏览器”“手动官网备用”“从浏览器共享或复制会话”不再属于登录准备及提交架构。Windows 运行时已移除对应旧 UI、回调及预约调度模块；不再有浏览器执行分支。
 
-## Remaining acceptance gates
+## 提交仍有独立门禁
 
-The school-specific live elective catalog, authoritative selection window,
-remaining-seat field, permitted write contract and final enrollment readback
-are unverified. The existing automatic-enrollment engine is therefore still
-offline-only. This work must not be described as a production auto-enroller.
+登录就绪不意味着正式选课功能可用。需另行验收当期真实课程目录、教学班 ID、合法时间窗、正式提交协议及官方结果回读，并满足学校许可和请求预算。当前生产选课写入依然禁用。

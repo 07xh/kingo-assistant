@@ -107,6 +107,8 @@ class MonitorWorker:
                 self.updates.put(MonitorEvent("message", "校时不可用，使用本机时间。"))
             client.prepare_query(self.config["xnxq"])
             scheduler = Scheduler(client, clock, self.config)
+            last_cadence = scheduler.adaptive.report()
+            self.updates.put(MonitorEvent("cadence", last_cadence))
             running = asyncio.create_task(scheduler.run())
             self.task = running
             last_snapshot = None
@@ -123,8 +125,15 @@ class MonitorWorker:
                             "status", (scheduler.cycles, dict(scheduler.states),
                                        client.last_ms, client.parse_ms)))
                         last_snapshot = snapshot
+                    cadence = scheduler.adaptive.report()
+                    if cadence != last_cadence:
+                        self.updates.put(MonitorEvent("cadence", cadence))
+                        last_cadence = cadence
                     await asyncio.sleep(0.5)
                 await running
+                cadence = scheduler.adaptive.report()
+                if cadence != last_cadence:
+                    self.updates.put(MonitorEvent("cadence", cadence))
                 self.updates.put(MonitorEvent("status", (scheduler.cycles, dict(scheduler.states),
                                                                   client.last_ms, client.parse_ms)))
                 if scheduler.last_error:

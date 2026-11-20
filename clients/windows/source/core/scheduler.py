@@ -17,6 +17,7 @@ from loguru import logger
 from .client import AuthenticationError, ProtocolError, RateLimitError, Status
 from .monitor_state import MonitorStateStore
 from .monitor_policy import validate_limits
+from .adaptive_read_cadence import AdaptiveReadCadence
 from .selection_optim import PollingSchedule
 from .release_watch import (
     NotificationLedger, WatchState, apply_observations, observe_all, target_matches,
@@ -37,6 +38,8 @@ class Scheduler:
         self.clock = clock
         self.config = config
         self.strategy = config["strategy"]
+        # Opt-in slowdown of authorized read-only polling; never changes HTTP policy.
+        self.adaptive = AdaptiveReadCadence(self.strategy.get("adaptive_polling"))
         self.cycles = 0
         self.last_error: str | None = None
         # Optional pickup schedule. Absent or disabled keeps the original random
@@ -159,8 +162,10 @@ class Scheduler:
         may never leave the operator-approved range.
         """
         if self.pickup is None:
-            return random.uniform(limits.low, limits.high)
-        return max(limits.low, min(self.pickup.interval(), limits.high))
+            baseline = random.uniform(limits.low, limits.high)
+        else:
+            baseline = max(limits.low, min(self.pickup.interval(), limits.high))
+        return self.adaptive.interval(baseline, floor=limits.low)
 
     async def run(self) -> None:
         try:
@@ -179,6 +184,9 @@ class Scheduler:
                 if (limits.max_cycles and self.cycles >= limits.max_cycles) or time.monotonic() >= deadline:
                     break
                 await self.cycle()
+                # Only successful read timings are evidence of current load.
+                # No timing data => leave the previously approved interval alone.
+                self.adaptive.observe_success(getattr(self.client, "last_timing", None))
                 if limits.max_cycles and self.cycles >= limits.max_cycles:
                     break
                 seconds_left = max(0.0, deadline - time.monotonic())

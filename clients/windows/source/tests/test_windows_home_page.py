@@ -120,7 +120,7 @@ class HomePageViewTests(TestCase):
         for name in (
             "native_login_status", "native_preparation_status",
             "timetable_read_status", "live_catalog_status",
-            "enrollment_gate_status",
+            "enrollment_gate_status", "monitor_cadence_status",
         ):
             with self.subTest(name=name):
                 self.assertIn(getattr(self.app, name), used_vars)

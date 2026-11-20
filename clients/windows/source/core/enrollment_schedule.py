@@ -116,6 +116,7 @@ class ScheduledEnrollmentRunner:
         target_time: str,
         *,
         stop_event: asyncio.Event | None = None,
+        defer_readback: bool = False,
     ) -> ScheduledRunReport:
         ordered = list(targets)
         _validate_targets(ordered)
@@ -129,6 +130,8 @@ class ScheduledEnrollmentRunner:
             raise ValueError("自动选课计划时间必须是有限时间")
 
         started = self.monotonic()
+        prepared_schedule = None
+        preparation_attempted = False
         while self.clock.now() < target_epoch:
             if stop_event is not None and stop_event.is_set():
                 return ScheduledRunReport(
@@ -137,10 +140,27 @@ class ScheduledEnrollmentRunner:
                     0, max(0.0, self.monotonic() - started),
                 )
             remaining = target_epoch - self.clock.now()
-            # Avoid waking the local event loop twice per second for days.
-            # Coarse waits are cancellation-aware; use subsecond precision
-            # only in the final 10 seconds before the confirmed start time.
-            step = 30.0 if remaining > 60 else (5.0 if remaining > 10 else 0.25)
+            # Only opt-in, authorized timetable prefetch can run here.
+            # It is a bounded, cancellable read, never a window probe or
+            # submission. Skip if within 15 s of T0 to protect the deadline.
+            if 15 <= remaining <= 30 and not preparation_attempted:
+                preparation_attempted = True
+                try:
+                    from core.prepared_preflight import prepare_schedule
+                    prepared_schedule = await asyncio.wait_for(
+                        prepare_schedule(self.engine, ordered),
+                        timeout=min(5.0, remaining - 10.0),
+                    )
+                except Exception:
+                    prepared_schedule = None
+                remaining = max(0.0, target_epoch - self.clock.now())
+            # Coarse sleeps avoid waking for hours. During the final second,
+            # use 50 ms *local* checks only; no school requests occur here.
+            # asyncio/OS scheduling can still delay wakeups, so this is a
+            # best-effort improvement rather than a sub-50 ms guarantee.
+            step = (30.0 if remaining > 60 else
+                    (5.0 if remaining > 10 else
+                     (0.25 if remaining > 1 else 0.05)))
             if await self._pause(min(step, remaining), stop_event):
                 return ScheduledRunReport(
                     "cancelled_before_start",
@@ -165,7 +185,12 @@ class ScheduledEnrollmentRunner:
             if not isinstance(state, WindowState):
                 state = WindowState.UNKNOWN
             if state is WindowState.OPEN:
-                result = await self.engine.run(ordered)
+                result = await self.engine.run(
+                    ordered,
+                    prepared_schedule=prepared_schedule,
+                    defer_readback=defer_readback,
+                    scheduler_window_open=True,
+                )
                 reason = "engine_halted" if result.halted else "engine_completed"
                 return ScheduledRunReport(
                     reason, result, checks, max(0.0, self.monotonic() - started)

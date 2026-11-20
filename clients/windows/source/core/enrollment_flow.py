@@ -40,7 +40,10 @@ async def _verify(engine, fsm: EnrollmentFSM,
     return False, latest, read_error
 
 
-async def run_enrollment(engine, targets: Sequence[Target]) -> RunReport:
+async def run_enrollment(engine, targets: Sequence[Target], *,
+                         prepared_schedule=None, defer_readback: bool = False,
+                         scheduler_window_open: bool = False
+                         ) -> RunReport:
     targets = list(targets)
     _validate_targets(targets, engine.journal.semester)
     engine._gate()
@@ -56,21 +59,38 @@ async def run_enrollment(engine, targets: Sequence[Target]) -> RunReport:
         for fsm in fsms.values():
             fsm.move(EngineState.PREFLIGHT, "start")
         try:
-            window = await engine._window()
-            if window is not WindowState.OPEN:
-                label = ("学校选课窗口未开放" if window is WindowState.CLOSED
-                         else "无法确认学校选课窗口")
-                for target in targets:
-                    states[target.key] = label
-                    fsms[target.key].move(EngineState.PROTECTED, "window_unavailable")
-                return report(True)
+            # ScheduledEnrollmentRunner has just observed an explicit OPEN
+            # from the same trusted gateway. Direct callers still check the
+            # official window here. Every write *always* makes its own fresh
+            # window check below; this flag cannot bypass that final gate.
+            if scheduler_window_open is not True:
+                window = await engine._window()
+                if window is not WindowState.OPEN:
+                    label = ("学校选课窗口未开放" if window is WindowState.CLOSED
+                             else "无法确认学校选课窗口")
+                    for target in targets:
+                        states[target.key] = label
+                        fsms[target.key].move(
+                            EngineState.PROTECTED, "window_unavailable")
+                    return report(True)
 
             # Enrolled records must be explicitly scoped to this semester.
             if getattr(engine.gateway, "enrollment_semester", None) != engine.journal.semester:
                 raise ValueError("学期已选记录未经确认")
             enrolled = _read_records(await engine.gateway.read_enrollments())
             catalog = _validate_catalog(await engine.gateway.list_offerings())
-            snapshot = await engine.gateway.read_schedule()
+            # A pre-window timetable snapshot is usable only when the source
+            # explicitly permits it, the original session is identical and
+            # the snapshot is at most 30s old. Seat counts, selections and
+            # official window state are ALWAYS read live after opening.
+            snapshot = None
+            if prepared_schedule is not None:
+                from core.prepared_preflight import PreparedSchedule
+                if (isinstance(prepared_schedule, PreparedSchedule)
+                        and prepared_schedule.usable(engine.gateway, targets)):
+                    snapshot = prepared_schedule.snapshot
+            if snapshot is None:
+                snapshot = await engine.gateway.read_schedule()
             if (not isinstance(snapshot, ScheduleSnapshot)
                     or snapshot.verified is not True
                     or snapshot.semester != engine.journal.semester):
@@ -99,7 +119,7 @@ async def run_enrollment(engine, targets: Sequence[Target]) -> RunReport:
         occupied = snapshot.slots
         refresh_catalog = False
 
-        for target in targets:
+        for target_index, target in enumerate(targets):
             fsm = fsms[target.key]
             fsm.move(EngineState.MONITORING, "preflight_ready")
             identity = (target.course_id, target.class_id)
@@ -234,6 +254,22 @@ async def run_enrollment(engine, targets: Sequence[Target]) -> RunReport:
                 receipt is not None and receipt.accepted is False
                 and not submit_error
             )
+            # The final target has no dependent follow-up submission.
+            # Let a dedicated read-only task finish after releasing the
+            # submission journal lock. Earlier targets retain synchronous
+            # authoritative verification to preserve ordered fallback.
+            if defer_readback and target_index == len(targets) - 1:
+                from core.verification_coordinator import VerificationCoordinator
+                verifier = VerificationCoordinator(
+                    engine, target, fsm, states, fsms,
+                    explicit_rejection=explicit_rejection,
+                    submit_error=submit_error,
+                )
+                engine._deferred_verifier = verifier
+                verifier.start()
+                states[target.key] = "已发送，等待官方结果核验"
+                return report(True)
+
             confirmed, latest, read_error = await _verify(
                 engine, fsm, identity, reads=1 if explicit_rejection else None)
             if confirmed:

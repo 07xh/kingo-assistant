@@ -7,8 +7,9 @@ from datetime import datetime
 import unittest
 
 from core.enrollment import EnrollmentNotReady
-from core.official_portal_schedule import CHINA_TIMEZONE
-from core.scheduled_ui_bridge import prepare_scheduled_plan, run_prepared_schedule
+from core.scheduled_ui_bridge import (
+    CHINA_TIMEZONE, prepare_scheduled_plan, run_prepared_schedule, validate_target_time,
+)
 
 
 class ScheduledUiBridgeTests(unittest.TestCase):
@@ -34,6 +35,18 @@ class ScheduledUiBridgeTests(unittest.TestCase):
         self.assertEqual([x.class_id for x in plan.targets], ["K1", "K2"])
         self.assertEqual(plan.poll_interval_range, (60, 120))
         self.assertEqual(plan.max_wait_minutes, 60)
+
+    def test_target_time_fails_closed_without_browser(self):
+        from copy import deepcopy
+        for raw in ("not a date", "2026-11-01 09:00:00", "2027-11-01 09:00:00"):
+            config = deepcopy(self.config)
+            config["strategy"]["target_time"] = raw
+            with self.subTest(raw=raw), self.assertRaises(ValueError):
+                validate_target_time(config, now_epoch=self.now)
+        self.assertEqual(
+            validate_target_time(self.config, now_epoch=self.now),
+            "2026-12-21 09:00:00",
+        )
 
     def test_placeholder_and_missing_teaching_class_fail_closed(self):
         for field, value in (("course_id", "FILL_FROM_OFFICIAL_PAGE"),

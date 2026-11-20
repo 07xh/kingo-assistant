@@ -1,5 +1,7 @@
 # KingoAssistant 抢课能力评估与优化方案 v1
 
+> **历史优化研究（2026-11-20 已撤销旧架构提议）**：本文不再决定执行模式。浏览器/CDP 兜底、移动端接口旁路及浏览器登录与 HTTP 提交混用均已取消。请以 [纯接口执行架构](pure-api-execution.md) 为唯一现行方案。
+
 对象：`github.com/07xh/kingo-assistant`（华北水利水电大学 / 青果教务 · 个人选课助手）  
 评估基线：`main@542a528`（PR #41 native signed EXE login），111 个 py 文件 / 约 12.8k 行（含测试），40 篇 md，99 项离线单测  
 产出定位：阶段 A 已落地（见 `CHANGELOG-Windows-v5.1.md`：门禁证据化 / 时延埋点 / 策略层合并 / 拾漏轮询）；阶段 B–D 见本文第 3、5 节。
@@ -226,7 +228,7 @@ official_write:
 
 `windows_gui.py` 1850 行单文件，已出现 `_xxx_in_progress` 布尔标志 11 个（`_entry_probe_in_progress` / `_session_check_in_progress` / `_term_probe_in_progress` ...）。这是典型的「互斥靠布尔堆」反模式，加第 12 个功能必然漏。
 
-- 拆为 `ui/home_tab.py` / `ui/manual_tab.py` / `ui/tools_tab.py` / `ui/state.py`
+- 纯接口版本只保留登录/课程/执行状态/日志所需页面，不新增 `ui/manual_tab.py`，旧手动官网入口与浏览器预约模块已从运行时删除
 - 11 个布尔合并成一个 `OperationLock` 上下文管理器
 - 工作量：2-3 天，纯重构，无功能变化
 
@@ -242,26 +244,9 @@ official_write:
 
 这一节是「除了把主路径做通，还有哪些别人没想到的角度」。按投入产出比排序。
 
-### 4.1 移动端 API 旁路（价值最高）
+### 4.1 已撤销：移动端接口旁路
 
-**事实**：2026-11-11 HAR 里 `api.xiqueer.com/manager//wap/wapController.jsp` 出现 **53 次 POST**，请求体带 `token`、`xqerSign`、`encrptSecretKey`、`param`、`param2`。响应里直接给结构化 `zxinfo[0].zxxq[]`（含 `kcmc/skbj/kcid/yixuan/kex`）和 `xksj`（选课时间）。
-
-**为什么这条线优于 Web 端：**
-
-- 移动端**不做 HTML 渲染**，直接吐 JSON → 解析成本从 15ms 降到 0.5ms
-- 移动端一般**不校验 Referer、不校验 UA 与 IP 一致性**
-- 移动端接口通常是**同一个后端**，但走的是 app 专用 controller，**风控策略往往比 Web 薄**
-- `zxxq` 里已经带了 `yixuan`（已选）和 `kex`（可选）——**余量语义可能在这里直接就有的，不用去猜 HTML 表格列**
-
-**要做的三件事：**
-
-1. **还原 `xqerSign` 生成算法**——拿喜鹊儿 APK 反编译（`apktool` + `jadx`），搜 `xqerSign` / `encrptSecretKey` 字符串，定位到 Java 层或 native 层（大概率在 `libnative-lib.so` 里，需要用 IDA 看 JNI）
-2. **还原 `param/param2` 的编码**（Base64+DES？还是 gzip+自定义？）——用同一份 HAR 里多组已知明文/密文对拍验证
-3. **确认服务端是否与 Web 端共用选课池**——提交一门前端已满的课，看两边 remain 是否同步
-
-**提交动作的定位方法**：把 53 个 POST 按 `param` 里的关键词聚类（`kcid` + `skbj` 同时出现的那一簇就是选课动作），然后看 URL 上的 `method=` 参数或 `param` 里的 `action=` 字段。
-
-**收益预估**：如果打通，整个监测链的端到端时延可从 ~300ms 降到 ~120ms，且拿到结构化余量字段，**堵点 1 直接消失**。
+不以移动端入口或更弱的风控策略规避教务系统限制。只使用学校许可、真实验收的官方接口。
 
 ### 4.2 捡漏（ReleaseMonitor 的放大版）
 
@@ -310,16 +295,9 @@ official_write:
 
 **不要做的事**：同时提交 3 个班，成功了再退 2 个。理由：p5 数据显示 8 并发下 8 个请求只有 1 个确认成功、乐观锁冲突 63 次；且「选了再退」会占用池子，触发其他同学的名额锁定，实际是负和。
 
-### 4.6 浏览器 CDP 兜底（不是主路径）
+### 4.6 已撤销：浏览器/CDP 兜底与混合登录
 
-**适用场景**：`params` 这类加密查询串还原不出来、或者服务端加了指纹风控时。
-
-- 方案：Playwright 驱动真实 Chrome，`--remote-debugging-port` 连接已登录的实例
-- 优势：JS 环境完整，加密参数由页面 JS 自己算，不用逆；UA/指纹/Canvas 全真
-- 劣势：单次操作 300-800ms，比 HTTP 慢一个数量级
-- 正确用法：**预热阶段**用 CDP 打开选课页、执行一次真实查询、把生成的 `params` 和会话 cookie 取出来，**然后切回 HTTP 单发**。这样既有真实参数，又有 HTTP 的速度
-
-这是「特殊方向」里唯一能绕过加密参数逆向的方案，工程量小，建议作为 P1 优先级。
+不引入 Playwright、CDP、浏览器共享 Cookie、浏览器登录 + 接口提交等兜底。接口未验收时保持真实提交功能禁用，不能将浏览器自动化重新包装为“接口优先”。
 
 ### 4.7 明确不做清单（有数据支撑）
 
@@ -343,9 +321,9 @@ official_write:
 | 阶段 | 内容 | 交付物 | 验收判据 | 依赖 |
 |---|---|---|---|---|
 | **A（1 周）** | 门禁 attestation 化 + 时延埋点 + 合并 optimizations | `core/attestation.py`、`data/latency.jsonl`、删除重复传输层 | 单测全绿；能看到一次轮询的六段分解 | 无 |
-| **B（1 周）** | 三未知取证（离线部分）+ ReleaseMonitor 接入 + 亚秒窗口状态机 | schema 草案、退课高峰轮询策略、`WindowProbe` | 用 HAR 生成的 schema 能过 `har_to_schema` 校验；窗口状态机能识别 prohibit 翻转 | 需 HAR/APK |
-| **C（1-2 周）** | 写适配器（先接移动端，后接 Web）+ 幂等 + 读回 | `core/adapter_ncwu.py` | 补选期低风险窗口完成 1 次真实提交 + 读回确认 | 需真实窗口 |
-| **D（1 周）** | CDP 兜底 + GUI 拆分 + 复盘页 | `ui/` 拆分、`run-<ts>.json` 时间线 | 复盘页能定位失败原因 | A/B 完成 |
+| **B（1 周）** | 三未知取证（离线部分）+ ReleaseMonitor 接入 + 亚秒窗口状态机 | schema 草案、退课高峰轮询策略、`WindowProbe` | 用 HAR 生成的 schema 能过 `har_to_schema` 校验；窗口状态机能识别 prohibit 翻转 | 需合法验收证据 |
+| **C（1-2 周）** | 经许可的正式 HTTP 提交适配器 + 幂等 + 官方读回 | `core/adapter_ncwu.py` | 补选期低风险窗口完成 1 次真实提交 + 读回确认 | 需真实窗口 |
+| **D（1 周）** | 纯 HTTP 会话健壮性 + GUI 整理 + 复盘页 | `ui/` 拆分、`run-<ts>.json` 时间线 | 复盘页能定位失败原因 | A/B 完成 |
 
 **关键判断**：A 阶段全部不需要任何外部输入，**现在就能开工**。C 阶段是真正的分水岭，之前所有工作都只是给它铺路。
 

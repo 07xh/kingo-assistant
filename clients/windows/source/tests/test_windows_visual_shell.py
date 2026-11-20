@@ -1,4 +1,4 @@
-"""Compact sidebar visual shell preserves the old Notebook navigation contract."""
+"""Compact sidebar has only native Home and Tools navigation."""
 from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import Mock, patch
@@ -31,10 +31,9 @@ class ThemeConfigurationTests(TestCase):
         owner.configure.assert_called_once_with(
             bg=PALETTE["background"])
 
-    def test_sidebar_links_use_the_original_three_notebook_tabs(self):
+    def test_sidebar_links_use_only_home_and_tools_tabs(self):
         owner = Mock()
         owner.tab_home = "tab/home"
-        owner.tab_manual = "tab/manual"
         owner.tab_tools = "tab/tools"
         buttons = []
         def button(*args, **kwargs):
@@ -47,10 +46,8 @@ class ThemeConfigurationTests(TestCase):
              patch("windows_visual_shell.ttk.Frame") as content:
             result = make_visual_shell(owner)
         self.assertIs(result, content.return_value)
-        self.assertEqual(set(owner.sidebar_buttons), {
-            "home", "manual", "tools",
-        })
-        self.assertEqual(len(buttons), 3)
+        self.assertEqual(set(owner.sidebar_buttons), {"home", "tools"})
+        self.assertEqual(len(buttons), 2)
         self.assertIn("sidebar", owner.__dict__)
         self.assertIn("visual_content", owner.__dict__)
         for key, _glyph, name, target in NAV_SECTIONS:
@@ -65,26 +62,22 @@ class ThemeConfigurationTests(TestCase):
                 getattr(owner, target))
         # A navigation button never opens the browser or calls school APIs.
         owner.start_native_login.assert_not_called()
-        owner.open_official_portal.assert_not_called()
 
     def test_sidebar_highlight_tracks_programmatic_tab_navigation(self):
         owner = SimpleNamespace(
-            tab_home="home-path", tab_manual="manual-path",
+            tab_home="home-path",
             tab_tools="tools-path", notebook=Mock(),
             sidebar_buttons={
-                "home": Mock(), "manual": Mock(), "tools": Mock(),
+                "home": Mock(), "tools": Mock(),
             },
         )
-        owner.notebook.select.return_value = "manual-path"
+        owner.notebook.select.return_value = "tools-path"
         sync_sidebar(owner)
         self.assertEqual(
-            owner.sidebar_buttons["manual"].configure.call_args.kwargs["bg"],
+            owner.sidebar_buttons["tools"].configure.call_args.kwargs["bg"],
             PALETTE["accent"])
         self.assertEqual(
             owner.sidebar_buttons["home"].configure.call_args.kwargs["bg"],
-            PALETTE["sidebar"])
-        self.assertEqual(
-            owner.sidebar_buttons["tools"].configure.call_args.kwargs["bg"],
             PALETTE["sidebar"])
         owner.notebook.select.return_value = "tools-path"
         connect_sidebar(owner)

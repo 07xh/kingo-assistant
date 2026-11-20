@@ -1,5 +1,5 @@
 # Kingosoft elective assistant: personal, read-only, rate-limited.
-# Copy from actual browser evidence. Values below are placeholders, NOT NCWU endpoints.
+# Fill only from independently verified, permitted official HTTP contracts. Values below are placeholders, NOT NCWU endpoints.
 base_url: "https://jwmis.ncwu.edu.cn"
 xnxq: "2026-2027-1"
 # Must be replaced with independently verified, published/authorized school policy.
@@ -63,6 +63,14 @@ strategy:
     # peak_windows:
     #   - {weekday: 0, start: "08:00", end: "09:30", label: "选课首日"}
     #   - {weekday: null, start: "22:00", end: "23:59", label: "截止前"}
+  # Adaptive V2: optional READ-ONLY slowdown when real latency/budget waiting
+  # indicates load. It never increases the query rate above interval_range,
+  # never retries enrollment POST, and does not change the school's policy.
+  adaptive_polling:
+    enabled: false
+    slow_request_ms: 2000
+    budget_wait_ms: 200
+    max_multiplier: 8
   # Only hashes of observed course+class IDs are stored; no Cookie or HTML.
   state_file: "data/notification-state.json"
   dry_run: true       # always read-only: no enrollment POST
@@ -99,7 +107,12 @@ known_school_pages:
     method: GET
     path: "/hsjw/wsxk/xkjg.ckdgxsxdkchj_data10319.jsp"
     query_verified: false
+    # Only if independently accepted: current_yearterm_base64.
+    # Compose each params value from this session's showYearTerm.action
+    # xn/xqM/userCode and EXE login identity; NEVER replay saved HAR values.
     query_mode: unverified
+    # Expected for that independently accepted mode:
+    # query_fields: {params: current_yearterm_base64}
 
 # 2026-11-03 and 2026-11-14 captures consistently show an EMPTY-BODY POST
 # returning text/plain JSON with year/semester and a user-scoped marker.

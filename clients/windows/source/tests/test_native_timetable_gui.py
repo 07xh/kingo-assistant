@@ -32,13 +32,11 @@ class KnownTimetableGuiTests(TestCase):
             "known_timetable": {"verified": False},
         }
         with patch("windows_gui.read_config", return_value=config), \
-             patch("windows_gui.threading.Thread") as thread, \
-             patch("windows_gui.webbrowser.open") as browser:
+             patch("windows_gui.threading.Thread") as thread:
             Application.check_known_timetable(self.app)
             thread.assert_called_once()
             self.assertEqual(thread.call_args.kwargs["name"], "KingoKnownTimetableRead")
             thread.call_args.kwargs["target"]()
-            browser.assert_not_called()
         result = self.app.events.get_nowait()
         self.assertEqual(result.kind, "known_timetable")
         self.assertEqual(result.value.code, "route_unverified")

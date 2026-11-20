@@ -8,6 +8,7 @@ seat counts, verified timetable and current first-party form is REQUIRED.
 from __future__ import annotations
 
 from typing import Awaitable, Callable, Mapping
+import time
 
 from core.attestation import AttestationRegistry, GATE_NAMES
 from core.course_models import CourseTarget
@@ -18,6 +19,7 @@ from core.ncwu_live_elective import ORIGIN, _validate_origin
 from core.ncwu_submission_transport import (
     PreparedNCWUSubmission, submit_prepared_s202_once,
 )
+from core.ncwu_exact_readback import validate_exact_s202_readback
 from core.ncwu_read_support import default_read_client
 
 
@@ -56,6 +58,22 @@ class NCWUEvidenceBoundGateway:
         self.user_opted_in = user_opted_in
         self.institution_permits_write = institution_permits_write
         self.http_factory = http_factory
+
+    @property
+    def preopen_schedule_permitted(self) -> bool:
+        """Never pre-read before the official window without proven policy."""
+        return getattr(self.source, "preopen_schedule_permitted", False) is True
+
+    @property
+    def preopen_budget_headroom_verified(self) -> bool:
+        """Do not prefetch if it could starve the first OPEN/submit checks."""
+        return getattr(self.source, "preopen_budget_headroom_verified", False) is True
+
+    def preflight_session_token(self) -> tuple:
+        """Session/term-bound RAM token; never log or persist it."""
+        if not self._read_identity_ok():
+            raise EnrollmentNotReady("无法核验提前预检会话")
+        return self._identity_snapshot()
 
     @property
     def account_scope(self):
@@ -135,9 +153,20 @@ class NCWUEvidenceBoundGateway:
         return await self._scoped_read("read_schedule", "official_catalog_verified")
 
     async def read_enrollments(self):
-        # The candidate-only S202 result parser is not an authoritative reader.
-        return await self._scoped_read(
+        """Use only fresh, independently attested exact class-level records.
+
+        HTML display candidates, generic sets and unscoped cached responses
+        cannot drive the engine's confirmed enrollment or recovery states.
+        """
+        started = time.monotonic()
+        snapshot = await self._scoped_read(
             "read_enrollments", "official_enrollment_verified")
+        completed = time.monotonic()
+        attestation = self.attestations.require("official_enrollment_verified")
+        return validate_exact_s202_readback(
+            snapshot, identity=self._identity_snapshot(),
+            attestation=attestation, started=started, completed=completed,
+        )
 
     async def submit_once(self, target: CourseTarget) -> SubmitReceipt:
         self._assert_ready()

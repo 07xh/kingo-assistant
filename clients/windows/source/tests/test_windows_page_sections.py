@@ -1,4 +1,4 @@
-"""Independent manual and diagnostics pages keep the original Tk controller API.
+"""Independent Home and Tools pages keep the original Tk controller API.
 
 No Tk display or network is required: fake widgets record command bindings and
 layouts. The true Windows Tk smoke test verifies the resulting widget tree.
@@ -8,48 +8,18 @@ from unittest.mock import Mock, patch
 
 import windows_page_sections
 from windows_gui import Application
-from windows_page_sections import build_manual_page, build_tools_page
+from windows_page_sections import build_home_page, build_tools_page
 
 
 class PageLayoutExtractionTests(TestCase):
     def setUp(self):
         self.app = Mock()
-        self.app.tab_manual = object()
         self.app.tab_tools = object()
 
-    def test_manual_page_is_only_navigation_and_owner_callbacks(self):
-        with patch("windows_page_sections.ttk.Label") as label, \
-             patch("windows_page_sections.ttk.Frame") as frame, \
-             patch("windows_page_sections.ttk.LabelFrame") as group, \
-             patch("windows_page_sections.ttk.Button") as button:
-            build_manual_page(self.app)
-        group.assert_called_once_with(
-            self.app.tab_manual, text="官网操作与按时提醒（不会自动提交）",
-            padding=12)
-        self.assertIs(self.app.portal_panel, group.return_value)
-        self.assertIs(self.app.session_check_button, button.return_value)
-        calls = {
-            call.kwargs["text"]: call.kwargs["command"]
-            for call in button.call_args_list
-        }
-        self.assertEqual(set(calls), {
-            "设置到点打开官网",
-            "现在打开华水官网",
-            "复制所选课程代码并打开官网",
-            "检查软件登录状态（只读）",
-        })
-        self.assertIs(calls["设置到点打开官网"], self.app.toggle_portal_appointment)
-        self.assertIs(calls["现在打开华水官网"], self.app.open_official_portal)
-        self.assertIs(calls["复制所选课程代码并打开官网"],
-                      self.app.prepare_selected_course)
-        self.assertIs(calls["检查软件登录状态（只读）"],
-                      self.app.check_script_session)
-        self.app.open_official_portal.assert_not_called()
-        self.app.check_script_session.assert_not_called()
-        self.assertTrue(any(
-            "登录、选课和提交都由你自己完成" in str(call)
-            for call in label.call_args_list
-        ))
+    def test_manual_builder_is_removed(self):
+        self.assertFalse(hasattr(windows_page_sections, "build_manual_page"))
+        self.assertTrue(callable(build_home_page))
+        self.assertTrue(callable(build_tools_page))
 
     def test_tools_tab_keeps_all_live_fields_and_zero_automatic_calls(self):
         boxes = []
@@ -89,6 +59,7 @@ class PageLayoutExtractionTests(TestCase):
         }
         expected = {
             "检查本机配置": "check_config",
+            "核验应用内登录会话（只读）": "check_script_session",
             "核验学期接口（已抓包 · 只读）": "check_known_year_term",
             "核验已选课程结果网页（只读）": "check_known_school_results",
             "读取华水 S202 已选结果（只读）": "check_s202_selected_results",
@@ -125,7 +96,7 @@ class PageLayoutExtractionTests(TestCase):
         for forbidden in ("KingoClient", "MonitorWorker", "session_cookie"):
             self.assertNotIn(forbidden, windows_page_sections.__dict__)
         self.assertTrue(callable(Application.toggle_advanced_panel))
-        self.assertTrue(callable(Application.toggle_portal_panel))
+        self.assertFalse(hasattr(Application, "toggle_portal_panel"))
         self.assertTrue(callable(Application.check_known_year_term))
 
 

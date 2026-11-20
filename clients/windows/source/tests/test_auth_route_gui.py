@@ -29,11 +29,9 @@ class AuthenticationAuditGuiTests(TestCase):
                  "response": {"status": 200}}
             ]}}), encoding="utf-8")
             with patch("windows_gui.filedialog.askopenfilename", return_value=str(path)), \
-                 patch("windows_gui.messagebox.showinfo") as dialog, \
-                 patch("windows_gui.webbrowser.open") as browser:
+                 patch("windows_gui.messagebox.showinfo") as dialog:
                 Application.audit_auth_route_har(self.app)
             self.assertIn("统一认证 CAS", str(dialog.call_args))
-            browser.assert_not_called()
             self.app.log.assert_called_once()
 
     def test_running_worker_blocks_file_dialog(self):

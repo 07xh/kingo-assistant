@@ -14,7 +14,6 @@ import sys
 import threading
 import time
 import tkinter as tk
-import webbrowser
 from urllib.parse import urlsplit
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
@@ -32,10 +31,11 @@ from windows_config_runtime import (
 )
 from windows_monitor_runtime import MonitorEvent, MonitorWorker
 from windows_monitor_events import (
-    apply_monitor_status, format_official_probe_results, scheduled_reason_text,
+    apply_monitor_status, format_adaptive_monitor_status,
+    format_official_probe_results, scheduled_reason_text,
 )
 from windows_readonly_widgets import _open_readonly_popup, _create_readonly_tree
-from windows_page_sections import build_home_page, build_manual_page, build_tools_page
+from windows_page_sections import build_home_page, build_tools_page
 from windows_visual_shell import (
     apply_light_theme, make_visual_shell, connect_sidebar,
     make_scrollable_content, bind_page_wheel, bind_responsive_shell,
@@ -48,12 +48,12 @@ from tools.catalog_evidence import inspect_local_file
 from core.preflight import inspect_readiness, split_checks, format_checks
 from core.offline_selftest import run_selftest
 from core.offline_benchmark import format_benchmark, run_offline_benchmark
-from core.official_portal_schedule import OfficialPortalAppointment, prepare_appointment, format_countdown
 from core.session_probe import SessionProbeResult, probe_own_session
 from core.native_preparation import NativePreparationResult, prepare_native_api
 from core.native_timetable import TimetableReadResult, read_known_timetable
 from core.ncwu_lesson_detail import LessonDetailResult, read_lesson_detail
 from core.known_school_pages import KnownSchoolPageResult, read_known_school_page, validate_known_page_contract
+from core.ncwu_selected_target_review import compare_result_targets
 from core.ncwu_term_probe import TermProbeResult, probe_known_year_term, validate_term_contract
 from core.native_login import NativeLoginResult
 from core.ncwu_signed_login import login_ncwusigned, validate_ncwulogin_entry
@@ -63,6 +63,7 @@ from core.ncwu_live_target_review import compare_live_targets
 from core.ncwu_s202_readback import S202ReadbackResult, read_s202_selected_results
 from core.ncwu_s202_candidate_review import compare_s202_candidate_targets
 from core.ncwu_s202_round import S202RoundStatus, probe_s202_round
+from core.ncwu_legacy_result_query import valid_current_account, valid_first_semester
 from core.ncwu_s202_score import PersonalScoreCount, read_personal_s202_score
 from core.ncwu_course_plan import PlanSnapshot, read_current_course_plan
 from core.ncwu_plan_alignment import compare_plan_targets
@@ -78,7 +79,6 @@ from core.enrollment_schedule import ScheduledRunReport
 from main import _read_local_html, validate
 
 APP_TITLE = "KingoAssistant · Windows（只读监测｜自动提交尚未接入）"
-OFFICIAL_PORTAL = "https://jwmis.ncwu.edu.cn"  # Confirmed by school notices; NOT an API endpoint.
 
 
 def scoped_native_cookie(app, config: dict) -> str | None:
@@ -170,6 +170,8 @@ def _invalidate_native_session(app, message: str) -> None:
     """
     app._native_session_cookie = None
     app._native_session_origin = None
+    app._native_verified_user_code = None
+    app._pending_native_login_account = None
     app.native_login_status.set(message)
     preparation_status = app.__dict__.get("native_preparation_status")
     if preparation_status is not None:
@@ -221,8 +223,11 @@ def _finish_ncwu_read_event(
     status_var.set(result.message)
     app.status.set(result.message)
     app.log(log_message)
-    if result.code == "expired":
-        _invalidate_native_session(app, expired_message)
+    if result.code in ("expired", "identity_mismatch"):
+        _invalidate_native_session(
+            app, expired_message if result.code == "expired" else
+            "S202 官方轮次账号与 EXE 登录身份不一致；已清除会话",
+        )
 
 
 class Application(tk.Tk):
@@ -248,8 +253,6 @@ class Application(tk.Tk):
         self._closing = False
         self._benchmark_in_progress = False
         self._entry_probe_in_progress = False
-        self._official_portal_appointment: OfficialPortalAppointment | None = None
-        self._portal_prelogin_opened = False
         self._session_check_in_progress = False
         self._native_preparation_in_progress = False
         self._timetable_read_in_progress = False
@@ -257,6 +260,8 @@ class Application(tk.Tk):
         self._school_page_read_in_progress = False
         self._term_probe_in_progress = False
         self._native_login_in_progress = False
+        self._native_verified_user_code = None
+        self._pending_native_login_account = None
         self._live_catalog_in_progress = False
         self._s202_result_in_progress = False
         self._s202_round_probe_in_progress = False
@@ -284,14 +289,13 @@ class Application(tk.Tk):
         self.lesson_detail_status = tk.StringVar(value="新课表 AJAX 已定位；请输入官网学期，例如 2026-2027-1")
         self.school_page_status = tk.StringVar(value="旧 HAR 已确认网页地址；已选结果的动态查询参数仍待核验")
         self.term_probe_status = tk.StringVar(value="11月3日及14日 HAR 均观察到无需表单参数的学年学期接口")
-        self.portal_appointment_status = tk.StringVar(value="官网预约未启动（与自动提交无关）")
         self.path = tk.StringVar(value=str(ensure_config()))
         self.status = tk.StringVar(value="未启动｜本机离线检查可直接使用")
+        self.monitor_cadence_status = tk.StringVar(
+            value="自适应查询｜未启动 · 默认关闭"
+        )
         self._build()
         menu = tk.Menu(self)
-        manual_menu = tk.Menu(menu, tearoff=False)
-        manual_menu.add_command(label="切换到手动官网备用", command=self.toggle_portal_panel)
-        menu.add_cascade(label="手动备用", menu=manual_menu)
         menu.add_command(label="工具与日志", command=lambda: self.notebook.select(self.tab_tools))
         app_menu = tk.Menu(menu, tearoff=False)
         app_menu.add_command(label="显示/隐藏高级配置", command=self.toggle_advanced_panel)
@@ -342,11 +346,9 @@ class Application(tk.Tk):
         # Only the old tab strip is hidden; navigation lives in the sidebar.
         self.notebook = ttk.Notebook(main, style="Kingo.Content.TNotebook")
         self.tab_home = ttk.Frame(self.notebook)
-        self.tab_manual = ttk.Frame(self.notebook)
         self.tab_tools = ttk.Frame(self.notebook)
         self.notebook.add(self.tab_home, text="① 选课首页")
-        self.notebook.add(self.tab_manual, text="② 手动官网备用")
-        self.notebook.add(self.tab_tools, text="③ 工具与日志")
+        self.notebook.add(self.tab_tools, text="② 工具与日志")
         self.notebook.pack(
             fill="both", expand=True, padx=(11, 12), pady=(0, 4),
         )
@@ -357,7 +359,6 @@ class Application(tk.Tk):
         self._tools_content, self.tools_scroll_canvas, self.tools_scrollbar = (
             make_scrollable_content(self.tab_tools))
         build_home_page(self)
-        build_manual_page(self)
         build_tools_page(self)
         bind_page_wheel(self.home_scroll_canvas, self._home_content)
         bind_page_wheel(self.tools_scroll_canvas, self._tools_content)
@@ -372,10 +373,6 @@ class Application(tk.Tk):
             self.advanced_panel.pack(
                 fill="x", before=self.log_frame, padx=10, pady=(0, 8))
 
-    def toggle_portal_panel(self) -> None:
-        """Navigate to manual backup instead of hiding the controls."""
-        self.notebook.select(self.tab_manual)
-
     def show_function_guide(self) -> None:
         """Plain-language capability legend. No network or hidden actions."""
         messagebox.showinfo(
@@ -386,8 +383,7 @@ class Application(tk.Tk):
             "③ 课程余量监测：只读取学校允许提供的课程信息，"
             "不会提交选课；需要真实接口核验后才能启动。\n\n"
             "自动提交：目前未接入华水真实选课接口，按钮保持禁用。\n\n"
-            "手动官网备用：只会在浏览器打开华水官网，"
-            "登录和选课必须由本人操作。\n\n"
+            "正式方案为 EXE 内纯 HTTP 登录与提交；未验收的提交接口保持禁用。\n\n"
             "工具与日志：本机诊断、模拟测试和高级配置，"
             "不代表学校接口已经接通。",
         )
@@ -465,9 +461,33 @@ class Application(tk.Tk):
             return "\n\n（暂无时延采样；本次运行没有完成任何课程读取。）\n"
         lines = ["", "", "时延采样（毫秒，本机统计，不含课程或账号信息；S202 样本仅统计 HTTP 传输和预算等待）：",
                  f"  样本数：{report['samples']}"]
+        lines.append("  总体统计混合不同请求类型，不能直接比较单次查询完整耗时。")
         for name, stats in report["phases"].items():
             lines.append(f"  {name}: p50={stats['p50']} p95={stats['p95']} "
                          f"max={stats['max']}")
+        labels = (
+            ("s202_page", "S202 页面"),
+            ("s202_window", "S202 时间窗"),
+            ("s202_catalog", "S202 课程列表"),
+        )
+        parts = report.get("by_kind", {})
+        if any(kind in parts for kind, _ in labels):
+            lines.append("S202 各段独立统计（仅含请求准备、配额等待、HTTP 与响应分类）：")
+            for kind, label in labels:
+                part = parts.get(kind)
+                if not part:
+                    continue
+                phases = part["phases"]
+                budget = phases["budget_wait_ms"]
+                request = phases["request_ms"]
+                total = phases["total_ms"]
+                lines.append(
+                    f"  {label}（{part['samples']}次）："
+                    f"等待 p50/p95={budget['p50']}/{budget['p95']} ms，"
+                    f"HTTP p50/p95={request['p50']}/{request['p95']} ms，"
+                    f"阶段合计 p95={total['p95']} ms"
+                )
+            lines.append("  注意：S202 解码/解析尚未单独计时，不能将 0 ms 当成实测。")
         return "\n".join(lines) + "\n"
 
     def pick_config(self) -> None:
@@ -509,13 +529,8 @@ class Application(tk.Tk):
             return False
         label = {"course_id": "课程代码", "class_id": "教学班编号",
                  "course_name": "课程名称"}.get(field, "信息")
-        self.log(f"已复制所选课程的{label}到本机剪贴板；请在官网核对并手动提交。")
+        self.log(f"已复制所选课程的{label}到本机剪贴板；不会自动提交。")
         return True
-
-    def prepare_selected_course(self) -> None:
-        """One deliberate action: copy exact course ID and launch official login page."""
-        if self.copy_selected_field("course_id"):
-            self.open_official_portal()
 
     def check_script_session(self) -> None:
         """Check only the application's own approved read-only identity session.
@@ -582,6 +597,10 @@ class Application(tk.Tk):
             return
         self._native_session_cookie = None
         self._native_session_origin = None
+        self._native_verified_user_code = None
+        # The network login verifies YearTerm.userCode against this account
+        # before any result can be considered a verified EXE session.
+        self._pending_native_login_account = username
         self._native_login_in_progress = True
         self.native_login_button.configure(state="disabled")
         self.native_login_status.set("正在执行已核验的登录流程，并独立核对本人账号")
@@ -597,6 +616,7 @@ class Application(tk.Tk):
             threading.Thread(target=execute, name="KingoNativeLogin", daemon=True).start()
         except RuntimeError:
             self._native_login_in_progress = False
+            self._pending_native_login_account = None
             self.native_login_button.configure(state="normal")
             self.native_login_status.set("登录线程启动失败；没有保存会话")
 
@@ -612,6 +632,8 @@ class Application(tk.Tk):
             return
         self._native_session_cookie = None
         self._native_session_origin = None
+        self._native_verified_user_code = None
+        self._pending_native_login_account = None
         self.native_login_status.set("已清除 EXE 内存会话；这不代表学校服务端注销")
         self.native_preparation_status.set("会话已清除，接口核验结果失效")
 
@@ -727,10 +749,22 @@ class Application(tk.Tk):
             self.school_page_status.set(result.message)
             self.status.set(result.message)
             return
+        pages = config.get("known_school_pages", {})
+        contract = pages.get("selected_results", {}) if isinstance(pages, dict) else {}
+        dynamic = (isinstance(contract, dict)
+                   and contract.get("query_mode") == "current_yearterm_base64")
+        verified_account = self.__dict__.get("_native_verified_user_code") if dynamic else None
+        if dynamic and (not verified_account
+                        or self.__dict__.get("_native_session_origin") != "jwmis.ncwu.edu.cn"
+                        or not self.__dict__.get("_native_session_cookie")):
+            self.school_page_status.set(
+                "请先用 EXE 完成官方账号身份核验；不能用本地配置代替账号")
+            return
+        extra = {"expected_user_code": verified_account} if dynamic else {}
         _start_ncwu_read_worker(
             self, config=config, cookie=scoped_native_cookie(self, config),
             read_call=lambda cfg, *, session_cookie: read_known_school_page(
-                cfg, "selected_results", session_cookie=session_cookie),
+                cfg, "selected_results", session_cookie=session_cookie, **extra),
             fallback_factory=lambda code: KnownSchoolPageResult(code, "selected_results"),
             flag="_school_page_read_in_progress", button=self.school_page_button,
             status_var=self.school_page_status,
@@ -738,6 +772,49 @@ class Application(tk.Tk):
             failure_message="读取线程启动失败；没有访问学校",
             event_kind="known_school_results", thread_name="KingoKnownSchoolResults",
         )
+
+    def show_known_result_candidates(self, result: KnownSchoolPageResult) -> None:
+        """Compare exact class candidates with preferences; never mark success."""
+        if not result.candidates:
+            return
+        try:
+            config = read_config(Path(self.path.get()), offline=True)
+            review = compare_result_targets(
+                result.candidates, config,
+                account_bound=result.account_bound_query,
+                semester_bound=result.semester_bound_query,
+            )
+        except (OSError, ValueError, TypeError, KeyError, AttributeError):
+            review = None
+        heading = (
+            result.message + "\n" + review.message.splitlines()[0]
+            if review is not None else result.message
+        )
+        popup = _open_readonly_popup(
+            self, title="青果已选结果 · 当前账号/学期/教学班候选核对",
+            size="1110x500", message=heading, wraplength=1060,
+        )
+        table = _create_readonly_tree(
+            popup, columns=("code", "internal", "state", "state_code", "plan"),
+            titles=("课程代码 kcdm", "内部班 skbjdm（候选）", "展示状态",
+                    "状态码（历史03）", "本地志愿匹配"),
+            widths=(190, 240, 135, 140, 280), minwidth=100, height=15,
+        )
+        for index, item in enumerate(result.candidates):
+            marks = review.row_marks[index] if review is not None else ()
+            table.insert("", "end", values=(
+                item.course_code, item.internal_class_id,
+                item.displayed_status, item.status_code,
+                "、".join(marks) if marks else "未建立精确志愿关联",
+            ))
+        table.pack(fill="both", expand=True, padx=12, pady=(0, 12))
+        if review is not None and review.targets:
+            ttk.Button(
+                popup, text="逐项核对本地志愿（均不是选课成功证明）",
+                command=lambda report=review: messagebox.showinfo(
+                    "选课结果候选 × 本地志愿",
+                    report.message, parent=popup),
+            ).pack(pady=(0, 10))
 
     def check_course_plan(self) -> None:
         """One snapshot of historical NCWU 5327042 course-plan rows."""
@@ -943,24 +1020,40 @@ class Application(tk.Tk):
         )
 
     def check_s202_round(self) -> None:
-        """Fetch only official, non-sensitive S202 round/window metadata."""
+        """One S202 round read, bounded to the EXE's verified own identity."""
         if _ncwu_read_busy(self):
             return
         if (self._native_session_cookie is None
                 or self._native_session_origin != "jwmis.ncwu.edu.cn"):
             self.s202_round_status.set("请先在 EXE 内登录本人教务账号")
             return
+        # The account is captured on Tk's UI thread; only the EXE login
+        # callback can populate it after independent official validation.
+        verified_account = self.__dict__.get("_native_verified_user_code")
+        if not valid_current_account(verified_account):
+            self.s202_round_status.set(
+                "先用 EXE 完成本人账号独立核验；未发送轮次请求")
+            return
         try:
             config = read_config(Path(self.path.get()), offline=True)
         except (OSError, ValueError, TypeError, KeyError):
             self.s202_round_status.set("配置无法读取，未查询学校")
             return
+        semester = config.get("xnxq")
+        if not valid_first_semester(semester):
+            self.s202_round_status.set(
+                "目标学期的官方编码尚未验收；没有访问 S202")
+            return
         _start_ncwu_read_worker(
             self, config=config, cookie=scoped_native_cookie(self, config),
-            read_call=probe_s202_round, fallback_factory=S202RoundStatus,
+            read_call=lambda cfg, *, session_cookie: probe_s202_round(
+                cfg, session_cookie=session_cookie,
+                expected_user_code=verified_account,
+                expected_semester=semester),
+            fallback_factory=S202RoundStatus,
             flag="_s202_round_probe_in_progress", button=self.s202_round_button,
             status_var=self.s202_round_status,
-            running_message="正在读取学校官方 S202 轮次与时间窗（只读）",
+            running_message="正在核验本人账号、目标学期与官网 S202 轮次（只读）",
             failure_message="轮次查询线程未启动；未访问学校",
             event_kind="ncwu_s202_round", thread_name="KingoS202RoundProbe",
         )
@@ -1274,7 +1367,7 @@ class Application(tk.Tk):
         """Start a verified *in-process* engine; never open a browser."""
         if (self.worker or self.scheduled_worker
                 or self.__dict__.get("_session_check_in_progress", False)):
-            messagebox.showinfo("已有任务", "请先完成当前监测、身份核验或预约任务")
+            messagebox.showinfo("已有任务", "请先完成当前监测或身份核验任务")
             return
         factory = self._engine_factory
         if factory is None:
@@ -1298,14 +1391,6 @@ class Application(tk.Tk):
             "确认启动本次自动选课任务？",
         ):
             return
-        # Prevent a previous manual browser appointment from firing in the
-        # middle of an explicitly confirmed in-process enrollment run.
-        if self.__dict__.get("_official_portal_appointment") is not None:
-            self._official_portal_appointment = None
-            self._portal_prelogin_opened = False
-            self.portal_appointment_button.configure(text="预约按时打开官网（辅助）")
-            self.portal_appointment_status.set("手动官网预约已取消；改用应用内执行")
-            self.log("自动任务已取代同一窗口的手动官网预约。")
         sender = lambda item: self.events.put(
             MonitorEvent("scheduled_" + item.kind, item.value)
         )
@@ -1336,89 +1421,6 @@ class Application(tk.Tk):
         self.scheduled_stop_button.configure(state="disabled")
         self.status.set("已请求取消｜若提交已发出，将完成官方结果核验后退出")
         self.log("已请求停止自动任务；不会强行中断不确定的选课写入。")
-
-    def toggle_portal_appointment(self) -> None:
-        """Schedule the official browser page only; never submit enrollment."""
-        if self.__dict__.get("scheduled_worker") is not None:
-            messagebox.showinfo("应用内任务正在运行",
-                                "运行自动选课时不能另行启动官网预约。")
-            return
-        if self._official_portal_appointment is not None:
-            self._official_portal_appointment = None
-            self._portal_prelogin_opened = False
-            self.portal_appointment_button.configure(text="预约按时打开官网（辅助）")
-            self.portal_appointment_status.set("官网预约已取消")
-            self.log("已取消本机官网预约；不会打开任何学校页面。")
-            return
-        try:
-            config = read_config(Path(self.path.get()), offline=True)
-            appointment = prepare_appointment(config, now_epoch=time.time())
-        except (ValueError, KeyError, OSError) as exc:
-            self.portal_appointment_status.set("官网预约未启动｜需补齐时间和真实课程")
-            messagebox.showwarning("官网预约条件不满足", str(exc))
-            return
-        if not messagebox.askyesno(
-            "确认预约官方入口（不是自动提交）",
-            f"预约时间（北京时间）：{appointment.local_start}\n"
-            f"已填写的真实课程志愿：{appointment.target_count} 门。\n\n"
-            "注意：配置模板中的日期和时刻不是官方确认的开放时刻。"
-            "请先核对学校针对本人年级及校区的最新专项通知。\n\n"
-            "软件须保持运行：提前 15 分钟自动打开官网供本人登录，"
-            "到点再次打开官网。不会自动登录或读取浏览器 Cookie。"
-            "课程查找、提交和核验仍须本人在官方页面完成。\n\n"
-            "确认你已核对准确时间并开始预约？",
-        ):
-            return
-        self._official_portal_appointment = appointment
-        self._portal_prelogin_opened = False
-        self.portal_appointment_button.configure(text="取消官网预约")
-        self.portal_appointment_status.set(
-            f"官网预约：{appointment.local_start}（北京时间）；仅打开官方页面"
-        )
-        self.log("已预约按时打开官方教务入口；未联网检查，也不会自动提交。")
-
-    def _tick_portal_appointment(self) -> None:
-        """Called on Tk's event loop; no extra threads or school requests."""
-        appointment = self._official_portal_appointment
-        if appointment is None or self._closing:
-            return
-        if self.__dict__.get("scheduled_worker") is not None:
-            self._official_portal_appointment = None
-            self.portal_appointment_status.set("应用内执行期间已取消手动官网预约")
-            return
-        now = time.time()
-        if appointment.is_due(now):
-            self._official_portal_appointment = None  # at most one browser launch
-            self.portal_appointment_button.configure(text="预约按时打开官网（辅助）")
-            self.portal_appointment_status.set(
-                "已到预约时间，已尝试打开官网；请在官方页面确认选课"
-            )
-            self.bell()
-            self.open_official_portal()
-            self.log("计划时刻已到；仅打开官方页面，不代表成功选课。")
-            return
-        if not self._portal_prelogin_opened and appointment.prelogin_is_due(now):
-            self._portal_prelogin_opened = True  # one early browser launch at most
-            self.open_official_portal()
-            self.log("提前登录时段已到；打开官网不代表已经登录。")
-        remaining = appointment.seconds_remaining(now)
-        prelogin = "｜已尝试提前打开官网登录" if self._portal_prelogin_opened else ""
-        self.portal_appointment_status.set(
-            f"官网预约倒计时：{format_countdown(remaining)}{prelogin}"
-            "｜须保持程序运行，按官方通知核对开放时刻"
-        )
-
-    def open_official_portal(self) -> None:
-        """Open the published school portal in the system browser, not by HTTPX.
-
-        No credentials or cookie are transferred from this application.
-        """
-        try:
-            if not webbrowser.open(OFFICIAL_PORTAL):
-                raise RuntimeError("default browser unavailable")
-            self.log("已在默认浏览器中请求打开华水教务官网；请自行完成官方登录。")
-        except Exception:
-            messagebox.showerror("无法打开网站", "请手动在浏览器打开 https://jwmis.ncwu.edu.cn")
 
     def check_config(self) -> None:
         if self.worker or self.__dict__.get("scheduled_worker"):
@@ -1752,7 +1754,6 @@ class Application(tk.Tk):
             self.stop_button.configure(state="disabled")
 
     def poll(self) -> None:
-        self._tick_portal_appointment()
         try:
             while True:
                 event = self.events.get_nowait()
@@ -1768,6 +1769,9 @@ class Application(tk.Tk):
                 elif event.kind == "status":
                     apply_monitor_status(
                         self, event.value, change_detector=status_changes)
+                elif event.kind == "cadence":
+                    self.monitor_cadence_status.set(
+                        format_adaptive_monitor_status(event.value))
                 elif event.kind == "official_probe_done":
                     self._entry_probe_in_progress = False
                     self.status.set("官网登录页检测完毕｜未验证课程查询接口")
@@ -1793,6 +1797,12 @@ class Application(tk.Tk):
                     result = event.value
                     self._native_session_cookie = result.session_cookie if result.verified else None
                     self._native_session_origin = result.session_origin if result.verified else None
+                    pending_account = self.__dict__.get("_pending_native_login_account")
+                    self._native_verified_user_code = (
+                        pending_account if result.verified
+                        and isinstance(pending_account, str) else None
+                    )
+                    self._pending_native_login_account = None
                     self.native_login_status.set(result.message)
                     self.native_preparation_status.set(
                         "EXE 会话已通过账号核验；课程目录和余量需另行验证" if result.verified
@@ -1915,9 +1925,11 @@ class Application(tk.Tk):
                     self.school_page_status.set(result.message)
                     self.status.set(result.message)
                     self.log(result.message)
-                    if result.code == "expired":
+                    if result.code in ("expired", "identity_mismatch"):
                         _invalidate_native_session(
-                            self, "学校页面提示登录失效，请重新授权")
+                            self, "学校结果接口账号核验失败或会话过期，请重新授权")
+                    if result.code == "shape_observed" and result.candidates:
+                        self.show_known_result_candidates(result)
                 elif event.kind == "native_preparation":
                     self._native_preparation_in_progress = False
                     self.native_prepare_button.configure(state="normal")
@@ -1951,6 +1963,9 @@ class Application(tk.Tk):
                 elif event.kind == "scheduled_waiting":
                     self.status.set("自动选课任务：已通过本地权限校验，后台预约等待中")
                     self.log("已进入应用内定时执行流程；尚未代表学校选课成功。")
+                elif event.kind == "scheduled_verification_pending":
+                    self.status.set("已发送选课请求｜正在独立核验官方结果，尚未确认成功")
+                    self.log("结果核验由独立只读任务执行；不会重复发送选课请求。")
                 elif event.kind == "scheduled_result":
                     outcome = event.value
                     if isinstance(outcome, ScheduledRunReport):
@@ -2013,25 +2028,25 @@ class Application(tk.Tk):
         self.lift()
 
     def close(self) -> None:
-        """Hide to native tray without canceling any existing monitor/appointment."""
+        """Hide to native tray without canceling the running HTTP task."""
         if self._closing:
             return
         if self._tray.start():
             self.withdraw()
-            self.status.set("已最小化到系统托盘；当前仅支持只读监测与官网备用预约")
+            self.status.set("已最小化到系统托盘；应用内 HTTP 任务保持原有运行状态")
         else:
             # Never leave a running process without a way to restore its window.
             self.iconify()
 
     def quit_application(self) -> None:
-        """Only an explicit quit stops background work and the appointment."""
+        """Only explicit quit stops background API work."""
         if self._closing:
             return
         self._closing = True
         self._native_session_cookie = None
         self._native_session_origin = None
-        self._official_portal_appointment = None
-        self._portal_prelogin_opened = False
+        self._native_verified_user_code = None
+        self._pending_native_login_account = None
         self._tray.stop()
         if self.worker:
             self.worker.stop()
@@ -2082,8 +2097,8 @@ def run_packaged_gui_smoke() -> None:
                         raise AssertionError("Scrollable page has no linked scrollbar")
                 if not app.table.winfo_exists() or not app.log_box.winfo_exists():
                     raise AssertionError("Scrollable pages lost their original controls")
-                if set(app.sidebar_buttons) != {"home", "manual", "tools"}:
-                    raise AssertionError("Three native sidebar destinations required")
+                if set(app.sidebar_buttons) != {"home", "tools"}:
+                    raise AssertionError("Only API Home and Tools sidebar entries should exist")
                 if app.notebook.cget("style") != "Kingo.Content.TNotebook":
                     raise AssertionError("Old top-tab layout still active")
                 if app.sidebar_buttons["home"].cget("bg") != "#4869E8":
@@ -2153,21 +2168,10 @@ def run_packaged_gui_smoke() -> None:
                     raise AssertionError("Unverified login must not produce a session")
                 if app.notebook.index("current") != 0:
                     raise AssertionError("The first tab must be the selection homepage")
-                if app.portal_panel.winfo_manager() != "pack":
-                    raise AssertionError("Manual backup must exist in its own tab")
-                # Canvas-embedded widgets may remain Tk-mapped inside a
-                # hidden Notebook tab. Their widget ancestry and the current
-                # Notebook selection are the actual isolation contract.
-                if not str(app.portal_panel).startswith(str(app.tab_manual) + "."):
-                    raise AssertionError("Manual backup must belong only to manual tab")
                 if not str(app.log_box).startswith(str(app.tab_tools) + "."):
                     raise AssertionError("Developer log must belong only to Tools tab")
                 if app.status_bar.winfo_manager() != "pack":
                     raise AssertionError("The live status footer must remain visible")
-                app.toggle_portal_panel()
-                if app.notebook.select() != str(app.tab_manual):
-                    raise AssertionError("Manual menu should navigate to backup tab")
-                app.notebook.select(app.tab_home)
                 with patch("core.client.httpx.AsyncClient", side_effect=AssertionError("network attempted")):
                     app.demo_next()
                     app.update()
@@ -2200,9 +2204,8 @@ def run_packaged_gui_smoke() -> None:
                     raise AssertionError("Valid local course code was not copied")
                 if app.clipboard_get() != "SYNTHETIC101":
                     raise AssertionError("Clipboard did not contain the selected course code")
-                with patch("webbrowser.open", return_value=True) as opened:
-                    app.prepare_selected_course()
-                    opened.assert_called_once_with(OFFICIAL_PORTAL)
+                if not app.session_check_button.winfo_exists():
+                    raise AssertionError("Native session check must remain accessible on Tools")
 
                 # Exercise the packaged, offline-only benchmark through the
                 # real GUI event queue without visiting school endpoints.

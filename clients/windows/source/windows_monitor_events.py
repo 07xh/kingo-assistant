@@ -29,6 +29,22 @@ def apply_monitor_status(
             app.table.set(key, "status", str(state))
 
 
+def format_adaptive_monitor_status(value) -> str:
+    """Format only anonymized, server-independent cadence metrics."""
+    if not isinstance(value, dict) or value.get("enabled") is not True:
+        return "自适应查询｜关闭 · 按原有请求间隔"
+    multiplier = value.get("slowdown_multiplier")
+    slow = value.get("slow_samples")
+    healthy = value.get("healthy_samples")
+    if (type(multiplier) not in (int, float)
+            or not 1 <= multiplier <= 16
+            or type(slow) is not int or slow < 0
+            or type(healthy) is not int or healthy < 0):
+        return "自适应查询｜指标不可用"
+    return (f"自适应查询｜已开启 · 间隔放缓 {multiplier:g}×"
+            f" · 压力 {slow} 次 · 正常 {healthy} 次")
+
+
 def format_official_probe_results(results, *, entries) -> str:
     """Same official-login probe details; these aren't elective seat metrics."""
     names = {entry.identifier: entry.name for entry in entries}

@@ -2,8 +2,8 @@
 
 Only creates widgets and binds existing Application callbacks and StringVar
 instances. The Application owns all control attributes, the event queue,
-session state, configuration, and background worker lifecycle. Keep these
-two user journeys in one module to avoid a collection of tiny UI files.
+session state, configuration, and background worker lifecycle. Keep the
+Home and Tools views in one stateless module.
 """
 from __future__ import annotations
 
@@ -121,6 +121,11 @@ def build_home_page(app) -> None:
         foreground="#666",
     ).pack(anchor="w", pady=(6, 0))
 
+    ttk.Label(
+        monitor_panel, textvariable=app.monitor_cadence_status,
+        foreground="#416075",
+    ).pack(anchor="w", pady=(3, 0))
+
     enrollment = ttk.Frame(home_root, padding=(12, 3))
     enrollment.pack(fill="x")
     app.enrollment_gate_status = tk.StringVar(value=app.enrollment_gate_label())
@@ -177,51 +182,6 @@ def build_home_page(app) -> None:
 
 
 
-def build_manual_page(app) -> None:
-    """Manual official-site fallback, deliberately separate from the EXE worker."""
-    # Manual route is deliberately isolated from both read-only queries
-    # and automatic enrollment. It may open the official browser.
-    ttk.Label(
-        app.tab_manual,
-        text="手动备用：只是打开华水官方网页，登录、选课和提交都由你自己完成。",
-        foreground="#965b16", wraplength=950, padding=(14, 14),
-    ).pack(fill="x")
-    app.portal_panel = ttk.LabelFrame(
-        app.tab_manual, text="官网操作与按时提醒（不会自动提交）",
-        padding=12,
-    )
-    app.portal_panel.pack(fill="x", padx=14, pady=(0, 10))
-    app.portal_appointment_button = ttk.Button(
-        app.portal_panel, text="设置到点打开官网",
-        command=app.toggle_portal_appointment,
-    )
-    app.portal_appointment_button.pack(anchor="w", pady=(0, 8))
-    manual_actions = ttk.Frame(app.portal_panel)
-    manual_actions.pack(fill="x")
-    ttk.Button(
-        manual_actions, text="现在打开华水官网",
-        command=app.open_official_portal,
-    ).pack(side="left", padx=(0, 8))
-    ttk.Button(
-        manual_actions, text="复制所选课程代码并打开官网",
-        command=app.prepare_selected_course,
-    ).pack(side="left", padx=(0, 8))
-    app.session_check_button = ttk.Button(
-        manual_actions, text="检查软件登录状态（只读）",
-        command=app.check_script_session,
-    )
-    app.session_check_button.pack(side="left")
-    ttk.Label(
-        app.portal_panel, textvariable=app.portal_appointment_status,
-        foreground="#666", wraplength=950,
-    ).pack(anchor="w", pady=(10, 0))
-    ttk.Label(
-        app.tab_manual,
-        text="说明：手动官网预约与“EXE 直接接口提交”不是同一功能。",
-        foreground="#666", padding=(14, 3),
-    ).pack(anchor="w")
-
-
 def build_tools_page(app) -> None:
     """Developer/read-only tools; no network calls at widget creation time."""
     tools_root = app.__dict__.get("_tools_content", app.tab_tools)
@@ -256,6 +216,12 @@ def build_tools_page(app) -> None:
         for label, callback in group:
             ttk.Button(row, text=label, command=callback).pack(
                 side="left", padx=(0, 8))
+    # Native API session check is available under Tools, not a browser page.
+    app.session_check_button = ttk.Button(
+        app.tools_operations, text="核验应用内登录会话（只读）",
+        command=app.check_script_session,
+    )
+    app.session_check_button.pack(anchor="w", pady=(3, 0))
     # Keep the existing public reference for GUI tests and automation.
     app.scheduled_preflight_button = ttk.Button(
         app.tools_operations, text="检查自动选课计划（离线）",
