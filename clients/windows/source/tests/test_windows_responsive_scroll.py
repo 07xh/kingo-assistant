@@ -14,35 +14,28 @@ class ResponsiveShellTests(TestCase):
         owner = Mock()
         owner.winfo_width.return_value = width
         owner.winfo_height.return_value = height
-        owner.shell_subtitle.winfo_manager.return_value = "pack"
         owner.tab_home.winfo_children.return_value = []
         owner.tab_tools.winfo_children.return_value = []
         return owner
 
-    def test_narrow_window_shrinks_sidebar_and_preserves_status_space(self):
-        owner = self.make_owner(width=900, height=600)
+    def test_minimum_width_reserves_space_for_status_cells(self):
+        owner = self.make_owner(width=960, height=640)
         update_responsive_shell(owner)
-        owner.sidebar.configure.assert_called_once_with(width=80)
-        owner.status_bar.configure.assert_called_once_with(wraplength=720)
-        self.assertEqual(owner._shell_size_mode, "compact")
-        owner.shell_subtitle.pack_forget.assert_called_once()
-        self.assertIn("待账号验收", owner.shell_subtitle.configure.call_args.kwargs["text"])
+        owner.status_bar.configure.assert_called_once_with(wraplength=810)
+        owner.toolbar_extras.pack_forget.assert_not_called()
 
-    def test_large_window_restores_original_sidebar_and_subtitle(self):
-        owner = self.make_owner(width=1280, height=820)
-        owner.shell_subtitle.winfo_manager.return_value = ""
+    def test_resize_updates_status_wrap_without_relayout_at_same_width(self):
+        owner = self.make_owner(width=960, height=640)
         update_responsive_shell(owner)
-        owner.sidebar.configure.assert_called_once_with(width=98)
-        owner.status_bar.configure.assert_called_once_with(wraplength=1082)
-        owner.shell_subtitle.pack.assert_called_once_with(
-            anchor="w", pady=(6, 0))
-        self.assertEqual(owner._shell_size_mode, "regular")
+        update_responsive_shell(owner)
+        self.assertEqual(owner.status_bar.configure.call_count, 1)
+        owner.winfo_width.return_value = 1280
+        update_responsive_shell(owner)
+        owner.status_bar.configure.assert_called_with(wraplength=1130)
 
     def test_child_configure_event_does_not_relayout_main_window(self):
         owner = self.make_owner()
         update_responsive_shell(owner, SimpleNamespace(widget=object()))
-        owner.sidebar.configure.assert_not_called()
-        owner.shell_subtitle.configure.assert_not_called()
         owner.status_bar.configure.assert_not_called()
 
     def test_binding_uses_original_tk_configure_event(self):
@@ -51,9 +44,10 @@ class ResponsiveShellTests(TestCase):
         args = owner.bind.call_args
         self.assertEqual(args.args[0], "<Configure>")
         self.assertEqual(args.kwargs, {"add": "+"})
-        owner.sidebar.configure.reset_mock()
+        owner.status_bar.configure.reset_mock()
+        owner.winfo_width.return_value = 1100
         args.args[1](SimpleNamespace(widget=owner))
-        owner.sidebar.configure.assert_called_once()
+        owner.status_bar.configure.assert_called_once_with(wraplength=950)
 
 
 class PageScrollingTests(TestCase):

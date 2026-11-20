@@ -15,6 +15,7 @@ from PIL import ImageGrab
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from windows_gui import Application
+from windows_visual_shell import DEFAULT_SIZE, MINIMUM_SIZE
 
 
 def save_view(app, output: Path) -> None:
@@ -45,8 +46,8 @@ def main() -> None:
                 # Fit within the CI desktop instead of cropping the lower
                 # course list behind the Windows taskbar.
                 sw, sh = app.winfo_screenwidth(), app.winfo_screenheight()
-                width = min(1100, max(880, sw - 48))
-                height = min(740, max(560, sh - 128))
+                width = min(DEFAULT_SIZE[0], max(MINIMUM_SIZE[0], sw - 48))
+                height = min(DEFAULT_SIZE[1], max(MINIMUM_SIZE[1], sh - 128))
                 app.geometry(f"{width}x{height}+12+12")
                 app.update_idletasks()
                 app.deiconify()
