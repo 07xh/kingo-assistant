@@ -73,6 +73,12 @@ def validate(config: dict, check_only: bool = False, *,
     if not check_only:
         # No network operation may begin with an unspecified or unverified budget.
         read_verified_policy_config(config, (url.scheme, url.netloc))
+    if config.get("accounts") is not None:
+        # Multi-account fan-out is validated here so --check-config catches a
+        # shared budget database, a duplicated target or a shared egress before
+        # any request is attempted. Offline only: no file is created.
+        from core.multi_account_plan import build_account_plans
+        build_account_plans(config)
 
 
 def display_official_entries(*, probe: bool = False) -> None:
@@ -254,6 +260,21 @@ def main() -> int:
                         help="写入门禁证据登记表管理（离线）：status / issue / revoke ...")
     parser.add_argument("--latency", nargs="+", metavar="ARG",
                         help="时延采样报表（离线，不联网）：[文件或目录] [--compare 基线] [--json]")
+    parser.add_argument("--har-form", action="store_true",
+                        help="离线校验 HAR 写表单与 items_binding 证据是否配对（不联网、不提交）")
+    parser.add_argument("--har-file", metavar="FILE",
+                        help="配合 --har-form：包含一次成功 S202 POST 的 HAR")
+    parser.add_argument("--har-evidence", metavar="FILE",
+                        help="配合 --har-form：p0_protocol_recon.py 生成的 items_binding.json")
+    parser.add_argument("--har-course", metavar="CODE",
+                        help="配合 --har-form：目标课程代码")
+    parser.add_argument("--har-class", metavar="ID",
+                        help="配合 --har-form：目标内部教学班 ID（skbjdm）")
+    parser.add_argument("--har-scope", nargs=6,
+                        metavar=("ACCOUNT", "SEMESTER", "STUDENT", "YEAR", "TERM", "ROUND"),
+                        help="配合 --har-form：已核验的账号范围/学期/学号/学年/学期码/轮次")
+    parser.add_argument("--har-json", action="store_true",
+                        help="配合 --har-form：只输出 JSON")
     args = parser.parse_args()
     messages = deque(maxlen=5)
     logger.remove()
@@ -263,6 +284,30 @@ def main() -> int:
                format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}")
     logger.add(lambda msg: messages.append(str(msg).strip()), format="{time:HH:mm:ss} | {message}")
     try:
+        if args.har_form:
+            # Local files only; no config, no network, no submission.
+            if not (args.har_file and args.har_evidence):
+                Console().print(
+                    "[red]--har-form 需要 --har-file 与 --har-evidence。[/red]")
+                return 2
+            from core.har_form_cli import main as har_form_main
+            argv = ["--har", args.har_file, "--evidence", args.har_evidence]
+            if args.har_course:
+                argv += ["--course", args.har_course]
+            if args.har_class:
+                argv += ["--class-id", args.har_class]
+            if args.har_scope:
+                argv += [
+                    "--account-scope", args.har_scope[0],
+                    "--semester", args.har_scope[1],
+                    "--student-id", args.har_scope[2],
+                    "--academic-year", args.har_scope[3],
+                    "--academic-term", args.har_scope[4],
+                    "--round", args.har_scope[5],
+                ]
+            if args.har_json:
+                argv.append("--json")
+            return har_form_main(argv)
         if args.attest:
             # Never loads config or touches the network: gate management must
             # work on a machine with no verified protocol at all.

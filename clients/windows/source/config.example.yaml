@@ -10,6 +10,12 @@ server_policy:
   origin: "https://jwmis.ncwu.edu.cn"
   windows: []  # Example shape only: [[60, 1], [3600, 20]]; NOT school limits.
   max_concurrency: 1
+  # Raising max_concurrency above 1 gives up the cross-process single-holder
+  # lease: the sliding window still bounds this machine, but two clients may be
+  # inside an HTTP call concurrently. It is refused unless BOTH keys below are
+  # present, so a stray number cannot silently weaken the guarantee.
+  # parallel_lease_attested: false
+  # parallel_source: ""   # why the single-holder lease is being dropped
   database: "data/request-budget.sqlite"  # resolved under app data directory on Windows
 auth:
   # Legacy external session is still supported; never save passwords/cookies here.
@@ -47,8 +53,20 @@ strategy:
   max_cycles: 20              # 0 = no cycle-count limit; duration ALWAYS applies
   max_duration_minutes: 480   # 1–1440 minutes; protects unattended runs
   # Lower intervals require manually checking the school's published permission.
-  # Do not change this without official evidence. 30 s is the absolute hard floor.
+  # Do not change this without official evidence. 30 s is the default hard floor.
   official_frequency_policy: {manually_confirmed: false}
+  # A floor below 30 s is refused unless ALL THREE keys below are set, so a typo
+  # cannot look "safe". Minimum accepted value is 5 s.
+  #   absolute_floor_seconds: 10
+  #   absolute_floor_verified: true
+  #   absolute_floor_source: "教务处 2026-11 公告：允许 10 秒间隔"
+  # business_markers control how a response body is classified:
+  #   full_markers / window_markers -> next / wait
+  #   challenge_markers -> halt (CAPTCHA, slider, SMS, CAS re-auth)
+  # A challenge is NEVER retried; retrying it burns attempts against the
+  # counter that locks the account.
+  # business:
+  #   challenge_markers: ["请输入验证码", "请拖动滑块", "短信验证码"]
   # Pickup mode: tighten polling inside known withdrawal peaks (just after the
   # window opens, the hours before the deadline, the first supplementary
   # morning). peak_interval_seconds may NOT go below 30.
@@ -168,3 +186,20 @@ protocol:
 attestation:
   path: "attestations.json"
   root: "."      # evidence paths resolve against this directory
+
+# Multi-account fan-out is validated by core/multi_account_plan.py before any
+# socket opens: every account needs its OWN absolute database path and its OWN
+# egress, and no (course, class) may appear twice. Two identities on one
+# database would serialise each other; the same target twice is a duplicate
+# booking the journal cannot deduplicate across accounts.
+# accounts:
+#   - name: A
+#     database: "D:/kingo/budget/A.sqlite"
+#     proxy: "http://127.0.0.1:7890"
+#     targets:
+#       - {key: a1, course_id: "K0012345", class_id: "3141592653589"}
+#   - name: B
+#     database: "D:/kingo/budget/B.sqlite"
+#     proxy: "socks5h://127.0.0.1:1080"
+#     targets:
+#       - {key: b1, course_id: "K0012346", class_id: "3141592653590"}

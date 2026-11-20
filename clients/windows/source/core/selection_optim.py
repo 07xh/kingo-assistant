@@ -31,9 +31,20 @@ from typing import Any, Dict, List, Optional
 __all__ = [
     "ClockSample", "ClockSync", "Decision", "FailoverPlanner",
     "FailureClassifier", "PeakWindow", "PollingSchedule", "Prewarmer",
-    "ReleaseEvent", "ReleaseMonitor", "WarmResult", "offering_fingerprint",
-    "parse_server_time",
+    "ReleaseEvent", "ReleaseMonitor", "RetryBackoff", "WarmResult",
+    "offering_fingerprint", "parse_server_time",
 ]
+
+#: Markers that mean the school wants a human challenge (image CAPTCHA, slider,
+#: SMS code, CAS re-authentication). Hitting one is a *safety* stop, not a
+#: transient error: retrying turns a solvable challenge into an account lock.
+DEFAULT_CHALLENGE_MARKERS = (
+    "验证码", "请输入验证码", "校验码", "滑块", "拖动滑块", "点击验证",
+    "短信验证", "手机验证", "动态码", "二次验证", "统一身份认证",
+    "请重新登录", "会话已失效", "captcha", "slider", "verify code",
+    "verification code", "sms code", "one-time password", "otp",
+    "re-enter your password", "session expired", "ticket expired",
+)
 
 #: Absolute floor for any polling interval. Mirrors monitor_policy; duplicated
 #: here so this module never imports a policy module just for a constant.
@@ -289,12 +300,20 @@ class ReleaseMonitor:
     Tracking the whole catalog rather than only configured targets is what makes
     this useful for pickup: a seat that frees up in an unfollowed teaching class
     is still a seat, and the caller can decide whether to widen the plan.
+
+    ``max_events`` bounds the in-memory history. An unattended run polls for
+    hours; an unbounded list is a slow memory leak in an EXE that is supposed to
+    survive a whole release window. Oldest events are dropped, newest kept.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, max_events: int = 2000) -> None:
+        if type(max_events) is not int or not 16 <= max_events <= 100_000:
+            raise ValueError("事件上限必须在 16–100000 之间")
+        self.max_events = max_events
         self.snapshot: Dict[str, Any] = {}
         self.polls = 0
         self.events: List[ReleaseEvent] = []
+        self.dropped_events = 0
 
     def observe(self, offers: List[Any], poll_cost_ms: float = 0.0) -> List[ReleaseEvent]:
         self.polls += 1
@@ -325,13 +344,67 @@ class ReleaseMonitor:
                 previous_remain_raw, now, poll_cost_ms))
         self.snapshot = current
         self.events.extend(events)
+        if len(self.events) > self.max_events:
+            overflow = len(self.events) - self.max_events
+            del self.events[:overflow]
+            self.dropped_events += overflow
         return events
+
+    def available_now(self, *, min_remain: int = 1) -> List[Any]:
+        """Offerings with a real seat in the most recent snapshot.
+
+        ``remain is None`` is UNKNOWN and never counts as available. Sorted by
+        remaining seats descending so the caller sees the safest target first.
+        """
+        if type(min_remain) is not int or min_remain < 1:
+            raise ValueError("最小余量必须是正整数")
+        rows = [o for o in self.snapshot.values()
+                if isinstance(getattr(o, "remain", None), int)
+                and getattr(o, "remain") >= min_remain]
+        return sorted(rows, key=lambda o: (-int(getattr(o, "remain") or 0),
+                                           str(getattr(o, "course_id", "")),
+                                           str(getattr(o, "class_id", ""))))
+
+    def widen_suggestions(self, course_id: str, *,
+                          exclude_class_ids: Optional[List[str]] = None,
+                          min_remain: int = 1,
+                          limit: int = 5) -> List[dict]:
+        """Same-course alternatives with seats, most remaining first.
+
+        Use when the configured class is full: the plan can be widened without
+        re-reading the catalog, and without ever mixing two courses into one
+        submission attempt.
+        """
+        if not isinstance(course_id, str) or not course_id.strip():
+            raise ValueError("缺少课程代码")
+        if type(limit) is not int or not 1 <= limit <= 50:
+            raise ValueError("建议条数必须在 1–50 之间")
+        excluded = {str(value).strip() for value in (exclude_class_ids or []) if value}
+        rows = []
+        for offering in self.available_now(min_remain=min_remain):
+            if str(getattr(offering, "course_id", "")) != course_id:
+                continue
+            class_id = str(getattr(offering, "class_id", "") or "")
+            if class_id and class_id in excluded:
+                continue
+            rows.append({
+                "course_id": course_id,
+                "class_id": class_id,
+                "remain": getattr(offering, "remain", None),
+                "course_name": str(getattr(offering, "course_name", "") or ""),
+                "teacher": str(getattr(offering, "teacher", "") or ""),
+            })
+            if len(rows) >= limit:
+                break
+        return rows
 
     def report(self) -> dict:
         return {
             "polls": self.polls,
             "tracked_offerings": len(self.snapshot),
             "events": len(self.events),
+            "dropped_events": self.dropped_events,
+            "max_events": self.max_events,
             "kinds": {kind: sum(1 for e in self.events if e.kind == kind)
                       for kind in ("new", "reopened", "increased")},
         }
@@ -443,10 +516,27 @@ class PollingSchedule:
         return (self.peak_interval if self.active_window(moment) is not None
                 else self.offpeak_interval)
 
-    def report(self) -> dict:
+    def to_config(self) -> dict:
+        """Round-trip this schedule back into ``strategy.pickup`` form.
+
+        ``tools/patch/p1_polling_plan.py`` writes this shape; the client reads it
+        back through ``from_config``. Keeping the writer and the reader in one
+        module is what stops the two from drifting apart.
+        """
+        return {
+            "enabled": bool(self.windows),
+            "peak_interval_seconds": self.peak_interval,
+            "offpeak_interval_seconds": self.offpeak_interval,
+            "peak_windows": [window.as_dict() for window in self.windows],
+        }
+
+    def report(self, moment: Optional[_dt.datetime] = None) -> dict:
+        active = self.active_window(moment)
         return {"peak_interval_s": self.peak_interval,
                 "offpeak_interval_s": self.offpeak_interval,
                 "floor_s": ABSOLUTE_MIN_INTERVAL,
+                "active_window": active.as_dict() if active else None,
+                "effective_interval_s": self.interval(moment),
                 "windows": [w.as_dict() for w in self.windows]}
 
 
@@ -456,12 +546,88 @@ class PollingSchedule:
 
 @dataclass
 class Decision:
+    """One classified outcome plus the ONLY action permitted next.
+
+    ``delay_s`` is the caller's minimum wait before the next attempt of the same
+    kind. It is advisory: 0.0 means "no timing constraint from this module".
+    """
+
     kind: str
     action: str        # stop | halt | next | cooldown | backoff | wait
     detail: str = ""
+    delay_s: float = 0.0
 
     def as_dict(self) -> dict:
         return asdict(self)
+
+
+class RetryBackoff:
+    """Bounded exponential backoff with jitter for *idempotent reads only*.
+
+    A 429 or a 5xx may be retried because a rejected read changed nothing. A
+    time-out on a write is NOT retried here by design: an unknown write outcome
+    belongs to the journal/recovery path, never to a timer.
+
+    ``jitter`` is injectable so tests are deterministic; the default uses
+    ``random.random`` and therefore never emits a fixed interval that a remote
+    pattern detector could key on.
+    """
+
+    def __init__(self, *, base_s: float = 2.0, cap_s: float = 300.0,
+                 factor: float = 2.0, jitter_ratio: float = 0.25,
+                 jitter: Optional[Any] = None, max_attempts: int = 6) -> None:
+        for value, label, upper in ((base_s, "退避基数", 600.0),
+                                    (cap_s, "退避上限", 3600.0)):
+            if (type(value) not in (int, float) or isinstance(value, bool)
+                    or not 0 < float(value) <= upper):
+                raise ValueError(f"{label}必须是 (0, {upper:g}] 内的数字")
+        if type(factor) not in (int, float) or not 1.0 <= float(factor) <= 8.0:
+            raise ValueError("退避倍数必须在 1–8 之间")
+        if type(jitter_ratio) not in (int, float) or not 0.0 <= float(jitter_ratio) <= 1.0:
+            raise ValueError("抖动比例必须在 0–1 之间")
+        if type(max_attempts) is not int or not 1 <= max_attempts <= 20:
+            raise ValueError("最大重试次数必须在 1–20 之间")
+        if float(base_s) > float(cap_s):
+            raise ValueError("退避基数不应大于上限")
+        self.base_s = float(base_s)
+        self.cap_s = float(cap_s)
+        self.factor = float(factor)
+        self.jitter_ratio = float(jitter_ratio)
+        self.max_attempts = max_attempts
+        self._jitter = jitter if callable(jitter) else _default_jitter
+        self.attempts = 0
+        self.last_delay_s = 0.0
+
+    def next_delay(self) -> Optional[float]:
+        """Next wait, or ``None`` when the attempt budget is exhausted."""
+        if self.attempts >= self.max_attempts:
+            return None
+        raw = min(self.cap_s, self.base_s * (self.factor ** self.attempts))
+        self.attempts += 1
+        spread = raw * self.jitter_ratio
+        # Symmetric jitter around the raw delay, never below half the raw value
+        # so a 429 cannot be replayed immediately.
+        delay = max(raw * 0.5, raw + (self._jitter() * 2.0 - 1.0) * spread)
+        delay = min(self.cap_s, delay)
+        self.last_delay_s = delay
+        return delay
+
+    def reset(self) -> None:
+        self.attempts = 0
+        self.last_delay_s = 0.0
+
+    def report(self) -> dict:
+        return {"attempts": self.attempts, "last_delay_s": round(self.last_delay_s, 3),
+                "max_attempts": self.max_attempts, "cap_s": self.cap_s}
+
+
+def _default_jitter() -> float:
+    import random
+    return random.random()
+
+
+#: Statuses whose retry is safe because the server definitively did not act.
+RETRYABLE_READ_STATUSES = (429, 500, 502, 503, 504)
 
 
 class FailureClassifier:
@@ -469,14 +635,18 @@ class FailureClassifier:
 
     action semantics:
       stop      confirmed by official readback, whole chain finished
-      halt      unknown/pending result: stop everything and reconcile
+      halt      unknown/pending result or human challenge: stop and reconcile
       next      this target is dead, move to the next fallback (no retry)
       cooldown  honour Retry-After
       backoff   transient overload
       wait      selection window not open yet
+
+    A human challenge is never classified as a transient error. ``halt`` keeps
+    the workflow offline so the operator can solve it manually; treating it as
+    ``backoff`` would burn attempts against a counter that locks the account.
     """
 
-    def __init__(self, cfg: dict):
+    def __init__(self, cfg: dict, *, retry: Optional[RetryBackoff] = None):
         business = cfg.get("business", {})
         self.success_field = business.get("success_field", "")
         self.success_values = set(str(v).lower() for v in business.get(
@@ -486,18 +656,29 @@ class FailureClassifier:
         self.window_markers = [m.lower() for m in business.get(
             "window_markers", ["不是有效的选课时间", "未开放", "尚未开始",
                                "not in selection time"])]
+        self.challenge_markers = [m.lower() for m in business.get(
+            "challenge_markers", DEFAULT_CHALLENGE_MARKERS)]
+        self.retry = retry
 
     def classify(self, status: int, body: bytes, readback_ok: bool,
                  network_error: str = "") -> Decision:
         text = body.decode("utf-8", errors="replace").lower() if body else ""
         if network_error or status == 0:
             return Decision("unknown", "halt", network_error or "no_response")
+        # Check the challenge BEFORE the status code: a challenge is usually a
+        # 200 with a form in the body, and 403+CAPTCHA must not become "auth".
+        if any(marker in text for marker in self.challenge_markers):
+            # No delay and no ladder consumption: a challenge is not a retry,
+            # it is a stop-and-let-the-operator-solve-it signal.
+            return Decision("challenge_required", "halt", "human_challenge")
         if status in (401, 403):
             return Decision("auth", "halt", f"http={status}")
         if status == 429:
-            return Decision("rate_limited", "cooldown", "http=429")
+            return Decision("rate_limited", "cooldown", "http=429",
+                            self._bump(0.0))
         if status in (500, 502, 503, 504):
-            return Decision("overload", "backoff", f"http={status}")
+            return Decision("overload", "backoff", f"http={status}",
+                            self._bump(0.0))
         if any(marker in text for marker in self.window_markers):
             return Decision("window_closed", "wait", "business_marker")
         if any(marker in text for marker in self.full_markers):
@@ -514,6 +695,17 @@ class FailureClassifier:
         if readback_ok:
             return Decision("confirmed", "stop", "official_readback_match")
         return Decision("pending", "halt", "readback_no_match")
+
+    def note_success(self) -> None:
+        """A confirmed read reset the backoff ladder."""
+        if self.retry is not None:
+            self.retry.reset()
+
+    def _bump(self, fallback: float) -> float:
+        if self.retry is None:
+            return fallback
+        delay = self.retry.next_delay()
+        return fallback if delay is None else delay
 
 
 # ---------------------------------------------------------------------------

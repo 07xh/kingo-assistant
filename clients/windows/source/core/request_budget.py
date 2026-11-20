@@ -40,11 +40,25 @@ class WindowLimit:
 
 @dataclass(frozen=True)
 class RequestPolicy:
+    """Verified request budget.
+
+    ``max_concurrency`` defaults to 1, which keeps the cross-process lease: only
+    one cooperating client on the machine may be inside an HTTP call at a time.
+    A value above 1 is accepted ONLY together with
+    ``parallel_lease_attested=True`` and a non-empty ``parallel_source``, because
+    it gives up the cross-process single-holder guarantee while keeping the
+    sliding window. That trade is a deliberate, recorded decision — a stale
+    ``data/*.sqlite`` left by an older run cannot be silently reinterpreted as
+    parallel, since the signature check below includes the concurrency value.
+    """
+
     windows: tuple[WindowLimit, ...]
     max_concurrency: int
     source: str
     verified: bool = False
     scope: str = ""
+    parallel_lease_attested: bool = False
+    parallel_source: str = ""
 
     def __post_init__(self) -> None:
         if not self.windows or len(self.windows) > 8:
@@ -53,10 +67,28 @@ class RequestPolicy:
             raise PolicyError("窗口类型错误")
         if len(set(w.window_seconds for w in self.windows)) != len(self.windows):
             raise PolicyError("窗口长度重复")
-        if type(self.max_concurrency) is not int or self.max_concurrency != 1:
-            raise PolicyError("当前跨进程串行实现只支持 max_concurrency=1")
+        if type(self.max_concurrency) is not int or not 1 <= self.max_concurrency <= 16:
+            raise PolicyError("并发数必须是 1–16 的整数")
         if not isinstance(self.source, str) or not self.source.strip():
             raise PolicyError("缺少策略来源")
+        if type(self.parallel_lease_attested) is not bool:
+            raise PolicyError("并发租约声明必须是布尔值")
+        if self.max_concurrency == 1:
+            if self.parallel_lease_attested:
+                raise PolicyError("max_concurrency=1 时不需要声明放弃跨进程租约")
+            return
+        if self.parallel_lease_attested is not True:
+            raise PolicyError(
+                "并发数大于 1 必须显式声明 parallel_lease_attested 并记录原因")
+        if not isinstance(self.parallel_source, str) or not self.parallel_source.strip():
+            raise PolicyError("并发数大于 1 必须记录放弃跨进程租约的依据")
+        if len(self.parallel_source) > 500:
+            raise PolicyError("并发依据过长")
+
+    @property
+    def serial_lease_required(self) -> bool:
+        """True when the OS-level single-holder lease must be held."""
+        return self.max_concurrency == 1
 
 
 _PROCESS_LOCKS: dict[str, threading.Lock] = {}
@@ -243,10 +275,17 @@ class GlobalRequestBudget:
 
     @asynccontextmanager
     async def request(self) -> AsyncIterator[None]:
-        """Count an attempted send; hold cross-process lease during I/O."""
+        """Count an attempted send; hold the cross-process lease when serial."""
         if self.policy.verified is not True:
             raise PolicyError("没有独立核实的允许频率策略，拒绝请求")
         async with self._concurrency:
+            if not self.policy.serial_lease_required:
+                # Parallel policy: the sliding window still bounds the whole
+                # machine, but a single-holder OS lease would serialise it back
+                # to 1 and make the declared concurrency a lie.
+                await self._reserve()
+                yield
+                return
             lease = await self._process_lease()
             try:
                 await self._reserve()
@@ -300,8 +339,12 @@ def read_verified_policy_config(config: dict, origin: tuple[str, str]) -> tuple[
     database = Path(db_raw)
     if db_raw == ":memory:" or not database.is_absolute():
         raise PolicyError("预算数据库必须为可共享的绝对本地路径")
-    policy = RequestPolicy(windows, data.get("max_concurrency", 1), data["source"], True,
-                           "://".join(origin))
+    policy = RequestPolicy(
+        windows, data.get("max_concurrency", 1), data["source"], True,
+        "://".join(origin),
+        parallel_lease_attested=data.get("parallel_lease_attested", False) is True,
+        parallel_source=str(data.get("parallel_source") or ""),
+    )
     return policy, database
 
 
