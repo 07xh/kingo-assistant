@@ -1,4 +1,4 @@
-"""Standalone Windows desktop UI for KingoAssistant v5.2.0-beta.1.
+"""Standalone Windows desktop UI for KingoAssistant v5.2.0-beta.2.
 
 The current NCWU client remains read-only. The automatic-enrollment state
 machine is offline-tested but has no verified school-specific adapter yet.
@@ -80,7 +80,7 @@ from core.latency import DEFAULT_LATENCY_FILE, LatencyRecorder, summarize_file
 from core.enrollment_schedule import ScheduledRunReport
 from main import _read_local_html, validate
 
-APP_TITLE = "KingoAssistant v5.2.0-beta.1 · Windows（只读监测｜自动提交尚未接入）"
+APP_TITLE = "KingoAssistant v5.2.0-beta.2 · Windows（只读监测｜自动提交尚未接入）"
 
 
 def scoped_native_cookie(app, config: dict) -> str | None:
